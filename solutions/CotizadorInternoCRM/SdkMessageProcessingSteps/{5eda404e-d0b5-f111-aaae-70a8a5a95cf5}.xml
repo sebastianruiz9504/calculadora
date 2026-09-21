@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<SdkMessageProcessingStep Name="DigitalTech FirstContract: Delete 20" SdkMessageProcessingStepId="{5eda404e-d0b5-f111-aaae-70a8a5a95cf5}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <SdkMessageId>a1bdbb1b-ea3e-db11-86a7-000a3a5473e8</SdkMessageId>
+  <PluginTypeName>DigitalTech.Puntajes.FirstContractPlugin, DigitalTech.Puntajes.FirstContract, Version=1.0.0.0, Culture=neutral, PublicKeyToken=ca82f341d2487688</PluginTypeName>
+  <PluginTypeId>fe32e1e5-cfb5-f111-aaae-70a8a5a95cf5</PluginTypeId>
+  <PrimaryEntity>cr07a_contractrecord1</PrimaryEntity>
+  <AsyncAutoDelete>0</AsyncAutoDelete>
+  <Configuration>enabled</Configuration>
+  <FilteringAttributes></FilteringAttributes>
+  <InvocationSource>1</InvocationSource>
+  <Mode>0</Mode>
+  <Rank>1</Rank>
+  <EventHandlerTypeCode>4602</EventHandlerTypeCode>
+  <Stage>20</Stage>
+  <IsCustomizable>1</IsCustomizable>
+  <IsHidden>0</IsHidden>
+  <SupportedDeployment>0</SupportedDeployment>
+  <IntroducedVersion>1.0</IntroducedVersion>
+  <SdkMessageProcessingStepImages>
+    <SdkMessageProcessingStepImage Name="Before">
+      <SdkMessageProcessingStepImageId>{60da404e-d0b5-f111-aaae-70a8a5a95cf5}</SdkMessageProcessingStepImageId>
+      <Attributes>cr07a_cliente</Attributes>
+      <EntityAlias>Before</EntityAlias>
+      <ImageType>0</ImageType>
+      <MessagePropertyName>Target</MessagePropertyName>
+      <IsCustomizable>1</IsCustomizable>
+    </SdkMessageProcessingStepImage>
+  </SdkMessageProcessingStepImages>
+</SdkMessageProcessingStep>

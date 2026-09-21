@@ -21,7 +21,10 @@
   <EntityRelationship Name="cr07a_crmhistorialetapa_negocio_cr07a_crmnegocio" />
   <EntityRelationship Name="cr07a_crmnegocio_contactoprincipal_cr07a_crmcontacto" />
   <EntityRelationship Name="cr07a_crmnegocio_empresa_cr07a_cliente" />
+  <EntityRelationship Name="cr07a_NegociosComerciales_ParentRecord" />
   <EntityRelationship Name="cr07a_Novedad_cr07a_Cliente_cr07a_Cliente" />
+  <EntityRelationship Name="FileAttachment_cr07a_negocioscomerciales_cr07a_ExportConfigurationFile" />
+  <EntityRelationship Name="FileAttachment_cr07a_negocioscomerciales_cr07a_ExportPdfFile" />
   <EntityRelationship Name="lk_cr07a_cierreflujocajabanco_createdby" />
   <EntityRelationship Name="lk_cr07a_cierreflujocajabanco_modifiedby" />
   <EntityRelationship Name="lk_cr07a_cliente_createdby" />
@@ -36,6 +39,9 @@
   <EntityRelationship Name="lk_cr07a_crmhistorialetapa_modifiedby" />
   <EntityRelationship Name="lk_cr07a_crmnegocio_createdby" />
   <EntityRelationship Name="lk_cr07a_crmnegocio_modifiedby" />
+  <EntityRelationship Name="lk_cr07a_scoreclientlock_createdby" />
+  <EntityRelationship Name="lk_cr07a_scoreclientlock_modifiedby" />
+  <EntityRelationship Name="organization_cr07a_scoreclientlock" />
   <EntityRelationship Name="owner_cr07a_cierreflujocajabanco" />
   <EntityRelationship Name="owner_cr07a_cliente" />
   <EntityRelationship Name="owner_cr07a_crmactividad" />

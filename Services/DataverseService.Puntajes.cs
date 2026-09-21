@@ -174,8 +174,9 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No se encontro el registro seleccionado.");
         var currentUser = await GetCurrentUserAsync(ct) ?? new Models.CurrentUserInfo();
         var normalizedRequest = NormalizeVerificationRequest(request, existingContext.Record.ContractStartDateValue);
+        // Dataverse owns this field; never trust the value submitted by the browser.
+        normalizedRequest.FirstContractOptionValue = existingContext.Record.FirstContractOptionValue;
         var verifiedFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresVerifiedField);
-        var firstContractFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresFirstContractField);
 
         await ResolveMissingProductLookupsAsync(normalizedRequest, createMissingHardware: true, ct);
         var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
@@ -189,7 +190,7 @@ public sealed partial class DataverseService
 
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         Exception? lastError = null;
-        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson, verifiedFieldKind, firstContractFieldKind))
+        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson, verifiedFieldKind))
         {
             try
             {
@@ -1404,7 +1405,7 @@ public sealed partial class DataverseService
             RequiresProration = ResolveRequiresProration(record, additional, scenario),
             ScenarioStartDateValue = ResolveScenarioStartDateValue(record, additional, scenario),
             ScenarioEndDateValue = ResolveScenarioEndDateValue(record, additional, scenario),
-            FirstContractOptionValue = record.FirstContractOptionValue > 0 ? record.FirstContractOptionValue : DeriveFirstContractOptionValue(ResolveDealTypeValue(record, additional, scenario)),
+            FirstContractOptionValue = AllowedFirstContractOptionValues.Contains(record.FirstContractOptionValue) ? record.FirstContractOptionValue : 0,
             LineOptionValue = record.LineOptionValue,
             VerticalOptionValue = record.VerticalOptionValue,
             BillingDay = record.BillingDay,
@@ -2046,7 +2047,7 @@ public sealed partial class DataverseService
         if (requireProductLookup)
         {
             if (!AllowedFirstContractOptionValues.Contains(request.FirstContractOptionValue))
-                throw new InvalidOperationException("Debes seleccionar si es el primer contrato con el cliente.");
+                throw new InvalidOperationException("El primer contrato se determina automáticamente. Revisa que el registro tenga un cliente asociado.");
 
             if (!AllowedVerticalOptionValues.Contains(request.VerticalOptionValue))
                 throw new InvalidOperationException("Debes seleccionar una vertical.");
@@ -2147,23 +2148,17 @@ public sealed partial class DataverseService
         ScoreVerificationRequest request,
         ScoreVerificationComputedResultDto result,
         string additionalJson,
-        PrimitiveFieldKind verifiedFieldKind,
-        PrimitiveFieldKind firstContractFieldKind)
+        PrimitiveFieldKind verifiedFieldKind)
     {
         var verifiedValue = ResolvePrimitivePayloadValue(
             verifiedFieldKind,
             preferredBooleanValue: true,
             preferredIntegerValue: 1,
             preferBooleanWhenUnknown: true);
-        var firstContractValue = ResolvePrimitivePayloadValue(
-            firstContractFieldKind,
-            preferredBooleanValue: request.FirstContractOptionValue == 1,
-            preferredIntegerValue: request.FirstContractOptionValue,
-            preferBooleanWhenUnknown: false);
 
         yield return new Dictionary<string, object?>
         {
-            [_scoresFirstContractField] = firstContractValue,
+            // The synchronous Dataverse rule maintains first-contract status independently.
             [_scoresVerticalField] = request.VerticalOptionValue,
             [_scoresContractField] = ResolveScoreContractKindOptionValue(request.ContractKindOptionValue, 0, request.DealTypeValue),
             [_scoresContractKindField] = ResolveScoreContractKindOptionValue(request.ContractKindOptionValue, 0, request.DealTypeValue),

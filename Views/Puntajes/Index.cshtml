@@ -284,7 +284,8 @@
                         <div class="scores-verify-grid">
                             <div>
                                 <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
-                                <select class="form-select" id="firstContractSelect" required></select>
+                                <select class="form-select" id="firstContractSelect" disabled aria-describedby="firstContractHelp"></select>
+                                <small id="firstContractHelp" class="text-muted">Automático: Sí únicamente para el primer registro del cliente en todo el histórico.</small>
                             </div>
                             <div>
                                 <label class="form-label" for="verticalOptionSelect">Vertical</label>

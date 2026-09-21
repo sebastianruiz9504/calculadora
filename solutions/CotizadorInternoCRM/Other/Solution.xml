@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<ImportExportXml version="9.2.26072.134" SolutionPackageVersion="9.2" languagecode="3082" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26072.134" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26072.00138">
+<ImportExportXml version="9.2.26091.144" SolutionPackageVersion="9.2" languagecode="3082" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26091.144" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26091.00144">
   <SolutionManifest>
     <UniqueName>CotizadorInternoCRM</UniqueName>
     <LocalizedNames>
@@ -87,6 +87,15 @@
       <RootComponent type="1" schemaName="cr07a_crmnegocio" behavior="0" />
       <RootComponent type="1" schemaName="cr07a_empleado" behavior="2" />
       <RootComponent type="1" schemaName="cr07a_gastodelaempresa" behavior="2" />
+      <RootComponent type="1" schemaName="cr07a_negocioscomerciales" behavior="1" />
+      <RootComponent type="1" schemaName="cr07a_scoreclientlock" behavior="0" />
+      <RootComponent type="91" id="{f332e1e5-cfb5-f111-aaae-70a8a5a95cf5}" schemaName="DigitalTech.Puntajes.FirstContract, Version=1.0.0.0, Culture=neutral, PublicKeyToken=ca82f341d2487688" behavior="0" />
+      <RootComponent type="92" id="{4e568247-d0b5-f111-aaae-70a8a5a95cf5}" behavior="0" />
+      <RootComponent type="92" id="{5eda404e-d0b5-f111-aaae-70a8a5a95cf5}" behavior="0" />
+      <RootComponent type="92" id="{7debd23f-d0b5-f111-aaae-70a8a5a95cf5}" behavior="0" />
+      <RootComponent type="92" id="{85ecbd39-d0b5-f111-aaae-70a8a5a95cf5}" behavior="0" />
+      <RootComponent type="92" id="{89ecbd39-d0b5-f111-aaae-70a8a5a95cf5}" behavior="0" />
+      <RootComponent type="92" id="{f5bdfc54-d0b5-f111-aaae-70a8a5a95cf5}" behavior="0" />
     </RootComponents>
     <MissingDependencies>
       <MissingDependency>
@@ -116,6 +125,46 @@
       <MissingDependency>
         <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
         <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{4e568247-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{5eda404e-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{7debd23f-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{85ecbd39-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{89ecbd39-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{f5bdfc54-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{4c568247-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{5ada404e-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{60da404e-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{fcbdfc54-d0b5-f111-aaae-70a8a5a95cf5}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="1" schemaName="cr07a_contrato" displayName="Contrato" solution="Active" />
@@ -178,6 +227,10 @@
         <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="1" schemaName="cr07a_negocioscomerciales" displayName="negocioscomerciales" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_negocioscomerciales" displayName="negocioscomerciales" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="1" schemaName="cr07a_novedades" displayName="Novedades" solution="Active" />
         <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
       </MissingDependency>
@@ -230,8 +283,68 @@
         <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="1" schemaName="dtc_copiersactivityv2" displayName="Acta Copiers V2" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="dtc_copiersmtov2" displayName="MTO Firmado V2" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="1" schemaName="hd_customertenant" displayName="Tenant de cliente" solution="Active" />
         <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{4e568247-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{7debd23f-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{4c568247-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{5ada404e-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{60da404e-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="93" id="{fcbdfc54-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_contractstartdate" displayName="Inicio Contrato" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{4e568247-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_contractstartdate" displayName="Inicio Contrato" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{7debd23f-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_esprimercontratoconelcliente" displayName="Es primer contrato con el cliente?" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{7debd23f-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_name" displayName="Name" parentSchemaName="cr07a_negocioscomerciales" parentDisplayName="negocioscomerciales" solution="Active" />
+        <Dependent type="10" schemaName="cr07a_NegociosComerciales_ParentRecord" displayName="cr07a_NegociosComerciales_ParentRecord" parentSchemaName="cr07a_negocioscomerciales" parentDisplayName="negocioscomerciales" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_scenarioid" displayName="scenarioid" parentSchemaName="cr07a_negocioscomerciales" parentDisplayName="negocioscomerciales" solution="Active" />
+        <Dependent type="14" schemaName="cr07a_negocioscomerciales_scenarioid_key" displayName="cr07a_NegociosComerciales_ScenarioId_Key" parentSchemaName="cr07a_negocioscomerciales" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{4e568247-d0b5-f111-aaae-70a8a5a95cf5}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_contractrecord1" parentDisplayName="Puntaje" solution="Active" />
+        <Dependent type="92" id="{7debd23f-d0b5-f111-aaae-70a8a5a95cf5}" />
       </MissingDependency>
     </MissingDependencies>
   </SolutionManifest>

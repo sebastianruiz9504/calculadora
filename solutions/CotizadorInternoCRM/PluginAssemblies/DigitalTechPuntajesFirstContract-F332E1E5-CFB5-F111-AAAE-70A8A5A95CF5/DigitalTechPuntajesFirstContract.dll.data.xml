@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PluginAssembly FullName="DigitalTech.Puntajes.FirstContract, Version=1.0.0.0, Culture=neutral, PublicKeyToken=ca82f341d2487688" PluginAssemblyId="f332e1e5-cfb5-f111-aaae-70a8a5a95cf5" CustomizationLevel="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <IsolationMode>2</IsolationMode>
+  <SourceType>0</SourceType>
+  <IntroducedVersion>1.0</IntroducedVersion>
+  <FileName>/PluginAssemblies/DigitalTechPuntajesFirstContract-F332E1E5-CFB5-F111-AAAE-70A8A5A95CF5/DigitalTechPuntajesFirstContract.dll</FileName>
+  <PluginTypes>
+    <PluginType AssemblyQualifiedName="DigitalTech.Puntajes.FirstContractPlugin, DigitalTech.Puntajes.FirstContract, Version=1.0.0.0, Culture=neutral, PublicKeyToken=ca82f341d2487688" PluginTypeId="fe32e1e5-cfb5-f111-aaae-70a8a5a95cf5" Name="DigitalTech.Puntajes.FirstContractPlugin">
+      <FriendlyName>DigitalTech.Puntajes.FirstContractPlugin</FriendlyName>
+    </PluginType>
+  </PluginTypes>
+</PluginAssembly>

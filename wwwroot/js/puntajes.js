@@ -499,10 +499,6 @@
         };
     }
 
-    function deriveFirstContractValue(dealTypeValue) {
-        return Number(dealTypeValue) === 0 ? 1 : 2;
-    }
-
     function applyDraftDerivedDefaults(draft) {
         if (!draft) {
             return draft;
@@ -513,7 +509,7 @@
         if (draft.requiresProration) {
             draft.dealTypeValue = CROSS_SALE_DEAL_TYPE;
         }
-        draft.firstContractOptionValue = Number(draft.firstContractOptionValue || 0) || deriveFirstContractValue(draft.dealTypeValue);
+        draft.firstContractOptionValue = Number(draft.firstContractOptionValue || 0);
         draft.contractKindOptionValue = Number(draft.contractKindOptionValue || 0) || (RENEWAL_DEAL_TYPES.has(draft.dealTypeValue) ? CONTRACT_KIND_RENEWAL_VALUE : CONTRACT_KIND_NEW_BUSINESS_VALUE);
         draft.contractKindLabel = draft.contractKindLabel || optionLabel(optionMaps.contractKind, draft.contractKindOptionValue);
         const renewalSuggestion = buildRenewalSuggestion(draft);
@@ -1712,9 +1708,7 @@
         state.activeDraft.scenarioEndDateValue = state.activeDraft.requiresProration
             ? (scenarioEndDateSelect?.value || "")
             : (scenarioEndDateInput?.value || "");
-        state.activeDraft.firstContractOptionValue = firstContractSelect?.value === ""
-            ? deriveFirstContractValue(state.activeDraft.dealTypeValue)
-            : Number(firstContractSelect?.value || 0);
+        // First-contract status is supplied by Dataverse, never by an editable control.
         state.activeDraft.verticalOptionValue = Number(verticalOptionSelect?.value || 0);
         state.activeDraft.billingDay = Number(billingDayInput?.value || 0);
         state.activeDraft.renewalDateValue = renewalDateInput?.value || "";
@@ -2355,7 +2349,7 @@
     scenarioEndDateInput?.addEventListener("change", handleScoringChange);
     scenarioEndDateSelect?.addEventListener("change", handleScoringChange);
 
-    [firstContractSelect, verticalOptionSelect, autoBillSelect, contractTypeSelect]
+    [verticalOptionSelect, autoBillSelect, contractTypeSelect]
         .filter(Boolean)
         .forEach(element => {
             element.addEventListener("change", handleAdministrativeChange);

@@ -32,6 +32,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="plugins\**" />
+    <Content Remove="plugins\**;solutions\**" />
+    <None Remove="plugins\**;solutions\**" />
+    <EmbeddedResource Remove="plugins\**;solutions\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- OneDrive conflict copies are recovery artifacts, never application sources. -->
     <Compile Remove="**\*-CPC-*.cs" />
     <Content Remove="**\*-CPC-*.*" />
