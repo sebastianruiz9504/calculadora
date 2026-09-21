@@ -580,6 +580,32 @@
         #fbfdff;
 }
 
+.metrics-chart__seller-periods > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    padding: 12px 0;
+}
+
+.metrics-chart__seller-periods {
+    border-top: 1px solid #dce7f3;
+}
+
+.metrics-chart__seller-periods > summary::before {
+    content: "▸";
+}
+
+.metrics-chart__seller-periods[open] > summary::before {
+    content: "▾";
+}
+
+.metrics-chart__seller-periods .metrics-chart__goal-statuses {
+    margin-bottom: 12px;
+}
+
 .metrics-chart__goal-head {
     display: flex;
     justify-content: space-between;

@@ -152,6 +152,7 @@ public sealed class MetricsDashboardDto
     public string EmptyStateMessage { get; set; } = "";
     public int RecordsCount { get; set; }
     public int SellersCount { get; set; }
+    public int NewClientsCount { get; set; }
     public int VerticalsCount { get; set; }
     public decimal TotalScore { get; set; }
     public decimal TotalAnnualValue { get; set; }
@@ -181,6 +182,8 @@ public sealed class MetricsChartDto
 
 public sealed class MetricsGoalStatusDto
 {
+    public string SellerName { get; set; } = "";
+    public string SellerColor { get; set; } = "";
     public string CategoryKey { get; set; } = "";
     public string Category { get; set; } = "";
     public decimal ActualValue { get; set; }

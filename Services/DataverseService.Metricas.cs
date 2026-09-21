@@ -55,14 +55,32 @@ public sealed partial class DataverseService
             .ThenBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        return BuildMetricsDashboardFromRecords(filter, view, effectivePeriod, sellerKey, allRecords);
+    }
+
+    internal static MetricsDashboardDto BuildMetricsDashboardFromRecords(
+        MetricsRangeFilter filter,
+        MetricsViewMode view,
+        MetricsPeriodGranularity period,
+        string? sellerKey,
+        IReadOnlyList<ScoreRecordDto> allRecords)
+    {
+        var effectivePeriod = filter == MetricsRangeFilter.ThisMonth ? MetricsPeriodGranularity.Month : period;
         var allNewBusinessRecords = allRecords
             .Where(IsNewBusinessMetricsRecord)
             .ToList();
 
-        var displayRange = BuildMetricsRange(filter, effectivePeriod, allNewBusinessRecords);
+        var rangeRecords = view == MetricsViewMode.Individual
+            ? allRecords.Where(record => IsNewBusinessMetricsRecord(record) || record.FirstContractOptionValue == 1).ToList()
+            : allNewBusinessRecords;
+        var displayRange = BuildMetricsRange(filter, effectivePeriod, rangeRecords);
         var displayRecords = FilterMetricsRecordsByRange(allNewBusinessRecords, displayRange.StartInclusive, displayRange.EndExclusive);
+        var firstContractRecords = FilterMetricsRecordsByRange(allRecords, displayRange.StartInclusive, displayRange.EndExclusive)
+            .Where(record => record.FirstContractOptionValue == 1)
+            .ToList();
 
-        var sellers = displayRecords
+        var sellerRecords = view == MetricsViewMode.Individual ? displayRecords.Concat(firstContractRecords) : displayRecords;
+        var sellers = sellerRecords
             .GroupBy(record => NormalizeMetricsKey(record.SalesPerson), StringComparer.OrdinalIgnoreCase)
             .Select(group => new MetricsSellerOptionDto
             {
@@ -76,9 +94,13 @@ public sealed partial class DataverseService
         var appliedSeller = sellers.FirstOrDefault(option =>
             string.Equals(option.Key, requestedSellerKey, StringComparison.OrdinalIgnoreCase));
 
-        return view == MetricsViewMode.Individual
+        var dashboard = view == MetricsViewMode.Individual
             ? BuildIndividualDashboard(filter, effectivePeriod, displayRange, displayRecords, allNewBusinessRecords, sellers, appliedSeller)
             : BuildGlobalDashboard(filter, effectivePeriod, displayRange, displayRecords, allNewBusinessRecords, sellers);
+        dashboard.NewClientsCount = firstContractRecords.Count(record => view != MetricsViewMode.Individual
+            || appliedSeller is null
+            || string.Equals(NormalizeMetricsKey(record.SalesPerson), appliedSeller.Key, StringComparison.OrdinalIgnoreCase));
+        return dashboard;
     }
 
     private string BuildMetricsFetchUrl(DateOnly startInclusive, DateOnly endExclusive)
@@ -87,7 +109,7 @@ public sealed partial class DataverseService
         return $"/api/data/v9.2/{_scoresTableSetName}?$filter={Uri.EscapeDataString(filterExpression)}&$orderby={_scoresContractStartDateField} asc";
     }
 
-    private MetricsDashboardDto BuildGlobalDashboard(
+    private static MetricsDashboardDto BuildGlobalDashboard(
         MetricsRangeFilter filter,
         MetricsPeriodGranularity period,
         MetricsRangeDefinition range,
@@ -162,7 +184,7 @@ public sealed partial class DataverseService
         return record;
     }
 
-    private MetricsDashboardDto BuildIndividualDashboard(
+    private static MetricsDashboardDto BuildIndividualDashboard(
         MetricsRangeFilter filter,
         MetricsPeriodGranularity period,
         MetricsRangeDefinition range,
@@ -171,100 +193,37 @@ public sealed partial class DataverseService
         IReadOnlyList<MetricsSellerOptionDto> sellers,
         MetricsSellerOptionDto? appliedSeller)
     {
-        if (appliedSeller is null)
-        {
-            return CreateDashboard(
-                filter: filter,
-                view: MetricsViewMode.Individual,
-                period: period,
-                sellers: sellers,
-                appliedSeller: null,
-                records: Array.Empty<ScoreRecordDto>(),
-                charts: Array.Empty<MetricsChartDto>(),
-                granularityLabel: "Pendiente",
-                requiresSellerSelection: true,
-                emptyStateTitle: "Selecciona un vendedor",
-                emptyStateMessage: "La vista Individuales solo se habilita cuando eliges un vendedor. Despu\u00e9s te mostramos las metas individuales estandarizadas.");
-        }
-
-        var sellerRecords = displayRecords
-            .Where(record => string.Equals(NormalizeMetricsKey(record.SalesPerson), appliedSeller.Key, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        var sellerComparisonRecords = comparisonRecords
-            .Where(record => string.Equals(NormalizeMetricsKey(record.SalesPerson), appliedSeller.Key, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        var individualGoal = DefaultIndividualGoal;
+        var selectedSellers = sellers.Where(seller => appliedSeller is null
+            || string.Equals(seller.Key, appliedSeller.Key, StringComparison.OrdinalIgnoreCase)).ToList();
+        var records = appliedSeller is null
+            ? displayRecords
+            : FilterMetricsRecordsBySeller(displayRecords, appliedSeller.Key);
+        var sellerName = appliedSeller?.Name ?? "todos los vendedores";
         var periodLabel = period.ToLabel().ToLowerInvariant();
-        var charts = new List<MetricsChartDto>
+        var charts = new List<MetricsChartDto>();
+
+        if (selectedSellers.Count > 0)
         {
-            BuildGoalComparisonChart(
-                key: $"{appliedSeller.Key}-seller-monthly-goal",
-                title: "Puntaje por vendedor en el tiempo",
-                subtitle: $"Meta {periodLabel} de {appliedSeller.Name} en {filter.ToLabel().ToLowerInvariant()}",
-                records: sellerRecords,
-                comparisonRecords: sellerComparisonRecords,
-                range: range,
-                actualSeriesName: appliedSeller.Name,
-                color: MetricsColorPalette[1],
-                goalValue: individualGoal.TotalMonthlyGoal,
-                accumulate: false),
-            BuildGoalComparisonChart(
-                key: $"{appliedSeller.Key}-seller-accumulated-goal",
-                title: "Puntaje acumulado por vendedor",
-                subtitle: $"Meta acumulada de {appliedSeller.Name} en {filter.ToLabel().ToLowerInvariant()}",
-                records: sellerRecords,
-                comparisonRecords: sellerComparisonRecords,
-                range: range,
-                actualSeriesName: $"{appliedSeller.Name} acumulado",
-                color: MetricsColorPalette[1],
-                goalValue: individualGoal.TotalMonthlyGoal,
-                accumulate: true),
-            BuildGoalComparisonChart(
-                key: $"{appliedSeller.Key}-cloud-monthly-goal",
-                title: "Puntaje Cloud",
-                subtitle: $"Meta {periodLabel} Cloud de {appliedSeller.Name}",
-                records: FilterRecordsByVertical(sellerRecords, "cloud"),
-                comparisonRecords: FilterRecordsByVertical(sellerComparisonRecords, "cloud"),
-                range: range,
-                actualSeriesName: "Cloud real",
-                color: "#145AF2",
-                goalValue: individualGoal.CloudMonthlyGoal,
-                accumulate: false),
-            BuildGoalComparisonChart(
-                key: $"{appliedSeller.Key}-copiers-monthly-goal",
-                title: "Puntaje Copiers",
-                subtitle: $"Meta {periodLabel} Copiers de {appliedSeller.Name}",
-                records: FilterRecordsByVertical(sellerRecords, "copiers"),
-                comparisonRecords: FilterRecordsByVertical(sellerComparisonRecords, "copiers"),
-                range: range,
-                actualSeriesName: "Copiers real",
-                color: "#F97316",
-                goalValue: individualGoal.CopiersMonthlyGoal,
-                accumulate: false),
-            BuildGoalComparisonChart(
-                key: $"{appliedSeller.Key}-cloud-accumulated-goal",
-                title: "Puntaje Cloud acumulado",
-                subtitle: $"Meta acumulada Cloud de {appliedSeller.Name}",
-                records: FilterRecordsByVertical(sellerRecords, "cloud"),
-                comparisonRecords: FilterRecordsByVertical(sellerComparisonRecords, "cloud"),
-                range: range,
-                actualSeriesName: "Cloud acumulado",
-                color: "#145AF2",
-                goalValue: individualGoal.CloudMonthlyGoal,
-                accumulate: true),
-            BuildGoalComparisonChart(
-                key: $"{appliedSeller.Key}-copiers-accumulated-goal",
-                title: "Puntaje Copiers acumulado",
-                subtitle: $"Meta acumulada Copiers de {appliedSeller.Name}",
-                records: FilterRecordsByVertical(sellerRecords, "copiers"),
-                comparisonRecords: FilterRecordsByVertical(sellerComparisonRecords, "copiers"),
-                range: range,
-                actualSeriesName: "Copiers acumulado",
-                color: "#F97316",
-                goalValue: individualGoal.CopiersMonthlyGoal,
-                accumulate: true)
-        };
+            charts.Add(BuildIndividualComparisonChart("seller-monthly-goal", "Puntaje por vendedor en el tiempo",
+                $"Meta {periodLabel} de {sellerName} en {filter.ToLabel().ToLowerInvariant()}",
+                records, comparisonRecords, range, sellers, selectedSellers, DefaultIndividualGoal.TotalMonthlyGoal, false));
+            charts.Add(BuildIndividualComparisonChart("seller-accumulated-goal", "Puntaje acumulado por vendedor",
+                $"Meta acumulada de {sellerName} en {filter.ToLabel().ToLowerInvariant()}",
+                records, comparisonRecords, range, sellers, selectedSellers, DefaultIndividualGoal.TotalMonthlyGoal, true));
+            foreach (var accumulate in new[] { false, true })
+            {
+                foreach (var vertical in MetricsVerticalGoals)
+                {
+                    var monthlyGoal = vertical.Key == "cloud" ? DefaultIndividualGoal.CloudMonthlyGoal : DefaultIndividualGoal.CopiersMonthlyGoal;
+                    charts.Add(BuildIndividualComparisonChart(
+                        $"{vertical.Key}-{(accumulate ? "accumulated" : "monthly")}-goal",
+                        $"Puntaje {vertical.Label}{(accumulate ? " acumulado" : "")}",
+                        $"Meta {(accumulate ? "acumulada" : periodLabel)} {vertical.Label} de {sellerName}",
+                        FilterRecordsByVertical(records, vertical.Key), FilterRecordsByVertical(comparisonRecords, vertical.Key),
+                        range, sellers, selectedSellers, monthlyGoal, accumulate));
+                }
+            }
+        }
 
         return CreateDashboard(
             filter: filter,
@@ -272,15 +231,60 @@ public sealed partial class DataverseService
             period: period,
             sellers: sellers,
             appliedSeller: appliedSeller,
-            records: sellerRecords,
+            records: records,
             charts: charts,
             granularityLabel: period.ToLabel(),
             requiresSellerSelection: false,
             emptyStateTitle: "No hay metricas individuales disponibles.",
-            emptyStateMessage: "No encontramos registros del vendedor seleccionado para este rango.");
+            emptyStateMessage: "No encontramos registros para este rango y vendedor.");
     }
 
-    private MetricsDashboardDto CreateDashboard(
+    private static IReadOnlyList<ScoreRecordDto> FilterMetricsRecordsBySeller(IReadOnlyList<ScoreRecordDto> records, string sellerKey) =>
+        records.Where(record => string.Equals(NormalizeMetricsKey(record.SalesPerson), sellerKey, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private static MetricsChartDto BuildIndividualComparisonChart(
+        string key, string title, string subtitle,
+        IReadOnlyList<ScoreRecordDto> records, IReadOnlyList<ScoreRecordDto> comparisonRecords,
+        MetricsRangeDefinition range, IReadOnlyList<MetricsSellerOptionDto> allSellers,
+        IReadOnlyList<MetricsSellerOptionDto> selectedSellers, decimal monthlyGoal, bool accumulate)
+    {
+        var sellerCharts = selectedSellers.Select(seller =>
+        {
+            var sellerIndex = allSellers.ToList().FindIndex(option => option.Key == seller.Key);
+            // Use the full roster before filtering so a seller keeps the same color in every chart.
+            var color = sellerIndex < MetricsColorPalette.Length
+                ? MetricsColorPalette[sellerIndex]
+                : $"hsl({(sellerIndex * 137) % 360}, 65%, 42%)";
+            var chart = BuildGoalComparisonChart(key + "-" + seller.Key, title, subtitle,
+                FilterMetricsRecordsBySeller(records, seller.Key), FilterMetricsRecordsBySeller(comparisonRecords, seller.Key),
+                range, seller.Name, color, monthlyGoal, accumulate);
+            foreach (var status in chart.GoalStatuses)
+            {
+                status.SellerName = seller.Name;
+                status.SellerColor = color;
+            }
+            return chart;
+        }).ToList();
+        var reference = sellerCharts[0].Series.Single(series => series.IsReference);
+        reference.Key = key + "-goal";
+        reference.Name = accumulate ? "Meta individual acumulada" : "Meta individual";
+        reference.LegendNote = $"{reference.Name} {reference.TotalScore:0.##}";
+
+        return new MetricsChartDto
+        {
+            Key = key,
+            Title = title,
+            Subtitle = subtitle,
+            GoalLabel = $"Meta individual: {monthlyGoal:0.##} por mes{(accumulate ? " (acumulada)" : "")}",
+            Categories = range.Categories.Select(category => category.DisplayLabel).ToList(),
+            TotalScore = RoundCurrency(records.Sum(record => record.Score)),
+            TotalAnnualValue = RoundCurrency(records.Sum(record => record.AnnualValue)),
+            Series = sellerCharts.SelectMany(chart => chart.Series.Where(series => !series.IsReference)).Append(reference).ToList(),
+            GoalStatuses = sellerCharts.SelectMany(chart => chart.GoalStatuses).ToList()
+        };
+    }
+
+    private static MetricsDashboardDto CreateDashboard(
         MetricsRangeFilter filter,
         MetricsViewMode view,
         MetricsPeriodGranularity period,
@@ -303,9 +307,7 @@ public sealed partial class DataverseService
             PeriodLabel = period.ToLabel(),
             GranularityLabel = granularityLabel,
             AppliedSellerKey = appliedSeller?.Key ?? "",
-            AppliedSellerName = view == MetricsViewMode.Individual
-                ? appliedSeller?.Name ?? "Selecciona un vendedor"
-                : "Todos los vendedores",
+            AppliedSellerName = appliedSeller?.Name ?? "Todos los vendedores",
             RequiresSellerSelection = requiresSellerSelection,
             EmptyStateTitle = emptyStateTitle,
             EmptyStateMessage = emptyStateMessage,
@@ -327,7 +329,7 @@ public sealed partial class DataverseService
         };
     }
 
-    private MetricsChartDto BuildSingleTrendChart(
+    private static MetricsChartDto BuildSingleTrendChart(
         string key,
         string title,
         string subtitle,
@@ -367,7 +369,7 @@ public sealed partial class DataverseService
         };
     }
 
-    private MetricsChartDto BuildGoalComparisonChart(
+    private static MetricsChartDto BuildGoalComparisonChart(
         string key,
         string title,
         string subtitle,
@@ -441,7 +443,7 @@ public sealed partial class DataverseService
         };
     }
 
-    private List<decimal> AggregateValues(
+    private static List<decimal> AggregateValues(
         IReadOnlyList<ScoreRecordDto> records,
         MetricsRangeDefinition range,
         Func<ScoreRecordDto, decimal> selector)
@@ -451,7 +453,7 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private List<decimal> AggregatePreviousYearValues(
+    private static List<decimal> AggregatePreviousYearValues(
         IReadOnlyList<ScoreRecordDto> records,
         MetricsRangeDefinition range,
         Func<ScoreRecordDto, decimal> selector)
@@ -476,7 +478,7 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private List<IReadOnlyList<MetricsBusinessDetailDto>> BuildPeriodDetailGroups(
+    private static List<IReadOnlyList<MetricsBusinessDetailDto>> BuildPeriodDetailGroups(
         IReadOnlyList<ScoreRecordDto> records,
         MetricsRangeDefinition range,
         bool accumulate)
@@ -511,7 +513,7 @@ public sealed partial class DataverseService
         return groups;
     }
 
-    private MetricsBusinessDetailDto BuildMetricsBusinessDetail(ScoreRecordDto record)
+    private static MetricsBusinessDetailDto BuildMetricsBusinessDetail(ScoreRecordDto record)
     {
         var detailParts = new List<string>();
         var productNames = record.ProductLines
@@ -567,7 +569,7 @@ public sealed partial class DataverseService
         }
     }
 
-    private List<MetricsGoalStatusDto> BuildGoalStatuses(
+    private static List<MetricsGoalStatusDto> BuildGoalStatuses(
         MetricsRangeDefinition range,
         IReadOnlyList<decimal> actualValues,
         IReadOnlyList<decimal>? goalValues,
@@ -651,7 +653,7 @@ public sealed partial class DataverseService
             : (false, "missed", "No cumplido");
     }
 
-    private MetricsRangeDefinition BuildMetricsRange(
+    private static MetricsRangeDefinition BuildMetricsRange(
         MetricsRangeFilter filter,
         MetricsPeriodGranularity granularity,
         IReadOnlyList<ScoreRecordDto> records)

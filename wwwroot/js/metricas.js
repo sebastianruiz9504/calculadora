@@ -14,6 +14,7 @@
     const periodButtons = Array.from(document.querySelectorAll(".metrics-period-btn"));
     const summaryRecords = document.getElementById("metricsSummaryRecords");
     const summarySellers = document.getElementById("metricsSummarySellers");
+    const summarySellersLabel = document.getElementById("metricsSummarySellersLabel");
     const summaryVerticals = document.getElementById("metricsSummaryVerticals");
     const summaryScore = document.getElementById("metricsSummaryScore");
     const summaryAnnualValue = document.getElementById("metricsSummaryAnnualValue");
@@ -182,7 +183,9 @@
     function updateSummary(dashboard) {
         const safeDashboard = dashboard || {};
         summaryRecords && (summaryRecords.textContent = formatNumber(safeDashboard.recordsCount));
-        summarySellers && (summarySellers.textContent = formatNumber(safeDashboard.sellersCount));
+        const individual = (safeDashboard.view || state.view) === "individual";
+        summarySellersLabel && (summarySellersLabel.textContent = individual ? "Clientes nuevos" : "Vendedores");
+        summarySellers && (summarySellers.textContent = formatNumber(individual ? safeDashboard.newClientsCount : safeDashboard.sellersCount));
         summaryVerticals && (summaryVerticals.textContent = formatNumber(safeDashboard.verticalsCount));
         summaryScore && (summaryScore.textContent = formatScoreValue(safeDashboard.totalScore));
         summaryAnnualValue && (summaryAnnualValue.textContent = formatNumber(safeDashboard.totalAnnualValue));
@@ -453,35 +456,48 @@
             ? `${formatNumber(metCount)} / ${formatNumber(evaluatedStatuses.length)} periodos cerrados en meta`
             : `${formatNumber(goalStatuses.length)} ${goalStatuses.length === 1 ? "periodo disponible" : "periodos disponibles"}`;
 
+        const renderPeriod = (status, periodIndex) => `
+            <button type="button"
+                    class="metrics-chart__goal-chip is-${escapeHtml(status.statusTone || "neutral")}"
+                    data-metrics-detail
+                    data-chart-index="${chartIndex}"
+                    data-period-index="${periodIndex}"
+                    aria-haspopup="dialog"
+                    aria-label="Ver negocios de ${escapeHtml(status.sellerName ? `${status.sellerName} · ${status.category}` : status.category)} en ${escapeHtml(chart.title)}">
+                <span class="metrics-chart__goal-chip-period-line">
+                    <span class="metrics-chart__goal-chip-period">${escapeHtml(status.category)}</span>
+                    <span class="metrics-chart__growth is-${status.statusTone === "upcoming" ? "neutral" : growthTone(status.growthPercent)}">${escapeHtml(formatStatusGrowthLabel(status))}</span>
+                </span>
+                <span class="metrics-chart__goal-chip-state">${escapeHtml(status.statusLabel || "")}</span>
+                <span class="metrics-chart__goal-chip-values">
+                    ${status.hasTarget
+                        ? `${escapeHtml(formatScoreValue(status.actualValue))} / ${escapeHtml(formatScoreValue(status.targetValue))}`
+                        : `Puntaje ${escapeHtml(formatScoreValue(status.actualValue))}`}
+                </span>
+                <span class="metrics-chart__goal-chip-action">Ver detalle</span>
+            </button>`;
+        const groups = new Map();
+        goalStatuses.forEach((status, index) => {
+            const name = status.sellerName || "";
+            if (!groups.has(name)) groups.set(name, []);
+            groups.get(name).push({ status, index });
+        });
+        const content = Array.from(groups, ([name, periods]) => {
+            const chips = `<div class="metrics-chart__goal-statuses">${periods.map(({ status, index }) => renderPeriod(status, index)).join("")}</div>`;
+            if (!name) return chips;
+            return `<details class="metrics-chart__seller-periods"${groups.size === 1 ? " open" : ""}>
+                <summary><span class="metrics-chart__legend-color" style="background:${escapeHtml(periods[0].status.sellerColor)}"></span>${escapeHtml(name)}<span class="metrics-chart__goal-summary">Ver periodos</span></summary>
+                ${chips}
+            </details>`;
+        }).join("");
+
         return `
             <div class="metrics-chart__goal-block">
                 <div class="metrics-chart__goal-head">
                     <span class="metrics-chart__goal-label">${escapeHtml(chart.goalLabel || "Detalle por periodo")}</span>
                     <span class="metrics-chart__goal-summary">${escapeHtml(summaryText)}</span>
                 </div>
-                <div class="metrics-chart__goal-statuses">
-                    ${goalStatuses.map((status, periodIndex) => `
-                        <button type="button"
-                                class="metrics-chart__goal-chip is-${escapeHtml(status.statusTone || "neutral")}"
-                                data-metrics-detail
-                                data-chart-index="${chartIndex}"
-                                data-period-index="${periodIndex}"
-                                aria-haspopup="dialog"
-                                aria-label="Ver negocios de ${escapeHtml(status.category)} en ${escapeHtml(chart.title)}">
-                            <span class="metrics-chart__goal-chip-period-line">
-                                <span class="metrics-chart__goal-chip-period">${escapeHtml(status.category)}</span>
-                                <span class="metrics-chart__growth is-${status.statusTone === "upcoming" ? "neutral" : growthTone(status.growthPercent)}">${escapeHtml(formatStatusGrowthLabel(status))}</span>
-                            </span>
-                            <span class="metrics-chart__goal-chip-state">${escapeHtml(status.statusLabel || "")}</span>
-                            <span class="metrics-chart__goal-chip-values">
-                                ${status.hasTarget
-                                    ? `${escapeHtml(formatScoreValue(status.actualValue))} / ${escapeHtml(formatScoreValue(status.targetValue))}`
-                                    : `Puntaje ${escapeHtml(formatScoreValue(status.actualValue))}`}
-                            </span>
-                            <span class="metrics-chart__goal-chip-action">Ver detalle</span>
-                        </button>
-                    `).join("")}
-                </div>
+                ${content}
             </div>
         `;
     }
@@ -552,7 +568,7 @@
         const contractTotal = details.reduce((sum, detail) => sum + Number(detail.contractValue || 0), 0);
         detailModalTrigger = trigger || document.activeElement;
 
-        detailModalTitle && (detailModalTitle.textContent = `${chart.title} · ${status.category}`);
+        detailModalTitle && (detailModalTitle.textContent = `${chart.title}${status.sellerName ? ` · ${status.sellerName}` : ""} · ${status.category}`);
         detailModalSubtitle && (detailModalSubtitle.textContent = `${formatStatusGrowthLabel(status)}. Comparativo anterior: ${formatScoreValue(status.previousYearValue)} puntos.`);
 
         if (detailModalSummary) {
