@@ -5,10 +5,10 @@ $ErrorActionPreference='Stop'
 $sourceRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $commit=(git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot rev-parse HEAD).Trim()
 if(git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot status --porcelain){throw 'Candidate is not frozen.'}
-$baseline='17e2a55c3eb6725ced3fb8475ee8154fa7719111'
-$deployment='33d34627d33a4c5ea1c4c495448fd154'
-$dllHash='3E3A0C8A7137DCFD6804A6AE6808E85251BDC93E55E2DEAD51613B674804C10C'
-$manifestHash='6EE0B91A74952BCCC1937825628C4889AF4954615E65A418E9C95805D76B93EF'
+$baseline='52db0858a409d19eaca62a77ddda49d0a2f5b02e'
+$deployment='1d78c66926d34863a5475b2f779c377a'
+$dllHash='52D5AF6A7404726A85C315ED33C710D6E4914B054C07FAF0DC88A5EF618977C2'
+$manifestHash='34A43CF12688DB823E3CEE82BC16EA4E4FC06FC4848E82EE5E16F6FA149A6FFD'
 $scm='https://calculadoradt-asduazh5e0bhhsgm.scm.eastus2-01.azurewebsites.net'
 $subscription='7018b9b6-5dfc-4d91-bc4d-5f29f27553bd'
 git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot merge-base --is-ancestor $baseline $commit
@@ -23,7 +23,7 @@ $manifest='CotizadorInterno.Web.staticwebassets.endpoints.json'
 $assets=@('wwwroot/js/metricas.js','wwwroot/css/metricas.css')
 $names=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb',$manifest)+@($assets|ForEach-Object{$_;"$_.br";"$_.gz"})
 $newNames=@()
-$preserved=@('wwwroot/js/copiers-mto-v2.js','appsettings.json','web.config','CotizadorInterno.Web.deps.json','CotizadorInterno.Web.runtimeconfig.json','wwwroot/js/dashboard.js','wwwroot/js/support-cloud-surveys.js','wwwroot/js/copiers-mto-v2-picker.js','wwwroot/js/copiers-mto-v2-drafts.js','wwwroot/js/copiers-mto-v2-calendar.js','wwwroot/js/copiers-mto-v2-calendar.js.br','wwwroot/js/copiers-mto-v2-calendar.js.gz','wwwroot/js/copiers-equipment-operations.js','wwwroot/css/copiers-equipment-operations.css','wwwroot/css/copiers-mto-v2.css')
+$preserved=@('wwwroot/js/puntajes.js','wwwroot/js/puntajes.js.br','wwwroot/js/puntajes.js.gz','wwwroot/js/copiers-mto-v2.js','appsettings.json','web.config','CotizadorInterno.Web.deps.json','CotizadorInterno.Web.runtimeconfig.json','wwwroot/js/dashboard.js','wwwroot/js/support-cloud-surveys.js','wwwroot/js/copiers-mto-v2-picker.js','wwwroot/js/copiers-mto-v2-drafts.js','wwwroot/js/copiers-mto-v2-calendar.js','wwwroot/js/copiers-mto-v2-calendar.js.br','wwwroot/js/copiers-mto-v2-calendar.js.gz','wwwroot/js/copiers-equipment-operations.js','wwwroot/css/copiers-equipment-operations.css','wwwroot/css/copiers-mto-v2.css')
 $token=az account get-access-token --subscription $subscription --resource https://management.azure.com/ --query accessToken -o tsv
 if($LASTEXITCODE -or !$token){throw 'No Azure session.'}
 $headers=@{Authorization='Bearer '+$token}
