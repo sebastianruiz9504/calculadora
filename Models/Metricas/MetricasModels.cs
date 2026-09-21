@@ -153,11 +153,20 @@ public sealed class MetricsDashboardDto
     public int RecordsCount { get; set; }
     public int SellersCount { get; set; }
     public int NewClientsCount { get; set; }
+    public IReadOnlyList<MetricsNewClientDto> NewClients { get; set; } = Array.Empty<MetricsNewClientDto>();
     public int VerticalsCount { get; set; }
     public decimal TotalScore { get; set; }
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<MetricsSellerOptionDto> Sellers { get; set; } = Array.Empty<MetricsSellerOptionDto>();
     public IReadOnlyList<MetricsChartDto> Charts { get; set; } = Array.Empty<MetricsChartDto>();
+}
+
+public sealed class MetricsNewClientDto
+{
+    public string RecordId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ContractStartDateValue { get; set; } = "";
+    public string ContractStartDateDisplay { get; set; } = "";
 }
 
 public sealed class MetricsSellerOptionDto

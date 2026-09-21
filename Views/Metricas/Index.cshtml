@@ -100,10 +100,11 @@
             <span class="metrics-summary__label">Registros</span>
             <strong class="metrics-summary__value" id="metricsSummaryRecords">0</strong>
         </article>
-        <article class="metrics-summary__card">
+        <button type="button" class="metrics-summary__card metrics-summary__card--action" id="metricsNewClientsButton" disabled>
             <span class="metrics-summary__label" id="metricsSummarySellersLabel">Vendedores</span>
             <strong class="metrics-summary__value" id="metricsSummarySellers">0</strong>
-        </article>
+            <span class="metrics-chart__goal-chip-action" id="metricsNewClientsHint" hidden>Ver detalle</span>
+        </button>
         <article class="metrics-summary__card">
             <span class="metrics-summary__label">Verticales</span>
             <strong class="metrics-summary__value" id="metricsSummaryVerticals">0</strong>
@@ -119,6 +120,30 @@
     </section>
 
     <section class="metrics-grid" id="metricsChartsContainer"></section>
+
+    <div class="metrics-detail-modal" id="metricsNewClientsModal" hidden aria-hidden="true">
+        <div class="metrics-detail-modal__backdrop" data-metrics-clients-close></div>
+        <section class="metrics-detail-modal__dialog metrics-detail-modal__dialog--clients"
+                 role="dialog" aria-modal="true" aria-labelledby="metricsNewClientsTitle"
+                 aria-describedby="metricsNewClientsSubtitle" tabindex="-1">
+            <header class="metrics-detail-modal__header">
+                <div>
+                    <h2 class="metrics-detail-modal__title" id="metricsNewClientsTitle">Clientes nuevos</h2>
+                    <p class="metrics-detail-modal__subtitle" id="metricsNewClientsSubtitle"></p>
+                </div>
+                <button type="button" class="metrics-detail-modal__close" aria-label="Cerrar clientes nuevos" data-metrics-clients-close>&times;</button>
+            </header>
+            <div class="metrics-detail-modal__summary" id="metricsNewClientsSummary"></div>
+            <div class="metrics-detail-modal__table-wrap" tabindex="0" aria-label="Lista de clientes nuevos">
+                <table class="metrics-detail-table metrics-new-clients-table">
+                    <colgroup><col class="metrics-new-clients-table__name" /><col /></colgroup>
+                    <thead><tr><th scope="col">Nombre de cliente</th><th scope="col">Fecha de inicio de contrato</th></tr></thead>
+                    <tbody id="metricsNewClientsBody"></tbody>
+                </table>
+                <div class="metrics-detail-modal__empty" id="metricsNewClientsEmpty" hidden>No hay clientes nuevos para este vendedor y periodo.</div>
+            </div>
+        </section>
+    </div>
 
     <div class="metrics-detail-modal" id="metricsDetailModal" hidden aria-hidden="true">
         <div class="metrics-detail-modal__backdrop" data-metrics-modal-close></div>

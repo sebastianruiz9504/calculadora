@@ -80,6 +80,40 @@ public sealed class MetricasIndividualDashboardTests
     }
 
     [Fact]
+    public void NewClientDetailsMatchTheCountAndContainNamesAndDatesNewestFirst()
+    {
+        var january = Record("Ana", 1, 10);
+        january.ClientName = "Cliente repetido";
+        var march = Record("Ana", 3, 20);
+        march.ClientName = january.ClientName;
+        var february = Record("Luis", 2, 30);
+        february.ClientName = "Cliente Luis";
+        var records = new[] { january, march, february, Record("Ana", 4, 10, first: 2),
+            Record("Ana", 5, 10, first: 0), Record("Ana", 6, 10, year: Year - 1) };
+
+        var all = Dashboard(records);
+        Assert.Equal(all.NewClientsCount, all.NewClients.Count);
+        Assert.Equal(new[] { march.RecordId, february.RecordId, january.RecordId }, all.NewClients.Select(client => client.RecordId));
+        Assert.Equal(new[] { "Cliente repetido", "Cliente Luis", "Cliente repetido" }, all.NewClients.Select(client => client.ClientName));
+        Assert.Equal($"{Year}-03-01", all.NewClients[0].ContractStartDateValue);
+        Assert.Equal($"01/03/{Year}", all.NewClients[0].ContractStartDateDisplay);
+
+        var ana = Dashboard(records, "ana");
+        Assert.Equal(ana.NewClientsCount, ana.NewClients.Count);
+        Assert.Equal(new[] { march.RecordId, january.RecordId }, ana.NewClients.Select(client => client.RecordId));
+        Assert.Equal(records[5].RecordId, Assert.Single(Dashboard(records, "ana", MetricsRangeFilter.PreviousYear).NewClients).RecordId);
+    }
+
+    [Fact]
+    public void NewClientDetailsAreEmptyWhenTheSelectedSellerHasOnlyNoRecords()
+    {
+        var dashboard = Dashboard([Record("Ana", 1, 10), Record("Luis", 2, 30, first: 2)], "luis");
+        Assert.Equal("luis", dashboard.AppliedSellerKey);
+        Assert.Equal(0, dashboard.NewClientsCount);
+        Assert.Empty(dashboard.NewClients);
+    }
+
+    [Fact]
     public void ExplicitFirstContractFlagIsCountedIndependentlyFromTheExistingScoreRenewalExclusion()
     {
         var renewal = Record("Ana", 1, 999);
@@ -111,6 +145,7 @@ public sealed class MetricasIndividualDashboardTests
         var records = new[] { Record("Ana", now.Month, 10), Record("Ana", now.Month == 1 ? 2 : 1, 20), Record("Luis", now.Month, 30, first: 2) };
         var dashboard = Dashboard(records, filter: MetricsRangeFilter.ThisMonth, period: MetricsPeriodGranularity.Year);
         Assert.Equal(1, dashboard.NewClientsCount);
+        Assert.Equal(records[0].RecordId, Assert.Single(dashboard.NewClients).RecordId);
         Assert.Equal("month", dashboard.Period);
         Assert.Single(dashboard.Charts[0].Categories);
         Assert.Equal(40m, dashboard.TotalScore);

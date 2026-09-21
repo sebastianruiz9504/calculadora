@@ -9,16 +9,24 @@ const root = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(root, "wwwroot/js/metricas.js"), "utf8");
 const view = fs.readFileSync(path.join(root, "Views/Metricas/Index.cshtml"), "utf8");
 const sellers = [{ key: "ana", name: "Ana", color: "#145AF2" }, { key: "luis", name: "Luis", color: "#10B981" }];
+const newClients = [
+    { seller: "ana", clientName: "Cliente <especial>", contractStartDateDisplay: "01/03/2026" },
+    { seller: "luis", clientName: "Cliente Luis", contractStartDateDisplay: "01/02/2026" },
+    { seller: "ana", clientName: "Cliente Ana", contractStartDateDisplay: "01/01/2026" }
+];
 
 function response(url) {
     const params = new URL(url, "https://local.test").searchParams;
     const individual = params.get("view") === "individual";
     const seller = individual && sellers.find(item => item.key === params.get("seller"));
     const selected = seller ? [seller] : sellers;
+    const clientsInPeriod = params.get("filter") === "previous-year" ? [] : newClients;
+    const clients = clientsInPeriod.filter(client => !seller || client.seller === seller.key);
     return {
         filter: params.get("filter"), period: params.get("period"), view: individual ? "individual" : "global",
+        filterLabel: params.get("filter") === "previous-year" ? "Año pasado" : "Este año",
         appliedSellerKey: seller?.key || "", appliedSellerName: seller?.name || "Todos los vendedores", sellers,
-        newClientsCount: seller ? (seller.key === "ana" ? 2 : 1) : 3, sellersCount: selected.length,
+        newClientsCount: clients.length, newClients: clients, sellersCount: selected.length,
         charts: Array.from({ length: individual ? 6 : 5 }, (_, index) => ({
             key: `chart-${index}`, title: `Grafica ${index}`, categories: ["ene."],
             series: selected.map(item => ({ name: item.name, color: item.color, values: [10], annualValues: [100] })),
@@ -84,5 +92,66 @@ test("Period detail opens the selected seller's records using its original index
     assert.equal(document.getElementById("metricsDetailModalBody").textContent.includes("Cliente Ana"), false);
     document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape" }));
     assert.equal(document.getElementById("metricsDetailModal").hidden, true);
+    dom.window.close();
+});
+
+test("New clients popup shows every name and date, escapes names and closes with Escape returning focus", async () => {
+    const { dom, document } = await fixture();
+    const button = document.getElementById("metricsNewClientsButton");
+    const modal = document.getElementById("metricsNewClientsModal");
+    button.click();
+    assert.equal(modal.hidden, false);
+    assert.equal(modal.getAttribute("aria-hidden"), "false");
+    assert.equal(document.querySelectorAll("#metricsNewClientsBody tr").length, 3);
+    assert.equal(document.querySelector("#metricsNewClientsBody td").textContent, "Cliente <especial>");
+    assert.equal(document.querySelector("#metricsNewClientsBody especial"), null);
+    assert.equal(document.querySelector("#metricsNewClientsBody td:nth-child(2)").textContent, "01/03/2026");
+    assert.equal(document.getElementById("metricsNewClientsSubtitle").textContent, "Este año · Todos los vendedores");
+    assert.equal(document.body.classList.contains("metrics-modal-open"), true);
+    const dialog = modal.querySelector('[role="dialog"]');
+    dialog.focus();
+    document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Tab", cancelable: true }));
+    assert.equal(document.activeElement, modal.querySelector("button"));
+    document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }));
+    assert.equal(document.activeElement, modal.querySelector('[tabindex="0"]'));
+    document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape" }));
+    assert.equal(modal.hidden, true);
+    assert.equal(document.activeElement, button);
+    assert.equal(document.body.classList.contains("metrics-modal-open"), false);
+    dom.window.close();
+});
+
+test("New clients popup follows seller and period changes and handles zero clients", async () => {
+    const { dom, document } = await fixture();
+    const button = document.getElementById("metricsNewClientsButton");
+    const modal = document.getElementById("metricsNewClientsModal");
+    const select = document.getElementById("metricsSellerFilter");
+    button.click();
+    select.value = "luis";
+    select.dispatchEvent(new dom.window.Event("change"));
+    assert.equal(modal.hidden, true);
+    assert.equal(button.disabled, true);
+    await settle();
+    button.click();
+    assert.equal(document.querySelectorAll("#metricsNewClientsBody tr").length, 1);
+    assert.equal(document.querySelector("#metricsNewClientsBody td").textContent, "Cliente Luis");
+    assert.equal(document.getElementById("metricsNewClientsSubtitle").textContent, "Este año · Luis");
+    modal.querySelector(".metrics-detail-modal__backdrop").click();
+    assert.equal(modal.hidden, true);
+    document.querySelector('[data-filter="previous-year"]').click();
+    await settle();
+    button.click();
+    assert.equal(document.querySelectorAll("#metricsNewClientsBody tr").length, 0);
+    assert.equal(document.getElementById("metricsNewClientsEmpty").hidden, false);
+    assert.equal(modal.querySelector("table").hidden, true);
+    assert.equal(document.getElementById("metricsNewClientsSubtitle").textContent, "Año pasado · Luis");
+    modal.querySelector("button").click();
+    assert.equal(modal.hidden, true);
+    document.querySelector('[data-view="global"]').click();
+    await settle();
+    assert.equal(button.disabled, true);
+    button.click();
+    assert.equal(modal.hidden, true);
+    assert.equal(document.getElementById("metricsNewClientsHint").hidden, true);
     dom.window.close();
 });

@@ -276,6 +276,24 @@
     color: var(--metrics-muted);
 }
 
+.metrics-summary__card--action {
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    width: 100%;
+}
+
+.metrics-summary__card--action:not(:disabled) {
+    cursor: pointer;
+}
+
+.metrics-summary__card--action:not(:disabled):hover,
+.metrics-summary__card--action:focus-visible {
+    border-color: var(--metrics-brand-deep);
+    outline: 2px solid var(--metrics-brand-deep);
+    outline-offset: 2px;
+}
+
 .metrics-summary__value {
     display: block;
     color: var(--metrics-ink);
@@ -785,6 +803,14 @@
 .metrics-detail-modal__dialog:focus {
     outline: none;
 }
+
+.metrics-detail-modal__dialog--clients {
+    width: min(760px, calc(100vw - 32px));
+}
+
+.metrics-new-clients-table__name { width: 65%; }
+
+.metrics-new-clients-table[hidden] { display: none; }
 
 .metrics-detail-modal__header {
     display: flex;

@@ -97,9 +97,22 @@ public sealed partial class DataverseService
         var dashboard = view == MetricsViewMode.Individual
             ? BuildIndividualDashboard(filter, effectivePeriod, displayRange, displayRecords, allNewBusinessRecords, sellers, appliedSeller)
             : BuildGlobalDashboard(filter, effectivePeriod, displayRange, displayRecords, allNewBusinessRecords, sellers);
-        dashboard.NewClientsCount = firstContractRecords.Count(record => view != MetricsViewMode.Individual
+        dashboard.NewClients = firstContractRecords.Where(record => view != MetricsViewMode.Individual
             || appliedSeller is null
-            || string.Equals(NormalizeMetricsKey(record.SalesPerson), appliedSeller.Key, StringComparison.OrdinalIgnoreCase));
+            || string.Equals(NormalizeMetricsKey(record.SalesPerson), appliedSeller.Key, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(record => record.ContractStartDateValue, StringComparer.Ordinal)
+            .ThenBy(record => record.ClientName, StringComparer.OrdinalIgnoreCase)
+            .Select(record => new MetricsNewClientDto
+            {
+                RecordId = record.RecordId,
+                ClientName = NormalizeMetricsName(record.ClientName, "Cliente sin asignar"),
+                ContractStartDateValue = record.ContractStartDateValue,
+                ContractStartDateDisplay = TryParseDateOnly(record.ContractStartDateValue, out var date)
+                    ? date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+                    : record.ContractStartDateValue
+            })
+            .ToList();
+        dashboard.NewClientsCount = dashboard.NewClients.Count;
         return dashboard;
     }
 

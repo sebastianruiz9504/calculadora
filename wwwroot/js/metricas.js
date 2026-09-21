@@ -15,6 +15,14 @@
     const summaryRecords = document.getElementById("metricsSummaryRecords");
     const summarySellers = document.getElementById("metricsSummarySellers");
     const summarySellersLabel = document.getElementById("metricsSummarySellersLabel");
+    const newClientsButton = document.getElementById("metricsNewClientsButton");
+    const newClientsHint = document.getElementById("metricsNewClientsHint");
+    const newClientsModal = document.getElementById("metricsNewClientsModal");
+    const newClientsDialog = newClientsModal?.querySelector(".metrics-detail-modal__dialog");
+    const newClientsSubtitle = document.getElementById("metricsNewClientsSubtitle");
+    const newClientsSummary = document.getElementById("metricsNewClientsSummary");
+    const newClientsBody = document.getElementById("metricsNewClientsBody");
+    const newClientsEmpty = document.getElementById("metricsNewClientsEmpty");
     const summaryVerticals = document.getElementById("metricsSummaryVerticals");
     const summaryScore = document.getElementById("metricsSummaryScore");
     const summaryAnnualValue = document.getElementById("metricsSummaryAnnualValue");
@@ -123,6 +131,7 @@
 
     function setLoading(loading) {
         state.isLoading = loading;
+        newClientsButton && (newClientsButton.disabled = loading || state.dashboard?.view !== "individual");
         refreshButton && (refreshButton.disabled = loading);
         sellerFilter && (sellerFilter.disabled = loading || state.view !== "individual" || sellerFilter.options.length <= 1);
 
@@ -186,6 +195,18 @@
         const individual = (safeDashboard.view || state.view) === "individual";
         summarySellersLabel && (summarySellersLabel.textContent = individual ? "Clientes nuevos" : "Vendedores");
         summarySellers && (summarySellers.textContent = formatNumber(individual ? safeDashboard.newClientsCount : safeDashboard.sellersCount));
+        newClientsHint && (newClientsHint.hidden = !individual);
+        if (newClientsButton) {
+            if (individual) {
+                newClientsButton.setAttribute("aria-haspopup", "dialog");
+                newClientsButton.setAttribute("aria-controls", "metricsNewClientsModal");
+                newClientsButton.setAttribute("aria-label", `Ver ${formatNumber(safeDashboard.newClientsCount)} clientes nuevos`);
+            } else {
+                newClientsButton.removeAttribute("aria-haspopup");
+                newClientsButton.removeAttribute("aria-controls");
+                newClientsButton.removeAttribute("aria-label");
+            }
+        }
         summaryVerticals && (summaryVerticals.textContent = formatNumber(safeDashboard.verticalsCount));
         summaryScore && (summaryScore.textContent = formatScoreValue(safeDashboard.totalScore));
         summaryAnnualValue && (summaryAnnualValue.textContent = formatNumber(safeDashboard.totalAnnualValue));
@@ -555,6 +576,36 @@
         bindChartInteractions();
     }
 
+    function openNewClientsModal() {
+        const dashboard = state.dashboard;
+        if (state.isLoading || dashboard?.view !== "individual" || !newClientsModal || !newClientsDialog || !newClientsBody) return;
+
+        closeDetailModal();
+        const clients = Array.isArray(dashboard.newClients) ? dashboard.newClients : [];
+        newClientsSubtitle && (newClientsSubtitle.textContent = `${dashboard.filterLabel} · ${dashboard.appliedSellerName || "Todos los vendedores"}`);
+        newClientsSummary && (newClientsSummary.innerHTML = `<div><span>Clientes nuevos</span><strong>${escapeHtml(formatNumber(clients.length))}</strong></div>`);
+        newClientsBody.innerHTML = clients.map(client => `
+            <tr>
+                <td data-label="Nombre de cliente">${escapeHtml(client.clientName || "Cliente sin asignar")}</td>
+                <td data-label="Fecha de inicio de contrato">${escapeHtml(client.contractStartDateDisplay || client.contractStartDateValue || "")}</td>
+            </tr>`).join("");
+        const table = newClientsBody.closest("table");
+        if (table) table.hidden = clients.length === 0;
+        newClientsEmpty && (newClientsEmpty.hidden = clients.length > 0);
+        newClientsModal.hidden = false;
+        newClientsModal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("metrics-modal-open");
+        requestAnimationFrame(() => { if (!newClientsModal.hidden) newClientsDialog.focus(); });
+    }
+
+    function closeNewClientsModal() {
+        if (!newClientsModal || newClientsModal.hidden) return;
+        newClientsModal.hidden = true;
+        newClientsModal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("metrics-modal-open");
+        newClientsButton?.focus();
+    }
+
     function openDetailModal(chartIndex, periodIndex, trigger) {
         const charts = Array.isArray(state.dashboard?.charts) ? state.dashboard.charts : [];
         const chart = charts[chartIndex];
@@ -746,6 +797,7 @@
     }
 
     async function loadDashboard() {
+        closeNewClientsModal();
         const previousDashboard = state.dashboard;
         const requestedSeller = state.seller;
 
@@ -855,7 +907,29 @@
         element.addEventListener("click", closeDetailModal);
     });
 
+    newClientsButton?.addEventListener("click", openNewClientsModal);
+    newClientsModal?.querySelectorAll("[data-metrics-clients-close]").forEach(element => {
+        element.addEventListener("click", closeNewClientsModal);
+    });
+
     document.addEventListener("keydown", event => {
+        if (newClientsModal && !newClientsModal.hidden) {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeNewClientsModal();
+            } else if (event.key === "Tab") {
+                const focusable = newClientsDialog.querySelectorAll('button, [tabindex="0"]');
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                const active = document.activeElement;
+                if (active === newClientsDialog || !newClientsDialog.contains(active)
+                    || (event.shiftKey ? active === first : active === last)) {
+                    event.preventDefault();
+                    (event.shiftKey ? last : first)?.focus();
+                }
+            }
+            return;
+        }
         if (event.key === "Escape" && detailModal && !detailModal.hidden) {
             event.preventDefault();
             closeDetailModal();
