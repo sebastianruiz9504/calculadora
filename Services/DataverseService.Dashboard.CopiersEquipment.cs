@@ -154,16 +154,9 @@ public sealed partial class DataverseService
             DashboardEquipmentPrimaryNameField,
             httpContext.User,
             ct);
-        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
 
         var equipmentRows = await GetEquipmentRecordsAsync(equipmentMetadata, httpContext.User, ct);
-        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct);
+        var maintenanceRows = await GetUnifiedMaintenanceRowsAsync(false, ct);
         var clientsById = await GetCopiersClientContactRowsAsync(
             equipmentRows.Select(static row => row.ClientId),
             httpContext.User,
@@ -201,13 +194,6 @@ public sealed partial class DataverseService
             DashboardEquipmentPrimaryNameField,
             httpContext.User,
             ct);
-        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
         var movementMetadata = await ResolveRhEntityMetadataAsync(
             DashboardEquipmentMovementTableLogicalName,
             DashboardEquipmentMovementTableSetName,
@@ -219,7 +205,7 @@ public sealed partial class DataverseService
         var normalizedEquipmentId = NormalizeGuid(equipmentId, nameof(equipmentId));
         var equipment = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
             ?? throw new InvalidOperationException("No encontramos el equipo seleccionado.");
-        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedEquipmentId);
+        var maintenanceRows = await GetUnifiedMaintenanceRowsAsync(false, ct, normalizedEquipmentId);
         var movementRows = await GetEquipmentMovementRecordsAsync(movementMetadata, httpContext.User, ct, normalizedEquipmentId);
 
         return new CopiersEquipmentDetailDto
@@ -398,13 +384,6 @@ public sealed partial class DataverseService
             DashboardEquipmentPrimaryNameField,
             httpContext.User,
             ct);
-        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
         var copiersProductMetadata = await ResolveRhEntityMetadataAsync(
             _dashboardCopiersTableLogicalName,
             _dashboardCopiersTableSetName,
@@ -423,7 +402,7 @@ public sealed partial class DataverseService
             normalizedClientId,
             httpContext.User,
             ct);
-        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct);
+        var maintenanceRows = await GetUnifiedMaintenanceRowsAsync(false, ct);
         var contractRows = await GetCopiersRecordsAsync(copiersProductMetadata, httpContext.User, ct);
         var assignmentRows = await TryLoadCopiersLineEquipmentAssignmentRecordsByClientsAsync(
             new[] { normalizedClientId },
@@ -641,14 +620,7 @@ public sealed partial class DataverseService
 
         var updated = await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct)
             ?? throw new InvalidOperationException("El equipo se actualizo pero no pudimos refrescar su informacion.");
-        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedRecordId);
+        var maintenanceRows = await GetUnifiedMaintenanceRowsAsync(false, ct, normalizedRecordId);
 
         return new CopiersEquipmentAssignmentResultDto
         {
@@ -702,14 +674,7 @@ public sealed partial class DataverseService
 
         var updated = await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct)
             ?? throw new InvalidOperationException("El equipo se actualizo pero no pudimos refrescar su informacion.");
-        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedRecordId);
+        var maintenanceRows = await GetUnifiedMaintenanceRowsAsync(false, ct, normalizedRecordId);
 
         return new CopiersEquipmentSaveResultDto
         {
@@ -799,14 +764,7 @@ public sealed partial class DataverseService
 
         var updated = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
             ?? throw new InvalidOperationException("El movimiento se registro pero no pudimos refrescar la informacion del equipo.");
-        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedEquipmentId);
+        var maintenanceRows = await GetUnifiedMaintenanceRowsAsync(false, ct, normalizedEquipmentId);
         var movementRows = await GetEquipmentMovementRecordsAsync(movementMetadata, httpContext.User, ct, normalizedEquipmentId);
 
         return new CopiersEquipmentMovementSaveResultDto
@@ -966,45 +924,7 @@ public sealed partial class DataverseService
         string maintenanceId,
         CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var metadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-
-        var normalizedMaintenanceId = NormalizeGuid(maintenanceId, nameof(maintenanceId));
-        var relativeUrl =
-            $"/api/data/v9.2/{metadata.EntitySetName}({normalizedMaintenanceId})/{DashboardMaintenanceAttachmentField}/$value";
-
-        using var response = await CallRhDataverseResponseAsync(relativeUrl, "GET", httpContext.User, ct);
-        if (response.StatusCode == HttpStatusCode.NoContent || response.StatusCode == HttpStatusCode.NotFound)
-            return null;
-
-        var content = await response.Content.ReadAsByteArrayAsync(ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            var bodyText = content.Length == 0 ? "" : System.Text.Encoding.UTF8.GetString(content);
-            throw new InvalidOperationException(
-                $"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {bodyText}");
-        }
-
-        return new RhFileDownloadResult
-        {
-            FileName = FirstNonEmpty(
-                ReadHeaderValue(response, "x-ms-file-name"),
-                ReadHeaderValue(response, "filename"),
-                $"acta-servicio-{normalizedMaintenanceId}.bin"),
-            ContentType =
-                response.Content.Headers.ContentType?.MediaType
-                ?? ReadHeaderValue(response, "mimetype")
-                ?? "application/octet-stream",
-            Content = content
-        };
+        return await DownloadUnifiedMaintenanceAttachmentAsync(maintenanceId, ct);
     }
 
     private async Task<List<CopiersEquipmentRecordRow>> GetEquipmentRecordsAsync(
@@ -1864,34 +1784,7 @@ public sealed partial class DataverseService
         CancellationToken ct,
         string? equipmentId = null)
     {
-        var equipmentLookupFieldCandidates = await ResolveCopiersMaintenanceEquipmentLookupFieldCandidatesAsync(user, ct);
-        InvalidOperationException? lastLookupException = null;
-
-        foreach (var equipmentLookupField in equipmentLookupFieldCandidates)
-        {
-            try
-            {
-                return await GetMaintenanceRecordsCoreAsync(metadata, user, ct, equipmentId, equipmentLookupField);
-            }
-            catch (InvalidOperationException ex) when (ShouldRetryCopiersMaintenanceLookupQuery(ex, equipmentLookupField))
-            {
-                lastLookupException = ex;
-                _logger.LogWarning(
-                    ex,
-                    "Fallo la consulta de mantenimientos usando el lookup {LookupField}. Se intentara otra variante del campo.",
-                    equipmentLookupField);
-            }
-        }
-
-        if (lastLookupException is not null)
-            throw lastLookupException;
-
-        return await GetMaintenanceRecordsCoreAsync(
-            metadata,
-            user,
-            ct,
-            equipmentId,
-            DashboardMaintenanceEquipmentField);
+        return await GetUnifiedMaintenanceRowsAsync(false, ct, equipmentId);
     }
 
     private async Task<List<CopiersMaintenanceRecordRow>> GetMaintenanceRecordsCoreAsync(
@@ -2076,7 +1969,7 @@ public sealed partial class DataverseService
             .Select(row => BuildDashboardGroupKey(row.ClientId, row.ClientName))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
-        var totalMaintenance = maintenanceRows.Count;
+        var totalMaintenance = maintenanceRows.Select(r => r.RecordId).Distinct().Count();
 
         return new[]
         {
@@ -2104,7 +1997,7 @@ public sealed partial class DataverseService
             {
                 Key = "equipment-maintenance",
                 Label = "Mantenimientos",
-                Hint = "Soportes registrados en cr07a_mantenimiento.",
+                Hint = "Reportes MTO V2 e históricos migrados.",
                 Value = totalMaintenance,
                 ValueFormat = "number",
                 SecondaryLabel = "Promedio por equipo",
@@ -2181,7 +2074,7 @@ public sealed partial class DataverseService
             .Select(row =>
             {
                 maintenanceByEquipment.TryGetValue(row.RecordId, out var equipmentMaintenance);
-                var latestMaintenance = equipmentMaintenance?.FirstOrDefault();
+                var latestMaintenance = equipmentMaintenance?.FirstOrDefault(r => r.MaintenanceStatusValue == 645250000);
 
                 return new CopiersEquipmentRowDto
                 {
@@ -2231,7 +2124,7 @@ public sealed partial class DataverseService
             .Select((row, index) =>
             {
                 maintenanceByEquipment.TryGetValue(row.RecordId, out var equipmentMaintenance);
-                var latestMaintenance = equipmentMaintenance?.FirstOrDefault();
+                var latestMaintenance = equipmentMaintenance?.FirstOrDefault(r => r.MaintenanceStatusValue == 645250000);
 
                 return new CopiersEquipmentInventoryRowDto
                 {
@@ -2447,19 +2340,19 @@ public sealed partial class DataverseService
     private IReadOnlyList<CopiersMaintenanceRowDto> BuildMaintenanceRows(
         IReadOnlyList<CopiersMaintenanceRecordRow> maintenanceRows)
     {
-        return maintenanceRows
-            .OrderByDescending(item => item.MaintenanceDate ?? DateOnly.MinValue)
-            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(item => new CopiersMaintenanceRowDto
+        return maintenanceRows.GroupBy(r => r.RecordId).Select(group => new { First = group.First(), Serials = string.Join(" · ", group.Select(r => r.EquipmentSerial).Distinct()), Work = string.Join("\n", group.Select(r => r.Description).Distinct()) })
+            .OrderByDescending(item => item.First.MaintenanceDate ?? DateOnly.MinValue)
+            .ThenBy(item => item.First.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(group => { var item = group.First; return new CopiersMaintenanceRowDto
             {
                 RecordId = item.RecordId,
                 Title = item.Title,
                 InternalId = item.InternalId,
                 EquipmentId = item.EquipmentId,
-                EquipmentSerial = item.EquipmentSerial,
+                EquipmentSerial = group.Serials,
                 DateValue = item.DateValue,
                 DateDisplay = item.DateDisplay,
-                Description = item.Description,
+                Description = group.Work,
                 ClientId = item.ClientId,
                 ClientName = item.ClientName,
                 HasAttachment = item.HasAttachment,
@@ -2469,8 +2362,8 @@ public sealed partial class DataverseService
                 MaintenanceStatusValue = item.MaintenanceStatusValue,
                 MaintenanceStatusLabel = item.MaintenanceStatusLabel,
                 TechnicianId = item.TechnicianId,
-                TechnicianName = item.TechnicianName
-            })
+                TechnicianName = item.TechnicianName, IsHistorical = item.IsHistorical, SourceLabel = item.SourceLabel
+            }; })
             .ToList();
     }
 
@@ -2494,7 +2387,7 @@ public sealed partial class DataverseService
             .Select(month => month.ToString("yyyy-MM", CultureInfo.InvariantCulture))
             .ToList();
 
-        var series = maintenanceRows
+        var series = maintenanceRows.DistinctBy(r => r.RecordId)
             .Where(row => row.MaintenanceDate.HasValue)
             .GroupBy(row => BuildDashboardGroupKey(row.TechnicianId, row.TechnicianName), StringComparer.OrdinalIgnoreCase)
             .Select(group =>
@@ -2648,6 +2541,8 @@ public sealed partial class DataverseService
 
     private sealed class CopiersMaintenanceRecordRow
     {
+        public bool IsHistorical { get; init; }
+        public string SourceLabel { get; init; } = "";
         public string RecordId { get; init; } = "";
         public string Title { get; init; } = "";
         public string InternalId { get; init; } = "";

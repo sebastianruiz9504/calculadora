@@ -13,7 +13,7 @@ $templateFlowId = 'e8b74a32-4cd7-444d-b16f-96e145790612'
 $flowBase = "https://api.flow.microsoft.com/providers/Microsoft.ProcessSimple/environments/$environmentName"
 $dvConnection = 'shared_commondataserviceforapps'
 $outlookConnection = 'shared_office365'
-$mainSelect = 'dtc_copiersmtov2id,dtc_workflowstate,dtc_emailstate,dtc_emailtosnapshot,dtc_emailsubjectsnapshot,dtc_emailhtmlbodysnapshot,dtc_reportevidencekey,dtc_reportfilename,dtc_reportsha256,dtc_attachmentcount,dtc_attachmentmanifestjson,dtc_emailoutboxkey'
+$mainSelect = 'dtc_copiersmtov2id,dtc_workflowstate,dtc_emailstate,dtc_emailtosnapshot,dtc_emailsubjectsnapshot,dtc_emailhtmlbodysnapshot,dtc_reportevidencekey,dtc_reportfilename,dtc_reportsha256,dtc_attachmentcount,dtc_attachmentmanifestjson,dtc_emailoutboxkey,dtc_technicianemailsnapshot'
 $evidenceSelect = 'dtc_copiersmtoevidenciav2id,dtc_evidencekey,_dtc_signedmto_value,dtc_purpose,dtc_sequence,dtc_originalfilename,dtc_contenttype,dtc_bytelength,dtc_sha256,dtc_securitystate'
 $main = "first(body('Read_pending_row')?['value'])"
 $recordId = "@triggerOutputs()?['body/dtc_copiersmtov2id']"
@@ -156,6 +156,8 @@ $prepareActions = [ordered]@{
     }
 }
 $sendAction = New-ConnectorAction 'SendEmailV2' @{
+    'emailMessage/From' = "@$main`?['dtc_technicianemailsnapshot']"
+    'emailMessage/ReplyTo' = "@$main`?['dtc_technicianemailsnapshot']"
     'emailMessage/To' = "@$main`?['dtc_emailtosnapshot']"
     'emailMessage/Cc' = 'Germanruiz@digitaltechcolombia.com;soportecopiers@digitaltechcolombia.com'
     'emailMessage/Subject' = "@$main`?['dtc_emailsubjectsnapshot']"
@@ -208,7 +210,7 @@ $definition = [ordered]@{
                 Prepare_verified_attachments = @{ type = 'Scope'; runAfter = @{ Mark_processing = @('Succeeded') }; actions = $prepareActions }
                 Send_only_complete_report = @{
                     type = 'If'; runAfter = @{ Prepare_verified_attachments = @('Succeeded') }
-                    expression = "@and(variables('EvidenceValid'),equals(length(variables('MailAttachments')),add(1,int($main`?['dtc_attachmentcount']))),lessOrEquals(variables('EncodedBytes'),26214400))"
+                    expression = "@and(not(empty($main`?['dtc_technicianemailsnapshot'])),endsWith(toLower(coalesce($main`?['dtc_technicianemailsnapshot'],'')),'@digitaltechcolombia.com'),variables('EvidenceValid'),equals(length(variables('MailAttachments')),add(1,int($main`?['dtc_attachmentcount']))),lessOrEquals(variables('EncodedBytes'),26214400))"
                     actions = [ordered]@{
                         Send_complete_report_once = $sendAction
                         Mark_sent = (New-StateAction 827270003 '' '' @{ Send_complete_report_once = @('Succeeded') })

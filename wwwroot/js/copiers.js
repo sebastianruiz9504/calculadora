@@ -817,7 +817,7 @@
                     <td data-label="Tipo"><span class="copiers-badge">${escapeHtml(row.maintenanceTypeLabel || "Sin tipo")}</span></td>
                     <td data-label="Estado"><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.maintenanceStatusLabel || "Pendiente")}</span></td>
                     <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
-                    <td data-label="Reporte">${attachment}</td>
+                    <td data-label="Reporte"><span class="copiers-muted">${escapeHtml(row.sourceLabel || "")} · ${escapeHtml(row.internalId || "")}</span><br>${attachment}</td>
                     <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
                 </tr>`;
         }).join("");
@@ -2447,6 +2447,7 @@
     }
 
     async function openMaintenanceModal(row) {
+        if (!row?.recordId) { window.location.assign("/CopiersMtoV2"); return; }
         if (!state.maintenance) {
             await loadMaintenance();
         }
@@ -2455,7 +2456,7 @@
             await loadEquipment();
         }
 
-        maintenanceModalTitle.textContent = row?.recordId ? "Editar mantenimiento" : "Nuevo mantenimiento";
+        maintenanceModalTitle.textContent = row.isHistorical ? "Histórico migrado" : "Reporte MTO V2";
         maintenanceRecordIdInput.value = row?.recordId || "";
         maintenanceTitleInput.value = row?.title || "";
         maintenanceClientIdInput.value = row?.clientId || "";
@@ -2469,7 +2470,10 @@
         maintenanceStatusSelect.value = row?.maintenanceStatusValue ? String(row.maintenanceStatusValue) : String(maintenanceStatusPending);
         maintenanceDescriptionInput.value = row?.description || "";
         maintenanceFileInput.value = "";
-        clearStatus(maintenanceModalStatus);
+        maintenanceForm.querySelectorAll("input, select, textarea").forEach(input => { input.disabled = true; });
+        maintenanceStatusSelect.disabled = !row.isHistorical;
+        maintenanceSaveBtn.hidden = !row.isHistorical;
+        showStatus(maintenanceModalStatus, "info", row.isHistorical ? "Puedes actualizar el estado. Los datos y el documento original se conservan." : "Reporte firmado de consulta. Para otra atención, registra un nuevo MTO V2.");
         showModal(maintenanceModal);
     }
 
@@ -2537,25 +2541,9 @@
             setBusy(true);
             maintenanceSaveBtn.disabled = true;
             showStatus(maintenanceModalStatus, "info", "Guardando mantenimiento...");
-            syncClientSelection(maintenanceClientNameInput, maintenanceClientIdInput, state.maintenanceClientSuggestions);
-            const selectedEquipmentId = maintenanceEquipmentSelect.value;
-            if (!selectedEquipmentId) {
-                throw new Error("Selecciona un equipo o Equipo externo.");
-            }
-            if (selectedEquipmentId === externalEquipmentValue && !maintenanceClientIdInput.value && !maintenanceClientNameInput.value.trim()) {
-                throw new Error("Selecciona el cliente del equipo externo.");
-            }
             const payload = {
                 recordId: maintenanceRecordIdInput.value,
-                title: maintenanceTitleInput.value,
-                internalId: "",
-                equipmentId: selectedEquipmentId,
-                clientId: maintenanceClientIdInput.value,
-                clientName: maintenanceClientNameInput.value,
-                dateValue: maintenanceDateInput.value,
-                description: maintenanceDescriptionInput.value,
-                maintenanceTypeValue: maintenanceTypeSelect.value ? Number(maintenanceTypeSelect.value) : null,
-                maintenanceStatusValue: maintenanceStatusSelect.value ? Number(maintenanceStatusSelect.value) : maintenanceStatusPending
+                maintenanceStatusValue: Number(maintenanceStatusSelect.value)
             };
             let result = await fetchJson(urls.saveMaintenance, {
                 method: "POST",

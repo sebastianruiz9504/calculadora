@@ -88,7 +88,8 @@ public sealed class CopiersMtoV2CalendarService(
         var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
         var until = monday.AddDays(7);
         // ServiceDate is the form's date-only value. Do not compare it to a server-local timezone.
-        var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null))"
+        var historicalFilter = IsActivity ? "" : $" or {_o.WorkflowStateField} eq {CopiersMaintenanceHistory.HistoricalState}";
+        var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null){historicalFilter})"
             + (allTechnicians ? "" : $" and {_o.TechnicianUserIdField} eq '{technician}'")
             + $" and {_o.ServiceDateField} ge {monday:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z";
         var rows = await QueryAsync($"{_o.MainEntitySetName}?$select={EventFields()}&$filter={Uri.EscapeDataString(filter)}"
@@ -150,7 +151,7 @@ public sealed class CopiersMtoV2CalendarService(
             Answers = Answers(row).Where(x => x.Key is not ("equipment_operation" or "operation_link")).ToArray(), Evidences = evidences, Location = Location(row),
             InternalOperation = operation?.Internal == true, MovementDetails = movementDetails,
             RelatedActivityId = Guid.TryParse(related,out var relatedId) ? "activity:"+relatedId.ToString("D") : "",
-            ReportUrl = evidences.FirstOrDefault(x => x.Purpose == "SignedReport")?.Url ?? "",
+            ReportUrl = evidences.FirstOrDefault(x => x.Purpose is "SignedReport" or "HistoricalDocument")?.Url ?? "",
             SignatureUrl = evidences.FirstOrDefault(x => x.Purpose == "Signature")?.Url ?? ""
         };
     }
@@ -166,6 +167,7 @@ public sealed class CopiersMtoV2CalendarService(
         id = NormalizeGuid(id);
         if (!IsHash(evidenceKey)) throw new ArgumentException("La referencia del adjunto no es válida.");
         var parent = await ReadReadyAsync(id, ct);
+        var maxFileBytes = IsHistorical(parent) ? 32 * 1024 * 1024 : MaxFileBytes;
         var rows = await EvidenceRowsAsync(id, ct);
         var matches = rows.Where(x => string.Equals(Text(x, _o.EvidenceKeyField), evidenceKey, StringComparison.OrdinalIgnoreCase)
             && IsEvidenceSafe(x, parent, id)).ToArray();
@@ -177,14 +179,14 @@ public sealed class CopiersMtoV2CalendarService(
         using var response = await client.SendAsync($"/api/data/v9.2/{_o.EvidenceEntitySetName}({evidenceId})/{_o.EvidenceFileField}/$value",
             HttpMethod.Get, null, null, ct);
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException("No fue posible leer el archivo de evidencia.");
-        if (response.Content.Headers.ContentLength > MaxFileBytes) throw new InvalidOperationException("El adjunto supera el límite permitido.");
+        if (response.Content.Headers.ContentLength > maxFileBytes) throw new InvalidOperationException("El adjunto supera el límite permitido.");
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var output = new MemoryStream();
         var buffer = new byte[64 * 1024];
         int read;
         while ((read = await stream.ReadAsync(buffer, ct)) > 0)
         {
-            if (output.Length + read > MaxFileBytes) throw new InvalidOperationException("El adjunto supera el límite permitido.");
+            if (output.Length + read > maxFileBytes) throw new InvalidOperationException("El adjunto supera el límite permitido.");
             output.Write(buffer, 0, read);
         }
         var bytes = output.ToArray();
@@ -295,8 +297,8 @@ public sealed class CopiersMtoV2CalendarService(
             TimingNote = estimated ? "Franja visual de 30 minutos; duración real no disponible."
                 : recordedEnd.HasValue ? "Desde la entrada hasta la salida registradas en el reporte firmado (hora de Bogotá)."
                 : "Desde el inicio de visita registrado (hora de Bogotá) hasta la firma del cliente.",
-            WorkflowState = Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue ? "ReadyToSend" : "Failed",
-            EmailState = operation?.Internal == true ? "NotRequired" : EmailState(Number(row, _o.EmailStateField))
+            WorkflowState = IsHistorical(row) ? "Historical" : Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue ? "ReadyToSend" : "Failed",
+            EmailState = IsHistorical(row) ? "NotApplicable" : operation?.Internal == true ? "NotRequired" : EmailState(Number(row, _o.EmailStateField))
         };
     }
 
@@ -351,10 +353,14 @@ public sealed class CopiersMtoV2CalendarService(
     {
         if (!string.Equals(Text(row, $"_{_o.EvidenceParentLookupLogicalName}_value"), id, StringComparison.OrdinalIgnoreCase)
             || !IsHash(Text(row, _o.EvidenceKeyField)) || !IsHash(Text(row, _o.EvidenceSha256Field))
-            || Number(row, _o.EvidenceSizeField) is <= 0 or > MaxFileBytes
+            || Number(row, _o.EvidenceSizeField) <= 0 || Number(row, _o.EvidenceSizeField) > (IsHistorical(parent) ? 32 * 1024 * 1024 : MaxFileBytes)
             || string.IsNullOrEmpty(Text(row, "@odata.etag"))) return false;
         var purpose = Number(row, _o.EvidencePurposeField);
         var type = Text(row, _o.EvidenceContentTypeField).ToLowerInvariant();
+        if (IsHistorical(parent))
+            return purpose == CopiersMaintenanceHistory.HistoricalFilePurpose && type is "application/pdf" or "image/jpeg"
+                && Text(row, _o.EvidenceKeyField) == Text(parent, _o.SignedReportEvidenceKeyField)
+                && Text(row, _o.EvidenceSha256Field) == Text(parent, _o.SignedReportSha256Field);
         if (purpose == _o.EvidenceSignedReportPurposeValue)
             return type == "application/pdf" && Text(row, _o.EvidenceKeyField) == Text(parent, _o.SignedReportEvidenceKeyField)
                 && Text(row, _o.EvidenceSha256Field) == Text(parent, _o.SignedReportSha256Field);
@@ -384,7 +390,7 @@ public sealed class CopiersMtoV2CalendarService(
         var key = Text(row, _o.EvidenceKeyField);
         var purpose = Number(row, _o.EvidencePurposeField);
         return new(key, SafeFileName(Text(row, _o.EvidenceOriginalFileNameField)), Text(row, _o.EvidenceContentTypeField),
-            Number(row, _o.EvidenceSizeField), purpose == _o.EvidenceSignedReportPurposeValue ? "SignedReport"
+            Number(row, _o.EvidenceSizeField), purpose == CopiersMaintenanceHistory.HistoricalFilePurpose ? "HistoricalDocument" : purpose == _o.EvidenceSignedReportPurposeValue ? "SignedReport"
                 : purpose == _o.EvidenceSignaturePurposeValue ? "Signature"
                 : purpose == _o.EvidenceOriginalAttachmentPurposeValue ? "OriginalAttachment" : "CustomerAttachment",
             $"/CopiersMtoV2Calendar/Evidence?id={Uri.EscapeDataString(PublicRecordId(id))}&evidenceKey={key}");
@@ -393,7 +399,7 @@ public sealed class CopiersMtoV2CalendarService(
     private string EventFields() => Join(_o.MainIdField, _o.ServiceReferenceField, _o.ClientNameField,
         _o.TechnicianUserIdField, _o.TechnicianNameField, _o.MaintenanceTypeField, _o.WorkflowStateField,
         _o.EmailStateField, _o.ServiceDateField, _o.AnswersJsonField, _o.DeviceSignedAtUtcField, _o.ServerFinalizedAtUtcField,
-        _o.SignedReportEvidenceKeyField, _o.SignedReportSha256Field);
+        _o.SignedReportEvidenceKeyField, _o.SignedReportSha256Field, IsActivity ? "" : "dtc_formversion,dtc_legacysourcekey,dtc_businessstatus");
     private string DetailFields() => Join(EventFields(), _o.ClientContactNameField, _o.ClientEmailField, _o.EquipmentSerialField,
         _o.TitleField, _o.TechnicianEmailField, _o.FormVersionField, _o.WorkPerformedField, _o.CustomerObservationsField,
         _o.ServiceAddressInternalField, _o.InternalNotesField, _o.SignerNameField, _o.SignerRoleField, _o.CustomerAcceptedField,
@@ -402,8 +408,9 @@ public sealed class CopiersMtoV2CalendarService(
     private string EvidenceFields() => Join(_o.EvidenceIdField, _o.EvidenceKeyField, $"_{_o.EvidenceParentLookupLogicalName}_value",
         _o.EvidencePurposeField, _o.EvidenceSequenceField, _o.EvidenceOriginalFileNameField, _o.EvidenceContentTypeField,
         _o.EvidenceSizeField, _o.EvidenceSha256Field, _o.EvidenceSecurityStateField);
+    private bool IsHistorical(JsonElement row) => !IsActivity && CopiersMaintenanceHistory.IsHistorical(row);
     private bool IsVisible(JsonElement row) => (!IsActivity || Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType)
-        && (Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue
+        && (IsHistorical(row) || Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue
             || Number(row, _o.WorkflowStateField) == _o.FailedStateValue
                 && IsHash(Text(row, _o.SignedReportEvidenceKeyField)) && IsHash(Text(row, _o.SignedReportSha256Field)));
     private string EmailState(long state) => state == _o.EmailSentStateValue ? "Sent" : state == _o.EmailPendingStateValue ? "Pending"
@@ -416,7 +423,7 @@ public sealed class CopiersMtoV2CalendarService(
     private static string ActivityRecordId(string reference) => reference.Length == 45
         && Guid.TryParseExact(reference[9..], "D", out var id) && id != Guid.Empty
         ? id.ToString("D") : throw new ArgumentException("La referencia de la actividad firmada no es válida.");
-    private static string Join(params string[] values) => string.Join(",", values.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
+    private static string Join(params string[] values) => string.Join(",", values.SelectMany(x => x.Split(',')).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
     private static string First(params string[] values) => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "Sin nombre";
     private static string Text(JsonElement row, string field) => row.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
     private static long Number(JsonElement row, string field) => row.TryGetProperty(field, out var value)

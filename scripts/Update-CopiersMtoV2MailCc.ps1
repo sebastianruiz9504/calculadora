@@ -75,7 +75,7 @@ function Assert-CopiersFlowScope($Flow) {
     $action = $actions[0].Action
     if ($action.inputs.host.connectionName -ne 'shared_office365' -or $action.inputs.host.apiId -ne '/providers/Microsoft.PowerApps/apis/shared_office365') { throw 'Unexpected sending connector. Nothing was changed.' }
     if ($action.inputs.retryPolicy.type -ne 'none') { throw 'Email retry policy changed. Nothing was changed.' }
-    if (-not [string]::IsNullOrWhiteSpace($action.inputs.parameters.'emailMessage/From')) { throw 'An explicit From override exists. Nothing was changed.' }
+    if (-not [string]::IsNullOrWhiteSpace($action.inputs.parameters.'emailMessage/From') -and $action.inputs.parameters.'emailMessage/From' -cne "@first(body('Read_pending_row')?['value'])?['dtc_technicianemailsnapshot']") { throw 'An explicit From override exists. Nothing was changed.' }
     $cc = [string]$action.inputs.parameters.'emailMessage/Cc'
     if (-not [string]::IsNullOrWhiteSpace($cc) -and $cc -cne $requiredCc) { throw 'Unexpected existing CC recipients. Review before changing them.' }
     return $actions[0]

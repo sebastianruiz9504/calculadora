@@ -397,3 +397,14 @@ test("an HTML login redirect is never parsed as successful calendar data", async
     const app = harness({ fetch: async () => ({ status: 200, ok: true, redirected: true }) }); await app.activate();
     assert.match(app.ids.get("mtoCalendarStatus").textContent, /sesión expiró/);
 });
+
+
+test("historical document does not claim digital signature, acceptance or recorded times", async () => {
+    const app = harness({ detail: { workflowState: "Historical", emailState: "NotApplicable", durationEstimated: true, signatureUrl: "" } });
+    await app.activate(); app.events()[0].click(); await settle();
+    const body = app.ids.get("mtoCalendarDetailBody");
+    assert.match(body.textContent, /Documento histórico original/);
+    assert.match(body.textContent, /Abrir documento original/);
+    assert.match(body.textContent, /No registrada/);
+    assert.doesNotMatch(body.textContent, /Conformidad del cliente|Aceptó el reporte|Abrir o descargar PDF firmado/);
+});

@@ -11644,6 +11644,8 @@
     ];
 
     const copiersMaintenanceColumns = [
+        { key: "internalId", label: "Referencia", displayValue: row => row.internalId || "" },
+        { key: "sourceLabel", label: "Origen", displayValue: row => row.sourceLabel || "" },
         {
             key: "dateValue",
             label: "Fecha",
@@ -11664,8 +11666,8 @@
         },
         {
             key: "technicianName",
-            label: "Owner",
-            displayValue: row => row.technicianName || "Sin owner"
+            label: "Técnico",
+            displayValue: row => row.technicianName || "Sin técnico"
         },
         {
             key: "maintenanceStatusLabel",

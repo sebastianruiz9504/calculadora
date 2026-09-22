@@ -674,6 +674,8 @@ public sealed class CopiersEquipmentOptionDto
 
 public sealed class CopiersMaintenanceRowDto
 {
+        public bool IsHistorical { get; set; }
+        public string SourceLabel { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string Title { get; set; } = "";
     public string InternalId { get; set; } = "";

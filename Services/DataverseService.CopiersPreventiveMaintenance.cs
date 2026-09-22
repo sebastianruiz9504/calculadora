@@ -372,18 +372,12 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var metadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            user,
-            ct);
-        var rows = await GetMaintenanceRecordsAsync(metadata, user, ct);
+        var rows = await GetUnifiedMaintenanceRowsAsync(false, ct);
 
         return rows
             .Where(row =>
                 row.MaintenanceTypeValue == CopiersMaintenanceTypePreventive
+                && row.MaintenanceStatusValue == 645250000
                 && row.MaintenanceDate.HasValue
                 && row.MaintenanceDate.Value >= periodStart
                 && row.MaintenanceDate.Value < periodEnd)

@@ -49,6 +49,46 @@ public sealed class CopiersMtoV2CalendarTests
         Assert.DoesNotContain(detail.Answers,x=>x.Key=="equipment_operation");
         if(internalOnly)Assert.Empty(detail.ReportUrl);
     }
+    [Fact]
+    public async Task ImportedHistoryPreservesDateAndOriginalFileWithoutClaimingASignatureOrEmail()
+    {
+        var f = new Fixture();
+        f.Main[f.Options.WorkflowStateField] = CopiersMaintenanceHistory.HistoricalState;
+        f.Main[f.Options.EmailStateField] = CopiersMaintenanceHistory.NoMailState;
+        f.Main["dtc_formversion"] = "copiers-legacy-v1";
+        f.Main["dtc_legacysourcekey"] = Guid.NewGuid().ToString("D");
+        f.Main[f.Options.AnswersJsonField] = "[]";
+        f.Main[f.Options.DeviceSignedAtUtcField] = null;
+        f.Main[f.Options.ServerFinalizedAtUtcField] = null;
+        f.Evidence[f.Options.EvidencePurposeField] = CopiersMaintenanceHistory.HistoricalFilePurpose;
+        var detail = await f.Service.DetailAsync(Ticket);
+        Assert.Equal("Historical", detail.WorkflowState);
+        Assert.Equal("NotApplicable", detail.EmailState);
+        Assert.Equal("2026-09-08", detail.ServiceDate);
+        Assert.True(detail.DurationEstimated);
+        Assert.Empty(detail.SignatureUrl);
+        Assert.NotEmpty(detail.ReportUrl);
+        Assert.Equal("HistoricalDocument", Assert.Single(detail.Evidences).Purpose);
+        Assert.Equal(f.Bytes, (await f.Service.EvidenceAsync(Ticket, EvidenceKey)).Content);
+        Assert.Single((await f.Service.WeekAsync("all", "2026-09-08")).Events);
+        f.Main.Remove("dtc_legacysourcekey");
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.DetailAsync(Ticket));
+    }
+
+    [Fact]
+    public async Task LargeOriginalIsAllowedOnlyForVerifiedHistory()
+    {
+        var f=new Fixture(); f.Bytes=new byte[20*1024*1024]; "%PDF-"u8.CopyTo(f.Bytes);
+        f.Evidence[f.Options.EvidenceSizeField]=f.Bytes.Length;
+        var hash=Convert.ToHexString(SHA256.HashData(f.Bytes)).ToLowerInvariant();
+        f.Evidence[f.Options.EvidenceSha256Field]=hash; f.Main[f.Options.SignedReportSha256Field]=hash;
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.EvidenceAsync(Ticket,EvidenceKey));
+        f.Main[f.Options.WorkflowStateField]=CopiersMaintenanceHistory.HistoricalState;
+        f.Main["dtc_formversion"]="copiers-legacy-v1"; f.Main["dtc_legacysourcekey"]=Guid.NewGuid().ToString();
+        f.Evidence[f.Options.EvidencePurposeField]=CopiersMaintenanceHistory.HistoricalFilePurpose;
+        Assert.Equal(f.Bytes.Length,(await f.Service.EvidenceAsync(Ticket,EvidenceKey)).Content.Length);
+    }
+
     private const string Technician = "7b5d74cb-7da1-473c-bd1a-66635c10d42a";
     private const string Ticket = "bd456109-5a50-4aa8-b11e-45f3efb11be1";
     private const string EvidenceId = "6b00cafd-17b5-418a-b3d5-98dba18989a4";
@@ -483,7 +523,7 @@ public sealed class CopiersMtoV2CalendarTests
         public List<JsonObject> ActivityRows { get; } = [];
         public JsonObject? ActivityEvidence { get; private set; }
         public JsonObject Evidence { get; }
-        public byte[] Bytes { get; } = Encoding.ASCII.GetBytes("%PDF-1.4\nTest fixture PDF bytes\n%%EOF");
+        public byte[] Bytes { get; set; } = Encoding.ASCII.GetBytes("%PDF-1.4\nTest fixture PDF bytes\n%%EOF");
         public Transport Transport { get; }
         public CopiersMtoV2CalendarService Service { get; }
         public void AddActivity(int type)

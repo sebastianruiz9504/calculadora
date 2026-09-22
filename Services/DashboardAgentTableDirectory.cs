@@ -186,7 +186,7 @@ public static class DashboardAgentTableDirectory
                 "copiers",
                 Fields("cr07a_nombredelequipo", "cr07a_cliente", "cr07a_serial", "cr07a_categoriadeequipo", "cr07a_referencia", "cr07a_observaciones", "cr07a_area", "cr07a_sede", "cr07a_valorcomercial", "cr07a_estadodelequipo"),
                 Terms("equipo", "equipos", "copiers", "serial", "inventario", "ubicacion", "sede", "area", "estado"),
-                Related("cr07a_cliente", "cr07a_movimientosequipos", "cr07a_mantenimiento", "cr07a_contadores")),
+                Related("cr07a_cliente", "cr07a_movimientosequipos", "dtc_copiersmtov2", "cr07a_contadores")),
 
             Table(
                 "Copiers",
@@ -204,11 +204,11 @@ public static class DashboardAgentTableDirectory
                 "Copiers",
                 "Mantenimientos",
                 "Mantenimientos Copiers",
-                "cr07a_mantenimiento",
-                "cr07a_mantenimientos",
+                "dtc_copiersmtov2",
+                "dtc_copiersmtov2s",
                 "Mantenimientos de equipos Copiers con equipo, fecha, descripcion, cliente, tipo, estado y acta adjunta.",
                 "copiers",
-                Fields("cr07a_mantenimiento1", "cr07a_iddeequipo", "cr07a_fechademantenimiento", "cr07a_descripciondelmantenimiento", "cr07a_cliente", "cr07a_actadeentregadeservicio", "cr07a_actadeentregadeservicio_name", "cr07a_tipodemantenimiento", "cr07a_estadodelmantenimiento"),
+                Fields("dtc_reference", "dtc_title", "dtc_equipment", "dtc_servicedate", "dtc_workperformed", "dtc_client", "dtc_maintenancetype", "dtc_workflowstate", "dtc_businessstatus", "dtc_techniciannamesnapshot"),
                 Terms("mantenimiento", "mantenimientos", "equipo", "copiers", "acta", "servicio", "cliente"),
                 Related("cr07a_equipo", "cr07a_cliente")),
 

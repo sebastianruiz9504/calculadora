@@ -117,6 +117,8 @@
     }
 
     function stateLabel(value, kind) {
+        if (value === "Historical") return "Histórico migrado";
+        if (value === "NotApplicable") return "No aplica: histórico";
         const states = kind === "email"
             ? { NotRequired: "No aplica · registro interno", NotReady: "No preparado", Pending: "Pendiente", Processing: "En proceso", Sent: "Enviado", Failed: "Fallido" }
             : { Draft: "Borrador", Finalizing: "Finalizando", ReadyToSend: "Finalizado", Failed: "Pendiente de finalizar" };
@@ -344,9 +346,10 @@
     }
 
     function renderDetail(detail) {
+        const historical = detail.workflowState === "Historical";
         const fragment = document.createDocumentFragment();
         const summary = detailSection("Datos de la visita");
-        detailFields(summary, [["Consecutivo", detail.serviceReference], ["Cliente", detail.clientName], ["Tipo", typeInfo(detail.maintenanceType).label], ["Técnico", detail.technicianName], ["Correo del técnico", detail.technicianEmail], ["Serial del equipo", detail.equipmentSerial], ["Persona que atiende", detail.clientContactName], ["Correo de envío", detail.clientEmail], ["Dirección o sede", detail.serviceAddress], ["Fecha del servicio", detail.serviceDate], ["Hora de entrada", formatInstant(detail.startAtUtc)], ["Hora de salida", formatInstant(detail.endAtUtc)], ["Firma registrada", formatInstant(detail.deviceSignedAtUtc)], ["Finalización del servidor", formatInstant(detail.serverFinalizedAtUtc)], ["Estado del reporte", stateLabel(detail.workflowState, "workflow")], ["Estado del correo", stateLabel(detail.emailState, "email")], ["Título", detail.title]]);
+        detailFields(summary, [["Consecutivo", detail.serviceReference], ["Cliente", detail.clientName], ["Tipo", typeInfo(detail.maintenanceType).label], ["Técnico", detail.technicianName], ["Correo del técnico", detail.technicianEmail], ["Serial del equipo", detail.equipmentSerial], ["Persona que atiende", detail.clientContactName], ["Correo de envío", detail.clientEmail], ["Dirección o sede", detail.serviceAddress], ["Fecha del servicio", detail.serviceDate], ["Hora de entrada", historical ? "No registrada" : formatInstant(detail.startAtUtc)], ["Hora de salida", historical ? "No registrada" : formatInstant(detail.endAtUtc)], ["Firma registrada", formatInstant(detail.deviceSignedAtUtc)], ["Finalización del servidor", formatInstant(detail.serverFinalizedAtUtc)], ["Estado del reporte", stateLabel(detail.workflowState, "workflow")], ["Estado del correo", stateLabel(detail.emailState, "email")], ["Título", detail.title]]);
         if (detail.durationEstimated) summary.append(element("p", "mto-calendar-detail__note", detail.timingNote || "La duración de esta franja es estimada: no se registraron ambas horas de la visita."));
         fragment.append(summary);
         if (Array.isArray(detail.movementDetails) && detail.movementDetails.length) {
@@ -374,23 +377,23 @@
             image.src = signatureUrl;
             signature.append(image);
         }
-        if (!detail.internalOperation) fragment.append(signature);
-        const report = detailSection("Reporte firmado y adjuntos");
+        if (!detail.internalOperation && !historical) fragment.append(signature);
+        const report = detailSection(detail.workflowState === "Historical" ? "Documento histórico original" : "Reporte firmado y adjuntos");
         const reportUrl = safeAppUrl(detail.reportUrl, global.location.origin);
         if (reportUrl) {
-            report.append(attachmentLink(reportUrl, "Abrir o descargar PDF firmado ↗"));
+            report.append(attachmentLink(reportUrl, historical ? "Abrir documento original ↗" : "Abrir o descargar PDF firmado ↗"));
             const frame = element("iframe", "mto-calendar-detail__pdf");
-            frame.title = "PDF del mantenimiento con la firma del cliente";
+            frame.title = detail.workflowState === "Historical" ? "Documento histórico original" : "PDF del mantenimiento con la firma del cliente";
             frame.loading = "lazy";
             frame.src = reportUrl;
             report.append(frame);
-        } else report.append(element("p", "mto-calendar__muted", detail.internalOperation ? "Registro interno: no requiere certificado firmado ni correo al cliente." : "Este mantenimiento aún no tiene un PDF firmado disponible."));
+        } else report.append(element("p", "mto-calendar__muted", historical ? "El registro original no tenía documento adjunto." : detail.internalOperation ? "Registro interno: no requiere certificado firmado ni correo al cliente." : "Este mantenimiento aún no tiene un PDF firmado disponible."));
         const files = element("ul", "mto-calendar-detail__files");
         (Array.isArray(detail.evidences) ? detail.evidences : []).forEach(evidence => {
             const row = element("li", "");
             row.append(attachmentLink(evidence.url, evidence.fileName || "Adjunto"));
             const kilobytes = Number.isFinite(evidence.sizeBytes) ? `${Math.max(1, Math.round(evidence.sizeBytes / 1024))} KB` : "";
-            const purpose = { SignedReport: "PDF firmado", Signature: "Firma del cliente", OriginalAttachment: "Adjunto original", CustomerAttachment: "Copia para el cliente" }[evidence.purpose] || "Evidencia";
+            const purpose = { HistoricalDocument: "Documento histórico original", SignedReport: "PDF firmado", Signature: "Firma del cliente", OriginalAttachment: "Adjunto original", CustomerAttachment: "Copia para el cliente" }[evidence.purpose] || "Evidencia";
             row.append(element("span", "mto-calendar__muted", [purpose, evidence.contentType, kilobytes].filter(Boolean).join(" · ")));
             files.append(row);
         });

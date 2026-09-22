@@ -75,18 +75,7 @@ public sealed partial class DataverseService
 
     public async Task<CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var metadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-
-        var rows = await GetCopiersMaintenanceRowsForCurrentOwnerAsync(metadata, httpContext.User, ct);
+        var rows = await GetUnifiedMaintenanceRowsAsync(true, ct);
         return new CopiersMaintenanceBoardDto
         {
             Records = BuildMaintenanceRows(rows),
@@ -105,128 +94,8 @@ public sealed partial class DataverseService
         CopiersMaintenanceSaveRequestDto request,
         CancellationToken ct = default)
     {
-        if (request is null)
-            throw new ArgumentNullException(nameof(request));
-
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var metadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-        var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
-        var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
-        var currentUser = await GetCurrentUserAsync(ct);
-        CopiersMaintenanceRecordRow? current = null;
-        if (!isCreate)
-        {
-            current = await GetCopiersMaintenanceRowByIdAsync(metadata, normalizedRecordId, httpContext.User, ct);
-            if (!string.Equals(
-                NormalizeOptionalGuid(current.TechnicianId),
-                NormalizeOptionalGuid(currentUser?.SystemUserId),
-                StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("El mantenimiento seleccionado no pertenece al owner autenticado.");
-            }
-        }
-
-        var maintenanceDate = ParseCopiersRequiredDate(request.DateValue, "fecha de mantenimiento");
-        var isExternalEquipment = IsCopiersExternalEquipmentRequest(request.EquipmentId);
-        var equipmentId = isExternalEquipment
-            ? ""
-            : NormalizeGuid(request.EquipmentId, nameof(request.EquipmentId));
-        var clientId = NormalizeOptionalGuid(request.ClientId);
-        if (string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(request.ClientName))
-            clientId = await ResolveCopiersClientIdAsync(request.ClientName.Trim(), ct);
-        if (isExternalEquipment && string.IsNullOrWhiteSpace(clientId))
-            throw new InvalidOperationException("Debes seleccionar un cliente valido para registrar un equipo externo.");
-
-        var title = FirstNonEmpty(
-            request.Title?.Trim(),
-            $"Mantenimiento {maintenanceDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}");
-
-        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        {
-            [DashboardMaintenanceTitleField] = title,
-            [DashboardMaintenanceDateField] = maintenanceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            [DashboardMaintenanceDescriptionField] = request.Description?.Trim(),
-            [DashboardMaintenanceExternalIdField] = string.IsNullOrWhiteSpace(request.InternalId) ? null : request.InternalId.Trim(),
-            [DashboardMaintenanceTypeField] = NormalizeCopiersMaintenanceType(request.MaintenanceTypeValue),
-            [DashboardMaintenanceStatusField] = NormalizeCopiersMaintenanceStatus(request.MaintenanceStatusValue)
-        };
-
-        if (!string.IsNullOrWhiteSpace(metadata.PrimaryNameField)
-            && !payload.ContainsKey(metadata.PrimaryNameField))
-        {
-            payload[metadata.PrimaryNameField] = title;
-        }
-
-        var equipmentNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceEquipmentField,
-            DashboardMaintenanceEquipmentField,
-            httpContext.User,
-            ct);
-        if (!isExternalEquipment)
-        {
-            var equipmentMetadata = await ResolveRhEntityMetadataAsync(
-                DashboardEquipmentTableLogicalName,
-                DashboardEquipmentTableSetName,
-                DashboardEquipmentIdField,
-                DashboardEquipmentPrimaryNameField,
-                httpContext.User,
-                ct);
-            payload[$"{equipmentNavigationProperty}@odata.bind"] = $"/{equipmentMetadata.EntitySetName}({equipmentId})";
-        }
-
-        if (!string.IsNullOrWhiteSpace(clientId))
-        {
-            var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
-                DashboardMaintenanceTableLogicalName,
-                DashboardMaintenanceClientField,
-                DashboardMaintenanceClientField,
-                httpContext.User,
-                ct);
-            payload[$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})";
-        }
-
-        var relativeUrl = isCreate
-            ? $"/api/data/v9.2/{metadata.EntitySetName}"
-            : $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})";
-
-        using var response = await SendDataversePayloadWithRepresentationAsync(
-            relativeUrl,
-            isCreate ? "POST" : "PATCH",
-            payload,
-            httpContext.User,
-            ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        var recordId = isCreate
-            ? ExtractRhRecordId(response, body, metadata.PrimaryIdField)
-            : normalizedRecordId;
-
-        if (!isCreate && isExternalEquipment && !string.IsNullOrWhiteSpace(current?.EquipmentId))
-        {
-            await ClearCopiersMaintenanceEquipmentAsync(
-                metadata,
-                recordId,
-                equipmentNavigationProperty,
-                httpContext.User,
-                ct);
-        }
-
-        var record = await GetCopiersMaintenanceRowByIdAsync(metadata, recordId, httpContext.User, ct);
-        return new CopiersMaintenanceSaveResultDto
-        {
-            Message = isCreate
-                ? "Mantenimiento creado correctamente."
-                : "Mantenimiento actualizado correctamente.",
-            Record = BuildMaintenanceRows(new[] { record }).First()
-        };
+        ArgumentNullException.ThrowIfNull(request);
+        return await UpdateHistoricalMaintenanceStatusAsync(request, ct);
     }
 
     private async Task ClearCopiersMaintenanceEquipmentAsync(
@@ -249,43 +118,8 @@ public sealed partial class DataverseService
         byte[] content,
         CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var metadata = await ResolveRhEntityMetadataAsync(
-            DashboardMaintenanceTableLogicalName,
-            DashboardMaintenanceTableSetName,
-            DashboardMaintenanceIdField,
-            DashboardMaintenancePrimaryNameField,
-            httpContext.User,
-            ct);
-        var normalizedMaintenanceId = NormalizeGuid(maintenanceId, nameof(maintenanceId));
-        var currentUser = await GetCurrentUserAsync(ct);
-        var current = await GetCopiersMaintenanceRowByIdAsync(metadata, normalizedMaintenanceId, httpContext.User, ct);
-        if (!string.Equals(
-            NormalizeOptionalGuid(current.TechnicianId),
-            NormalizeOptionalGuid(currentUser?.SystemUserId),
-            StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("El mantenimiento seleccionado no pertenece al owner autenticado.");
-        }
-
-        await UploadCopiersFileColumnAsync(
-            metadata,
-            normalizedMaintenanceId,
-            DashboardMaintenanceAttachmentField,
-            fileName,
-            contentType,
-            content,
-            httpContext.User,
-            ct);
-
-        var record = await GetCopiersMaintenanceRowByIdAsync(metadata, normalizedMaintenanceId, httpContext.User, ct);
-        return new CopiersMaintenanceSaveResultDto
-        {
-            Message = "Reporte adjuntado correctamente.",
-            Record = BuildMaintenanceRows(new[] { record }).First()
-        };
+        await RequireMtoHistoryAccessAsync(ct);
+        throw new InvalidOperationException("Las actas históricas y los reportes firmados se conservan sin modificaciones. Registra un nuevo servicio desde MTO V2.");
     }
 
     public async Task<CopiersSupplyInventoryDto> GetCopiersSupplyInventoryAsync(CancellationToken ct = default)
