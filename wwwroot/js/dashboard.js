@@ -3593,18 +3593,67 @@
 
         copiersMaintenanceBody.innerHTML = rows.length
             ? rows.map(row => `
-                <tr>
+                <tr data-maintenance-detail-id="${escapeHtml(row.recordId || "")}">
                     ${copiersMaintenanceColumns.map(column => `
                         <td class="${getPortfolioColumnAlignClass(column)}">
-                            ${getPortfolioColumnCell(row, column)}
+                            <div class="dashboard-maintenance-cell">${column.key === "internalId"
+                                ? `<button type="button" class="dashboard-maintenance-open" aria-haspopup="dialog" aria-label="Ver detalle de ${escapeHtml(row.internalId || "mantenimiento")}">${escapeHtml(row.internalId || "Ver detalle")}</button>`
+                                : column.key === "detail"
+                                    ? escapeHtml(getCopiersMaintenanceDetailDisplay(row))
+                                    : column.key === "dateValue"
+                                        ? escapeHtml(row.dateDisplay || "Sin fecha")
+                                        : getPortfolioColumnCell(row, column)}</div>
                         </td>
                     `).join("")}
                 </tr>
             `).join("")
-            : '<tr><td colspan="7" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
+            : '<tr><td colspan="9" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
 
         renderCopiersMaintenancePagination(pagination);
     }
+
+    let copiersMaintenanceDetailDialog;
+    function openCopiersMaintenanceDetail(row) {
+        if (!copiersMaintenanceDetailDialog) {
+            copiersMaintenanceDetailDialog = document.createElement("dialog");
+            copiersMaintenanceDetailDialog.className = "dashboard-maintenance-popup";
+            copiersMaintenanceDetailDialog.setAttribute("aria-labelledby", "copiersMaintenancePopupTitle");
+            document.body.appendChild(copiersMaintenanceDetailDialog);
+            copiersMaintenanceDetailDialog.addEventListener("click", event => {
+                if (event.target.closest("[data-maintenance-close]")) copiersMaintenanceDetailDialog.close();
+                if (event.target === copiersMaintenanceDetailDialog) {
+                    const bounds = copiersMaintenanceDetailDialog.getBoundingClientRect();
+                    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) copiersMaintenanceDetailDialog.close();
+                }
+            });
+        }
+        const fields = [
+            ["Referencia", row.internalId], ["Origen", row.sourceLabel],
+            ["Fecha", row.dateDisplay], ["Tipo", row.maintenanceTypeLabel],
+            ["Cliente", row.clientName], ["Técnico", row.technicianName],
+            ["Estado", row.maintenanceStatusLabel], ["Equipo(s)", row.equipmentSerial]
+        ];
+        copiersMaintenanceDetailDialog.innerHTML = `
+            <header class="dashboard-maintenance-popup__header">
+                <h2 id="copiersMaintenancePopupTitle">Detalle del mantenimiento</h2>
+                <button type="button" class="btn btn-outline-secondary" data-maintenance-close autofocus>Cerrar</button>
+            </header>
+            <div class="dashboard-maintenance-popup__body">
+                <dl>${fields.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "Sin información")}</dd></div>`).join("")}</dl>
+                <h3>Título</h3><p>${escapeHtml(row.title || "Sin título")}</p>
+                <h3>Descripción completa</h3><p>${escapeHtml(row.description || "Sin descripción")}</p>
+                ${row.hasAttachment ? `<a class="btn btn-outline-primary" href="${escapeHtml(buildCopiersMaintenanceFileUrl(row.recordId || ""))}" target="_blank" rel="noopener noreferrer">Descargar acta original</a>` : "<p>Sin acta adjunta</p>"}
+            </div>`;
+        copiersMaintenanceDetailDialog.showModal();
+    }
+
+    copiersMaintenanceBody?.addEventListener("click", event => {
+        if (event.target.closest("a")) return;
+        const target = event.target.closest("[data-maintenance-detail-id]");
+        if (!target) return;
+        const row = state.copiersEquipmentDashboard?.maintenanceRows?.find(item => item.recordId === target.dataset.maintenanceDetailId);
+        if (row) openCopiersMaintenanceDetail(row);
+    });
 
     function renderCopiersMaintenanceDashboard(dashboard) {
         renderCopiersMaintenanceKpis(dashboard);
