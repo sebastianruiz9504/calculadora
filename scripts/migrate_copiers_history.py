@@ -31,6 +31,7 @@ from provision_copiers_mto_v2_capture_fields import api, label, SOLUTION, SOLUTI
 
 OLD='cr07a_mantenimiento'; NEW='dtc_copiersmtov2'; EVIDENCE='dtc_copiersmtoevidenciav2'
 HISTORICAL=827270004; NO_MAIL=827270005; FILE_PURPOSE=827270004
+WORKER='6b07e603-7ca2-f111-aaad-70a8a5a95cf5'
 EXCLUDED={
  'a3efde8c-bab2-f111-aaac-70a8a5a95cf5':'coincidence', 'ad7c71e0-bab2-f111-aaac-70a8a5a95cf5':'coincidence',
  'dd008208-bbb2-f111-aaac-70a8a5a95cf5':'coincidence', '51bca9e9-b9b2-f111-aaac-70a8a5a95cf5':'coincidence',
@@ -87,6 +88,8 @@ def main():
     args.output.mkdir(parents=True,exist_ok=True)
     if args.schema: schema()
     load_env();credential=CachedCredential();c=migration_client(credential)
+    worker=c.records.retrieve('systemuser',WORKER,select=['applicationid','isdisabled'])
+    if worker['applicationid']!='ebe37e5d-c246-4310-a7aa-a6e6686bc90e' or worker['isdisabled']:raise RuntimeError('V2 worker identity mismatch')
     rows=[clean(x) for x in c.records.list(OLD,select=FIELDS)]
     users={x['systemuserid']:clean(x) for x in c.records.list('systemuser',select=['systemuserid','fullname','internalemailaddress'])}
     clients={x['cr07a_clienteid']:clean(x) for x in c.records.list('cr07a_cliente',select=['cr07a_clienteid','cr07a_nombre'])}
@@ -124,7 +127,7 @@ def main():
         origin=canon(r);user=users[r['_ownerid_value']];eq=r.get('_cr07a_iddeequipo_value') or r.get('_cr07a_numerodeserie_value')
         existing=c.records.retrieve(NEW,target)
         if existing and (existing.get('dtc_legacysourcekey')!=source or existing.get('dtc_legacyjson')!=origin):raise RuntimeError('Existing destination mismatch '+source)
-        payload={'dtc_copiersmtov2id':target,'dtc_legacysourcekey':source,'dtc_legacyjson':origin,
+        payload={'ownerid@odata.bind':f'/systemusers({WORKER})','dtc_copiersmtov2id':target,'dtc_legacysourcekey':source,'dtc_legacyjson':origin,
             'dtc_legacyrequestkey':r.get('_cr07a_solicitudrelacionada_value'),'dtc_businessstatus':r['cr07a_estadodelmantenimiento'],
             'dtc_operationkey':'legacy:'+source,'dtc_reference':'HIST-'+(r.get('cr07a_id') or source),
             'dtc_name':r['cr07a_mantenimiento1'],'dtc_title':r['cr07a_mantenimiento1'],'dtc_formversion':'copiers-legacy-v1',
@@ -138,6 +141,7 @@ def main():
             'dtc_answersjson':'[]','dtc_attachmentcount':0}
         if eq:payload['dtc_Equipment@odata.bind']=f'/cr07a_equipos({eq})'
         if not existing:c.records.create(NEW,payload)
+        elif existing.get('_ownerid_value')!=WORKER:c.records.update(NEW,target,{'ownerid@odata.bind':f'/systemusers({WORKER})'})
         filehash=None;filename=r.get('cr07a_actadeentregadeservicio_name')
         finish={'dtc_workflowstate':HISTORICAL,'dtc_emailstate':NO_MAIL}
         if r.get('cr07a_actadeentregadeservicio'):
@@ -149,12 +153,13 @@ def main():
             mime='application/pdf' if raw.startswith(b'%PDF-') else 'image/jpeg' if raw.startswith(b'\xff\xd8\xff') else None
             if mime is None or size>32*1024*1024:raise RuntimeError('Unsupported historical file')
             ekey=digest(('legacy-file:'+source).encode())
-            ep={'dtc_copiersmtoevidenciav2id':eid,'dtc_name':'Histórico '+(r.get('cr07a_id') or source),'dtc_evidencekey':ekey,
+            ep={'ownerid@odata.bind':f'/systemusers({WORKER})','dtc_copiersmtoevidenciav2id':eid,'dtc_name':'Histórico '+(r.get('cr07a_id') or source),'dtc_evidencekey':ekey,
                 'dtc_SignedMto@odata.bind':f'/dtc_copiersmtov2s({target})','dtc_purpose':FILE_PURPOSE,'dtc_sequence':0,
                 'dtc_originalfilename':filename,'dtc_contenttype':mime,'dtc_bytelength':size,'dtc_sha256':filehash,'dtc_securitystate':827270000}
             er=c.records.retrieve(EVIDENCE,eid)
             if er and (er.get('dtc_sha256')!=filehash or er.get('dtc_evidencekey')!=ekey):raise RuntimeError('Evidence collision')
             if not er:c.records.create(EVIDENCE,ep)
+            elif er.get('_ownerid_value')!=WORKER:c.records.update(EVIDENCE,eid,{'ownerid@odata.bind':f'/systemusers({WORKER})'})
             if not er or not er.get('dtc_filecontent'):c.files.upload(EVIDENCE,eid,'dtc_filecontent',str(original),mime_type='application/octet-stream')
             readback=folder/'verified-download.bin'
             if download('dtc_copiersmtoevidenciav2s',eid,'dtc_filecontent',readback)!=filehash:raise RuntimeError('File read-back hash mismatch')

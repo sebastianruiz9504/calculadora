@@ -1,6 +1,6 @@
 """Independent read-only reconciliation after the approved historical migration."""
 import argparse, collections, json, pathlib
-from migrate_copiers_history import CachedCredential, migration_client, load_env, clean, canon, identity, FIELDS, OLD, NEW, EVIDENCE, EXCLUDED, HISTORICAL, NO_MAIL, FILE_PURPOSE
+from migrate_copiers_history import CachedCredential, migration_client, load_env, clean, canon, identity, FIELDS, OLD, NEW, EVIDENCE, EXCLUDED, HISTORICAL, NO_MAIL, FILE_PURPOSE, WORKER
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=pathlib.Path,required=True);a=p.parse_args()
@@ -19,6 +19,7 @@ def main():
     for row in rows:
         key=row['dtc_legacysourcekey'];original=expected[key];target=identity('record',key)
         assert row['dtc_copiersmtov2id']==target and key in verified
+        assert row['_ownerid_value']==WORKER
         assert row['dtc_legacyjson']==canon(original)
         assert row['dtc_workflowstate']==HISTORICAL and row['dtc_emailstate']==NO_MAIL
         assert row['dtc_businessstatus']==original['cr07a_estadodelmantenimiento']
@@ -32,6 +33,7 @@ def main():
         if original.get('cr07a_actadeentregadeservicio'):
             assert len(linked)==1;file=linked[0]
             assert file['dtc_copiersmtoevidenciav2id']==identity('file',key) and file.get('dtc_filecontent')
+            assert file['_ownerid_value']==WORKER
             assert file['dtc_originalfilename']==row['dtc_reportfilename']==original['cr07a_actadeentregadeservicio_name']
             assert file['dtc_evidencekey']==row['dtc_reportevidencekey']
             assert file['dtc_sha256']==row['dtc_reportsha256']==verified[key]['fileSha256']
