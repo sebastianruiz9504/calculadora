@@ -327,7 +327,7 @@
         // Serialize local writes so a slow older write cannot overwrite a newer one.
         state.recoveryWrite = (state.recoveryWrite || Promise.resolve()).catch(() => {}).then(() =>
             window.CopiersMtoV2Drafts.save(root.dataset.recoveryOwner, snapshot));
-        try { await state.recoveryWrite; recoveryMessage(state.pendingUpload ? "Envío pendiente guardado en este dispositivo." : "Borrador guardado en este dispositivo."); }
+        try { await state.recoveryWrite; if (!root.classList.contains("is-submitted")) recoveryMessage(state.pendingUpload ? "Envío pendiente guardado en este dispositivo." : "Borrador guardado en este dispositivo."); }
         catch (error) { recoveryMessage("No fue posible guardar el borrador local. No cierres esta pestaña.", true); throw error; }
     }
 
@@ -381,17 +381,21 @@
             await saveRecovery();
             if (receipt.status === "completed" && receipt.result) {
                 const result = receipt.result;
+                if (!result.recordId || !matchesState(result.state, 2, "ReadyToSend"))
+                    throw new Error("El servidor aún no confirmó que el reporte esté guardado. Conservamos el borrador.");
                 elements.recordId.value = result.recordId;
                 elements.serviceReference.value = result.serviceReference || "";
                 state.pendingUpload = null;
+                state.recordCreated = true;
                 const sent = matchesState(result.state, 2, "ReadyToSend") && matchesState(result.emailState, 3, "Sent");
                 root.classList.add("is-submitted");
                 setSubmitState(sent ? "sent" : "created");
                 renderReview();
-                elements.createAnother.hidden = !sent;
+                elements.createAnother.hidden = false;
                 elements.checkEmailStatus.hidden = sent;
-                setStatus(elements.submitStatus, sent ? "success" : "info", sent ? "Registro creado y correo enviado." : "Registro creado con su PDF. El correo está pendiente de confirmación.");
-                // Keep a lightweight completed receipt until email is confirmed;
+                recoveryMessage("El reporte, la firma y las evidencias están guardados en el servidor. Puedes crear otro registro.");
+                setStatus(elements.submitStatus, sent ? "success" : "info", sent ? "Registro creado y correo enviado." : "Registro creado con su PDF. El correo está pendiente de confirmación; puedes crear otro registro.");
+                // Keep a completed receipt until success or an explicit new request;
                 // reloading recovers its status without resending the signed form.
                 const completedSnapshot = { ...recoverySnapshot(), files: [], strokes: [], pendingUpload: null };
                 state.recoveryWrite = (state.recoveryWrite || Promise.resolve()).catch(() => {}).then(() =>
@@ -2275,7 +2279,8 @@
                             ? resultMessage || "El registro y el reporte quedaron creados. El correo está siendo procesado."
                             : resultMessage || "El registro y el reporte quedaron creados. El correo quedó pendiente de procesamiento." );
             root.classList.add("is-submitted");
-            elements.createAnother.hidden = !emailSent;
+            state.recordCreated = true;
+            elements.createAnother.hidden = false;
             elements.checkEmailStatus.hidden = emailSent || !elements.recordId.value;
             if (emailSent) showSubmissionSuccess();
             else if (!emailFailed) startEmailStatusPolling();
@@ -2353,9 +2358,10 @@
     }
 
     async function startNewRequest() {
-        // Only a confirmed Sent result may discard this editor's recovery slot.
+        // Only a server-confirmed completed record may release this editor's slot.
+        // The PDF, signature, attachments and email status remain on the server.
         // Wait for every queued write so pagehide/slow IndexedDB cannot revive it.
-        if (!state.successConfirmed || state.resetting) return;
+        if ((!state.recordCreated && !state.successConfirmed) || state.resetting) return;
         state.resetting = true;
         state.recoveryReady = false;
         window.clearTimeout(state.successTimer);
@@ -2372,7 +2378,7 @@
             window.location.assign(elements.createAnother.href);
         } catch {
             state.resetting = false;
-            const message = "El correo sí fue enviado, pero no se pudo limpiar el borrador de este dispositivo. Pulsa Crear nueva solicitud para reintentar sin reenviar el correo.";
+            const message = `${state.successConfirmed ? "El correo sí fue enviado" : "El reporte está guardado en el servidor"}, pero no se pudo limpiar el borrador de este dispositivo. Pulsa Crear otro registro para reintentar sin reenviar el correo.`;
             const target = document.getElementById("mtoV2SuccessMessage");
             if (target) target.textContent = message;
             setStatus(elements.submitStatus, "info", message);
@@ -2387,7 +2393,7 @@
     }
 
     function startEmailStatusPolling() {
-        if (!elements.recordId.value || state.emailStatus.loading || !elements.createAnother.hidden) return;
+        if (!elements.recordId.value || state.emailStatus.loading || state.successConfirmed || state.resetting) return;
         stopEmailStatusPolling();
         state.emailStatus.attempts = 0;
         state.emailStatus.startedAt = Date.now();
@@ -2396,7 +2402,7 @@
 
     async function checkEmailStatus() {
         const recordId = elements.recordId.value;
-        if (!recordId || state.emailStatus.loading || !elements.createAnother.hidden) return;
+        if (!recordId || state.emailStatus.loading || state.successConfirmed || state.resetting) return;
         if (state.emailStatus.attempts >= 8 || Date.now() - state.emailStatus.startedAt >= 90000) return;
         const kind = activityKind();
         const requestId = ++state.emailStatus.requestId;
@@ -2413,7 +2419,8 @@
             const ready = matchesState(workflowState, 2, "ReadyToSend");
             const sent = ready && matchesState(emailState, 3, "Sent");
             const failed = matchesState(emailState, 4, "Failed");
-            elements.createAnother.hidden = !sent;
+            if (ready) state.recordCreated = true;
+            elements.createAnother.hidden = !state.recordCreated;
             elements.checkEmailStatus.hidden = sent;
             if (sent) {
                 const reference = textProperty(result, "serviceReference", "ServiceReference");
@@ -2421,15 +2428,17 @@
                 setSubmitState("sent");
                 setStatus(elements.submitStatus, "success", "El registro firmado quedó creado y el correo fue enviado al cliente.");
                 showSubmissionSuccess();
+            } else if (result.requiresReview === true) {
+                setStatus(elements.submitStatus, "error", result.message || "El reporte está guardado. El envío del correo requiere revisión interna para evitar duplicados. Puedes crear otro registro.");
             } else if (failed) {
-                setStatus(elements.submitStatus, "error", "El registro quedó creado, pero el correo no fue enviado y requiere revisión interna. Esta consulta no reenvía correos.");
+                setStatus(elements.submitStatus, "error", "El registro quedó creado, pero el correo no fue enviado y requiere revisión interna. Puedes crear otro registro. Esta consulta no reenvía correos.");
             } else {
                 keepPolling = true;
-                setStatus(elements.submitStatus, "info", "El registro quedó creado. Aún no se ha confirmado el envío del correo.");
+                setStatus(elements.submitStatus, "info", "El registro quedó creado. Aún no se ha confirmado el envío del correo. Puedes crear otro registro.");
             }
         } catch (error) {
             if (requestId !== state.emailStatus.requestId || recordId !== elements.recordId.value || kind !== activityKind()) return;
-            elements.createAnother.hidden = true;
+            elements.createAnother.hidden = !state.recordCreated;
             elements.checkEmailStatus.hidden = false;
             setStatus(elements.submitStatus, "info", "El registro quedó creado. No fue posible consultar el envío del correo; puedes verificarlo de nuevo sin duplicar el registro.");
         } finally {

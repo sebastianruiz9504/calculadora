@@ -442,18 +442,19 @@ test("camera adds photographs alongside the existing picker and every photo has 
     assert.match(view, /id="mtoV2EvidenceInput"[\s\S]*?multiple/);
 });
 
-for (const [state, emailState, canCreate] of [[2, 3, true], [2, "Sent", true], [2, 0, false], [2, 1, false], [2, 2, false], [2, 4, false], [1, 3, false], [undefined, undefined, false]]) {
-    test(`new record appears only after committed record and email Sent: ${state}/${emailState}`, async () => {
+for (const [state, emailState, canCreate] of [[2, 3, true], [2, "Sent", true], [2, 0, true], [2, 1, true], [2, 2, true], [2, 4, true], [1, 3, false], [undefined, undefined, false]]) {
+    test(`confirmed report allows new work independently of email: ${state}/${emailState}`, async () => {
         const h = activityHarness(async () => ({ state, emailState }));
         h.elements.recordId.value = "RECORD-1";
         h.state.emailStatus.startedAt = Date.now();
         await h.checkEmailStatus();
         assert.equal(!h.elements.createAnother.hidden, canCreate);
-        assert.equal(!!h.state.successConfirmed, canCreate);
-        assert.equal(!!h.state.successDialog?.open, canCreate);
+        const sent = state === 2 && (emailState === 3 || emailState === "Sent");
+        assert.equal(!!h.state.successConfirmed, sent);
+        assert.equal(!!h.state.successDialog?.open, sent);
         assert.equal(h.requests[0].options.method, "GET");
         assert.match(h.requests[0].url, /Status\?recordId=RECORD-1&activityKind=maintenance/);
-        if (canCreate) assert.match(h.elements.submitStatus.textContent, /correo fue enviado/);
+        if (sent) assert.match(h.elements.submitStatus.textContent, /correo fue enviado/);
         else assert.doesNotMatch(h.elements.submitStatus.textContent, /correo fue enviado/);
     });
 }
@@ -493,6 +494,43 @@ test("pending or failed submissions cannot clear the recovery slot", async () =>
     assert.deepEqual(state.pendingUpload, ["signed-payload"]); assert.equal(state.receiptKey, "same-key");
 });
 
+test("confirmed server report releases local editor with pending email without any network write", async () => {
+    const actions = [];
+    const state = { recordCreated: true, successConfirmed: false, receiptKey: "saved-on-server", pendingUpload: null };
+    const start = bind("startNewRequest", { state, root: { dataset: { recoveryOwner: "owner" } },
+        elements: { createAnother: { href: "/CopiersMtoV2" } }, stopEmailStatusPolling() {}, removeStoredSubmissionId() { actions.push("remove-key"); },
+        window: { clearTimeout() {}, CopiersMtoV2Drafts: { async remove() { actions.push("remove-local"); } },
+            location: { assign() { actions.push("new-form"); } } } });
+    await start();
+    assert.deepEqual(actions, ["remove-local", "remove-key", "new-form"]);
+    assert.equal(state.receiptKey, "");
+    assert.equal(state.successConfirmed, false);
+});
+
+test("ambiguous provider send displays review warning, stops polling and allows a new report", async () => {
+    const h = activityHarness(async () => ({ state: 2, emailState: 2, requiresReview: true,
+        message: "El proveedor no confirmó el envío. Requiere revisión interna para evitar duplicados." }));
+    h.elements.recordId.value = "RECORD-1";
+    h.startEmailStatusPolling();
+    await settleActivities();
+    assert.equal(h.elements.createAnother.hidden, false);
+    assert.equal(!!h.state.successConfirmed, false);
+    assert.match(h.elements.submitStatus.textContent, /proveedor.*revisión.*duplicados/);
+    assert.equal(h.timers.filter(t => t.delay === 5000 && !t.cancelled).length, 0);
+    assert.ok(h.requests.every(request => request.options.method === "GET"));
+});
+
+test("status lookup outage cannot re-block an already confirmed report", async () => {
+    const h = activityHarness(async () => { throw new Error("offline"); });
+    h.state.recordCreated = true;
+    h.elements.recordId.value = "RECORD-1";
+    await h.checkEmailStatus();
+    assert.equal(h.elements.createAnother.hidden, false);
+    assert.equal(!!h.state.successConfirmed, false);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].options.method, "GET");
+});
+
 test("local cleanup failure preserves the receipt and offers retry without resending", async () => {
     const state = { successConfirmed: true, receiptKey: "same-key", pendingUpload: ["original"] };
     let navigations = 0, removes = 0;
@@ -521,7 +559,7 @@ test("status polling stops after eight reads and allows explicit read-only reche
         await settleActivities();
     }
     assert.equal(h.requests.length, 8);
-    assert.equal(h.elements.createAnother.hidden, true);
+    assert.equal(h.elements.createAnother.hidden, false);
     assert.equal(h.elements.checkEmailStatus.disabled, false);
     h.startEmailStatusPolling();
     await settleActivities();

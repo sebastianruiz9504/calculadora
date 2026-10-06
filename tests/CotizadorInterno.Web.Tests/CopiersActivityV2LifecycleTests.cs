@@ -334,6 +334,31 @@ public sealed class CopiersActivityV2LifecycleTests
     }
 
     [Theory]
+    [InlineData("maintenance", 827270002, true)]
+    [InlineData("toner", 827270002, true)]
+    [InlineData("toner", 827270003, false)]
+    public async Task StatusExposesSafeReviewReasonWithoutMisreportingEmailOrLeakingProviderErrors(string kind, int email, bool needsReview)
+    {
+        var f = new ControllerFixture();
+        f.Bindings.LastErrorCodeField = "dtc_lasterrorcode";
+        f.App.Response = JsonSerializer.Serialize(new Dictionary<string,object> {
+            [f.Bindings.TechnicianUserIdField] = TechnicianId,
+            [f.Bindings.WorkflowStateField] = f.Bindings.ReadyToSendStateValue,
+            [f.Bindings.EmailStateField] = email,
+            [f.Bindings.ServiceReferenceField] = "ACT-000123",
+            [f.Bindings.LastErrorCodeField] = "EMAIL_REVIEW_REQUIRED",
+            ["dtc_lasterrorsafemessage"] = "private-provider-diagnostic"
+        });
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Status(RecordId, kind, default));
+        var json = JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal(needsReview, json.GetProperty("requiresReview").GetBoolean());
+        Assert.Equal(email == 827270003 ? 3 : 2, json.GetProperty("emailState").GetInt32());
+        Assert.DoesNotContain("private-provider-diagnostic", json.ToString());
+        if (needsReview) Assert.Contains("evitar duplicados", json.GetProperty("message").GetString());
+        Assert.Contains("dtc_lasterrorcode", Assert.Single(f.App.Reads));
+    }
+
+    [Theory]
     [InlineData(true, "movement", RecordId)]
     [InlineData(false, "other", RecordId)]
     [InlineData(false, "toner", "bad-id")]

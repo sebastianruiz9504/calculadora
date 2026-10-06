@@ -48,7 +48,7 @@ public sealed class CopiersActivityV2Runtime(
         if (activityKind is not ("maintenance" or "movement" or "toner")
             || (activityKind != "maintenance" && !options.Value.ActivitiesEnabled))
             throw new CopiersMaintenanceV2ValidationException("activity_invalid", "El tipo de atención no es válido.");
-        using var response = await client.SendAsync($"/api/data/v9.2/{o.MainEntitySetName}({id})?$select={o.TechnicianUserIdField},{o.WorkflowStateField},{o.EmailStateField},{o.ServiceReferenceField}",
+        using var response = await client.SendAsync($"/api/data/v9.2/{o.MainEntitySetName}({id})?$select={o.TechnicianUserIdField},{o.WorkflowStateField},{o.EmailStateField},{o.ServiceReferenceField},{o.LastErrorCodeField}",
             HttpMethod.Get, null, null, ct);
         if (response.StatusCode == HttpStatusCode.NotFound) throw new KeyNotFoundException();
         if (!response.IsSuccessStatusCode) throw new CopiersMaintenanceV2PersistenceException("No fue posible confirmar el estado del envío.");
@@ -58,11 +58,18 @@ public sealed class CopiersActivityV2Runtime(
             throw new UnauthorizedAccessException();
         var state = row.GetProperty(o.WorkflowStateField).GetInt32();
         var email = row.GetProperty(o.EmailStateField).GetInt32();
+        var requiresReview = email != o.EmailSentStateValue
+            && row.TryGetProperty(o.LastErrorCodeField, out var error)
+            && error.GetString() == "EMAIL_REVIEW_REQUIRED";
         return new {
             recordId = id,
             serviceReference = row.TryGetProperty(o.ServiceReferenceField, out var reference) ? reference.GetString() : "",
             state = state == o.ReadyToSendStateValue ? 2 : state == o.FailedStateValue ? 3 : state == o.FinalizingStateValue ? 1 : 0,
-            emailState = email == o.EmailSentStateValue ? 3 : email == o.EmailFailedStateValue ? 4 : email == o.EmailProcessingStateValue ? 2 : email == o.EmailPendingStateValue ? 1 : 0
+            emailState = email == o.EmailSentStateValue ? 3 : email == o.EmailFailedStateValue ? 4 : email == o.EmailProcessingStateValue ? 2 : email == o.EmailPendingStateValue ? 1 : 0,
+            requiresReview,
+            message = requiresReview
+                ? "El reporte está guardado. El proveedor no confirmó el envío del correo y requiere revisión interna para evitar duplicados. Puedes crear otro registro."
+                : ""
         };
     }
 }
