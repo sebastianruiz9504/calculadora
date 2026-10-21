@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $release=Get-Content -Raw (Join-Path $ReleaseRoot 'release-manifest.json')|ConvertFrom-Json -Depth 40
 $scm='https://calculadoradt-asduazh5e0bhhsgm.scm.eastus2-01.azurewebsites.net'
 $subscription='7018b9b6-5dfc-4d91-bc4d-5f29f27553bd'
-if($release.ScmBaseUrl -ne $scm -or $release.SubscriptionId -ne $subscription -or $release.BaselineDeploymentId -ne 'b51bc591fabd44b7b843681088e75880' -or $release.Files.Count -ne 9 -or $release.ConfigurationChanges){throw 'Unapproved release manifest.'}
+if($release.ScmBaseUrl -ne $scm -or $release.SubscriptionId -ne $subscription -or $release.BaselineDeploymentId -ne 'e6b1ac313cf241aba6e5ce493f71bc89' -or $release.Files.Count -ne 9 -or $release.ConfigurationChanges){throw 'Unapproved release manifest.'}
 if((Get-FileHash $release.ZipPath).Hash -ne $release.ZipSha256 -or (Get-FileHash $release.RollbackZip).Hash -ne $release.RollbackSha256){throw 'Package changed.'}
 if((git -c maintenance.auto=false -c gc.auto=0 -C $release.SourceRoot rev-parse HEAD).Trim() -ne $release.SourceCommit -or (git -c maintenance.auto=false -c gc.auto=0 -C $release.SourceRoot status --porcelain)){throw 'Source changed after validation.'}
 $expected=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb','CotizadorInterno.Web.staticwebassets.endpoints.json','wwwroot/js/cruce-licenciamiento.js','wwwroot/js/cruce-licenciamiento.js.br','wwwroot/js/cruce-licenciamiento.js.gz','wwwroot/css/cruce-licenciamiento.css','wwwroot/css/cruce-licenciamiento.css.br','wwwroot/css/cruce-licenciamiento.css.gz')

@@ -53,6 +53,7 @@ public sealed class CruceLicenciamientoController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Data(
         [FromQuery] int year,
         [FromQuery] int month,

@@ -5,10 +5,10 @@ $ErrorActionPreference='Stop'
 $sourceRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $commit=(git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot rev-parse HEAD).Trim()
 if(git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot status --porcelain){throw 'Candidate is not frozen.'}
-$baseline='60738f1985fae8461418a7b1fd1c87abc8213f24'
-$deployment='b51bc591fabd44b7b843681088e75880'
-$dllHash='3753BFE749D833528DB169F305D3986B27139C92BE63682606E970BDEC4BADB9'
-$manifestHash='CA7FB41A467D6B2FDFAECA4ED924158ED1033EE4C3C99C05EBA5780DC4AD556C'
+$baseline='63960a564b52ec74ffaef2e47cd76bafa169a89d'
+$deployment='e6b1ac313cf241aba6e5ce493f71bc89'
+$dllHash='F6FFD539D68FE2F851A9A88023FFBCE86E5A99AFD716AB28DCFDD1040B2EF690'
+$manifestHash='26D1F6B8A0B1CFE0A1D71291C8727EBBE7C8A76B0FBF6C36E210A8FE68796894'
 $scm='https://calculadoradt-asduazh5e0bhhsgm.scm.eastus2-01.azurewebsites.net'
 $subscription='7018b9b6-5dfc-4d91-bc4d-5f29f27553bd'
 git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot merge-base --is-ancestor $baseline $commit

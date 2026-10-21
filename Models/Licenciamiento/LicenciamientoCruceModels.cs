@@ -190,6 +190,7 @@ public sealed class LicenciamientoCruceTraceItemDto
     public bool AccountMappingApplied { get; set; }
     public string SourceVersion { get; set; } = "";
     public string OriginalClientName { get; set; } = "";
+    public string RelationGroupKey { get; set; } = "";
     public string RecordRelationId { get; set; } = "";
     public string RecordRelationVersion { get; set; } = "";
     public string AccountRelationId { get; set; } = "";
@@ -333,6 +334,15 @@ public sealed class LicenciamientoCruceClientRelationRequestDto
     public string CostRecordId { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string Scope { get; set; } = "";
+    public string ExpectedCostVersion { get; set; } = "";
+    public string ExpectedMappingId { get; set; } = "";
+    public string ExpectedMappingVersion { get; set; } = "";
+    public List<LicenciamientoCruceRelationLineDto> Lines { get; set; } = new();
+}
+
+public sealed class LicenciamientoCruceRelationLineDto
+{
+    public string RecordId { get; set; } = "";
     public string ExpectedCostVersion { get; set; } = "";
     public string ExpectedMappingId { get; set; } = "";
     public string ExpectedMappingVersion { get; set; } = "";

@@ -1918,7 +1918,7 @@ public sealed partial class DataverseService
         CancellationToken ct)
     {
         var accountIds = rows
-            .Select(static row => NormalizeOptionalGuid(row.AccountId))
+            .SelectMany(static row => new[] { NormalizeOptionalGuid(row.AccountId), NormalizeOptionalGuid(row.OriginalAccountId) })
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -1940,6 +1940,8 @@ public sealed partial class DataverseService
 
         foreach (var row in rows)
         {
+            if (resolutions.TryGetValue(row.OriginalAccountId, out var originalResolution))
+                row.OriginalClientId = NormalizeOptionalGuid(originalResolution.ClientId);
             if (row.DirectClientRelation && !string.IsNullOrWhiteSpace(row.ClientId)) continue;
             var accountId = NormalizeOptionalGuid(row.AccountId);
             if (string.IsNullOrWhiteSpace(accountId) || !resolutions.TryGetValue(accountId, out var resolution))
@@ -2727,6 +2729,7 @@ public sealed partial class DataverseService
             AccountMappingApplied = row.AccountMappingApplied,
             SourceVersion = row.SourceVersion,
             OriginalClientName = row.OriginalClientName,
+            RelationGroupKey = LicensingClientMonthRelation.GroupKey(row.OriginalClientId, row.OriginalAccountId, row.OriginalClientName, row.RecordId),
             RecordRelationId = row.RecordRelationId,
             RecordRelationVersion = row.RecordRelationVersion,
             AccountRelationId = row.AccountRelationId,
@@ -3201,6 +3204,7 @@ public sealed partial class DataverseService
         public bool DirectClientRelation { get; set; }
         public string SourceVersion { get; set; } = "";
         public string OriginalClientName { get; set; } = "";
+        public string OriginalClientId { get; set; } = "";
         public string RecordRelationId { get; set; } = "";
         public string RecordRelationVersion { get; set; } = "";
         public string AccountRelationId { get; set; } = "";

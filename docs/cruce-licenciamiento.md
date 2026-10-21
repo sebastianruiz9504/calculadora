@@ -10,6 +10,16 @@ cuando falta uno de los lados. Permite elegir un consumo del periodo/tipo
 cargado y buscar el cliente operativo por nombre o NIT completo sin digito de
 verificacion. Los importes siguen abriendo el detalle de su mes.
 
+El alcance predeterminado es **Todos los costos de este cliente en el mes**.
+Una linea sirve como referencia: el guardado incluye todas las lineas de su
+cliente de origen y mes, incluso otros tipos de contrato o lineas ya relacionadas.
+La vista anticipa cantidad e importe. El origen se identifica por cliente real,
+cuenta original o, si ambos faltan, nombre original exacto; no usa similitud.
+El servidor comprueba el conjunto y sus versiones, y guarda las relaciones por
+consumo en una sola transaccion. Otros clientes y meses quedan fuera del conjunto.
+Al terminar, se cierra la ficha y se consultan nuevamente matriz y totales sin
+cache. Una lectura anterior no puede reemplazar la vista recien actualizada.
+
 Las relaciones usan la tabla existente `cr07a_licenciamientoaccountmap`:
 
 - Solo este consumo: `sourceaccountname=consumption:<record GUID>`; sin cuenta

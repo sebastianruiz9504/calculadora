@@ -72,6 +72,7 @@
     });
 
     let currentData = null;
+    let loadSequence = 0;
     let currentSegments = [];
     let selectedSegmentKey = "";
     let detailDialog = null;
@@ -174,9 +175,10 @@
     loadCruce();
 
     async function loadCruce() {
+        const sequence = ++loadSequence;
         if (!loadUrl) {
             showStatus("error", "No se encontro la ruta de datos.");
-            return;
+            return false;
         }
 
         showStatus("info", "Cargando cruce...");
@@ -188,23 +190,28 @@
             url.searchParams.set("periodMode", periodModeSelect.value || "month");
 
             const response = await fetch(url.toString(), {
+                cache: "no-store",
                 headers: { Accept: "application/json" }
             });
             const payload = await readJsonResponse(response);
+            if (sequence !== loadSequence) return false;
             currentData = payload;
             syncFiltersFromPayload(payload);
             renderCruce(payload);
             showStatus("success", payload.message || "Cruce actualizado.");
+            return true;
         } catch (error) {
+            if (sequence !== loadSequence) return false;
             currentData = null;
             renderCruce(null);
             showStatus("error", error instanceof Error ? error.message : "No fue posible cargar el cruce.");
+            return false;
         } finally {
-            setBusy(false);
-            if (currentData) {
-                renderSegmentSelect();
+            if (sequence === loadSequence) {
+                setBusy(false);
+                if (currentData) renderSegmentSelect();
+                updateDownloadButton();
             }
-            updateDownloadButton();
         }
     }
 
@@ -1277,11 +1284,14 @@
     }
 
     let relationCosts = [];
+    let allRelationCosts = [];
     let relationClients = [];
+    let relationSaving = false;
     let relationSearchSequence = 0;
     let relationSearchTimer = null;
 
     function buildRelationshipBody(items) {
+        allRelationCosts = distinctByRecordId((currentData?.rows || []).flatMap(row => row.trace?.costItems || []));
         relationCosts = distinctByRecordId((currentData?.rows || []).filter(segmentMatches).flatMap(row =>
             (row.trace?.costItems || []).map(item => ({ ...item, nit: row.nitCliente || "" }))));
         relationClients = [...new Map(items.billingItems.filter(item => item.clienteId).map(item =>
@@ -1297,7 +1307,7 @@
                 <span class="licx-relation-arrow" aria-hidden="true">↔</span>
                 ${card("Cliente de la venta", billingNames, items.billingItems, "Sin venta relacionada en este periodo")}
             </div>
-            <p class="licx-relation-help">Relaciona el consumo con el cliente al que se factura. El cruce conserva el mes y el tipo de contrato; guardar una relacion no crea una factura ni un consumo.</p>
+            <p class="licx-relation-help">Elige una linea como referencia para relacionar todos los costos de ese cliente en el mismo mes. Se conservan los importes, las fechas y los tipos de contrato.</p>
             <div class="licx-relation-fields">
                 <label>1. Consumo que quieres relacionar
                     <input class="form-control" data-relation-cost-search placeholder="Buscar consumo por cliente, NIT o cuenta" />
@@ -1312,6 +1322,7 @@
             </div>
             <label class="licx-relation-scope">3. Alcance de la relacion
                 <select class="form-select" data-relation-scope aria-label="Alcance de la relacion">
+                    <option value="month">Todos los costos de este cliente en el mes</option>
                     <option value="record">Solo este consumo</option>
                     <option value="account">Relacion permanente para esta cuenta Intcomex</option>
                 </select>
@@ -1340,6 +1351,11 @@
             `<option value="${escapeHtml(client.clientId)}" ${client.clientId === selectedId ? "selected" : ""}>${escapeHtml(client.clientName)}${client.nit ? ` · NIT ${escapeHtml(client.nit)}` : ""}</option>`).join("");
     }
 
+    function relationMonthLines(cost) {
+        if (!cost?.relationGroupKey || !cost.mes) return [];
+        return allRelationCosts.filter(item => item.relationGroupKey === cost.relationGroupKey && item.mes === cost.mes);
+    }
+
     function refreshRelationshipPreview() {
         const cost = relationCosts.find(item => item.recordId === editDialog.querySelector("[data-relation-cost]")?.value);
         const client = relationClients.find(item => item.clientId === editDialog.querySelector("[data-relation-client]")?.value);
@@ -1347,17 +1363,20 @@
         if (!scope) return;
         // A per-consumption exception must be edited explicitly; a general rule does not remove it.
         scope.querySelector('[value="account"]').disabled = !cost?.accountIdOriginal || !!cost?.recordRelationId;
-        if (scope.selectedOptions[0]?.disabled) scope.value = "record";
+        if (scope.selectedOptions[0]?.disabled) scope.value = "month";
         editDialog.querySelector("[data-relation-origin]").textContent = cost
             ? `Cuenta Intcomex: ${cost.accountOriginal || cost.account || "Sin identificar"}. Cliente actual del cruce: ${cost.cliente || "Sin relacion"}.${cost.accountMappingApplied ? " Relacion guardada aplicada." : ""}`
             : "Puedes buscar costos de otras filas dentro del periodo y tipo seleccionados.";
-        const scopeText = scope.value === "record"
+        const monthLines = relationMonthLines(cost);
+        const scopeText = scope.value === "month"
+            ? `Se relacionaran ${monthLines.length} lineas de costo de ${cost?.mes || "este mes"}, por ${formatCurrency(monthLines.reduce((sum, item) => sum + Number(item.valor || 0), 0))}. Incluye todos los tipos de contrato y las lineas ya relacionadas. Los otros meses conservan su relacion.`
+            : scope.value === "record"
             ? "Afecta unicamente este registro de consumo. Los demas consumos y las futuras cargas conservan su relacion."
             : "Afecta los consumos actuales y futuros de esta cuenta Intcomex, en todos los periodos. Respeta las excepciones guardadas por consumo.";
         editDialog.querySelector("[data-relation-preview]").textContent = cost && client
             ? `${cost.originalClientName || cost.cliente} → ${client.clientName}. ${scopeText}`
             : `Selecciona un consumo y un cliente. ${scopeText}`;
-        editDialog.querySelector("[data-relation-save]").disabled = !cost || !client;
+        editDialog.querySelector("[data-relation-save]").disabled = relationSaving || !cost || !client || (scope.value === "month" && !monthLines.length);
     }
 
     function handleRelationshipInput(event) {
@@ -1392,28 +1411,46 @@
     }
 
     async function saveRelationship() {
+        if (relationSaving) return;
         const cost = relationCosts.find(item => item.recordId === editDialog.querySelector("[data-relation-cost]").value);
         const client = relationClients.find(item => item.clientId === editDialog.querySelector("[data-relation-client]").value);
         const scope = editDialog.querySelector("[data-relation-scope]").value;
         if (!cost || !client) return;
+        relationSaving = true;
+        ++loadSequence; // A read started before this write must never replace the refreshed matrix.
+        setBusy(true);
         const button = editDialog.querySelector("[data-relation-save]");
         button.disabled = true;
+        button.textContent = "Guardando relacion...";
         editDialog.querySelector("[data-relation-error]").textContent = "";
         try {
-            const result = await postJson(app.dataset.saveClientRelationUrl, {
+            const payload = {
                 costRecordId: cost.recordId, clientId: client.clientId, scope, expectedCostVersion: cost.sourceVersion,
                 expectedMappingId: scope === "record" ? cost.recordRelationId || "" : cost.accountRelationId || "",
                 expectedMappingVersion: scope === "record" ? cost.recordRelationVersion || "" : cost.accountRelationVersion || ""
-            });
+            };
+            if (scope === "month") payload.lines = relationMonthLines(cost).map(item => ({
+                recordId: item.recordId, expectedCostVersion: item.sourceVersion,
+                expectedMappingId: item.recordRelationId || "", expectedMappingVersion: item.recordRelationVersion || ""
+            }));
+            const result = await postJson(app.dataset.saveClientRelationUrl, payload);
             closeEditDialog();
-            await loadCruce();
-            showStatus("success", result?.message || "Relacion guardada y cruce recalculado.");
+            const refreshed = await loadCruce();
+            showStatus(refreshed ? "success" : "error", refreshed
+                ? `${result?.message || "Relacion guardada."} Vista y totales actualizados.`
+                : "La relacion se guardo, pero no se pudo refrescar la vista. Pulsa Actualizar; no necesitas guardar de nuevo.");
         } catch (error) {
             editDialog.querySelector("[data-relation-error]").textContent = error.message || "No se pudo guardar la relacion.";
-        } finally { button.disabled = false; }
+        } finally {
+            relationSaving = false;
+            setBusy(false);
+            button.textContent = "Guardar relacion";
+            refreshRelationshipPreview();
+        }
     }
 
     function openClientEditDialog(clientKey, clientName) {
+        if (relationSaving) return;
         const dialog = ensureEditDialog();
         const items = getClientEditItems(clientKey);
         dialog.querySelector("[data-edit-title]").textContent = `Relacion costo y venta · ${clientName || "Cliente"}`;
