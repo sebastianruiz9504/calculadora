@@ -9,9 +9,6 @@
     const updateCostContractUrl = app.dataset.updateCostContractUrl || "";
     const updateBillingContractUrl = app.dataset.updateBillingContractUrl || "";
     const updateBillingVerticalUrl = app.dataset.updateBillingVerticalUrl || "";
-    const updateCostAccountUrl = app.dataset.updateCostAccountUrl || "";
-    const saveAccountMappingUrl = app.dataset.saveAccountMappingUrl || "";
-    const searchAccountsUrl = app.dataset.searchAccountsUrl || "";
     const updateCostInvoiceDateUrl = app.dataset.updateCostInvoiceDateUrl || "";
     const filtersForm = document.getElementById("licCruceFilters");
     const yearInput = document.getElementById("licCruceYear");
@@ -79,7 +76,6 @@
     let selectedSegmentKey = "";
     let detailDialog = null;
     let editDialog = null;
-    let accountSearchTimer = null;
     let sortState = { key: "", direction: "" };
     let selectedClientTrendKeys = new Set();
     let selectedClientMarginKeys = new Set();
@@ -1189,8 +1185,8 @@
                             <th>Tipo</th>
                             ${isBilling ? "<th class=\"text-end\">Total factura</th><th class=\"text-end\">IVA</th>" : ""}
                             <th class="text-end">${isBilling ? "Venta sin IVA" : "Costo"}</th>
-                            ${canMoveCostMonth ? "<th>Mover mes</th>" : ""}
-                            ${isBilling ? "" : "<th>Record ID</th>"}
+                            ${canMoveCostMonth ? "<th>Mes de consumo</th>" : ""}
+                            ${isBilling ? "" : "<th>Referencia tecnica</th>"}
                         </tr>
                     </thead>
                     <tbody>
@@ -1218,7 +1214,7 @@
             : "";
         const moveCostCell = canMoveCostMonth
             ? `<td>
-                    <div class="licx-edit-group" data-record-id="${escapeHtml(item.recordId || "")}">
+                    <div class="licx-edit-group" data-record-id="${escapeHtml(item.recordId || "")}" data-cost-version="${escapeHtml(item.sourceVersion || "")}">
                         <input class="form-control form-control-sm" type="month" data-cost-month-input value="${escapeHtml(item.mes || "")}" />
                         <button type="button" class="btn btn-sm btn-outline-primary" data-detail-action="move-cost-month">Mover</button>
                     </div>
@@ -1239,7 +1235,7 @@
                 ${billingTotals}
                 <td class="text-end">${formatCurrency(item.valor)}</td>
                 ${moveCostCell}
-                ${isBilling ? "" : `<td><code>${escapeHtml(item.recordId || "")}</code></td>`}
+                ${isBilling ? "" : `<td><details><summary>Ver identificadores</summary><code>${escapeHtml(item.recordId || "")}</code></details></td>`}
             </tr>
         `;
     }
@@ -1267,7 +1263,8 @@
         try {
             await postJson(updateCostInvoiceDateUrl, {
                 recordId,
-                invoiceDate: `${monthValue}-01`
+                consumptionMonth: monthValue,
+                expectedCostVersion: wrapper.dataset.costVersion || ""
             });
             closeDetailDialog();
             showStatus("success", "Costo movido. Recalculando cruce...");
@@ -1279,13 +1276,152 @@
         }
     }
 
+    let relationCosts = [];
+    let relationClients = [];
+    let relationSearchSequence = 0;
+    let relationSearchTimer = null;
+
+    function buildRelationshipBody(items) {
+        relationCosts = distinctByRecordId((currentData?.rows || []).filter(segmentMatches).flatMap(row =>
+            (row.trace?.costItems || []).map(item => ({ ...item, nit: row.nitCliente || "" }))));
+        relationClients = [...new Map(items.billingItems.filter(item => item.clienteId).map(item =>
+            [item.clienteId, { clientId: item.clienteId, clientName: item.cliente, nit: "" }])).values()];
+        const costNames = [...new Set(items.costItems.map(item => item.originalClientName || item.cliente))].join(" · ");
+        const billingNames = [...new Set(items.billingItems.map(item => item.cliente))].join(" · ");
+        const card = (title, names, lines, empty) => `<section class="licx-relation-card ${lines.length ? "" : "is-missing"}">
+            <h3>${title}</h3><strong>${escapeHtml(names || empty)}</strong>
+            <span>${lines.length} registro(s) · ${formatCurrency(lines.reduce((sum, item) => sum + Number(item.valor || 0), 0))}</span></section>`;
+        return `<div class="licx-relationship">
+            <div class="licx-relation-pair">
+                ${card("Cliente del costo", costNames, items.costItems, "Sin costo relacionado en este periodo")}
+                <span class="licx-relation-arrow" aria-hidden="true">↔</span>
+                ${card("Cliente de la venta", billingNames, items.billingItems, "Sin venta relacionada en este periodo")}
+            </div>
+            <p class="licx-relation-help">Relaciona el consumo con el cliente al que se factura. El cruce conserva el mes y el tipo de contrato; guardar una relacion no crea una factura ni un consumo.</p>
+            <div class="licx-relation-fields">
+                <label>1. Consumo que quieres relacionar
+                    <input class="form-control" data-relation-cost-search placeholder="Buscar consumo por cliente, NIT o cuenta" />
+                    <select class="form-select" data-relation-cost aria-label="Consumo que quieres relacionar">${relationCostOptions(items.costItems[0]?.recordId || "")}</select>
+                    <small data-relation-origin></small>
+                </label>
+                <label>2. Cliente al que se factura
+                    <input class="form-control" data-relation-client-search placeholder="Buscar cliente por nombre o NIT" />
+                    <select class="form-select" data-relation-client aria-label="Cliente al que se factura">${relationClientOptions(relationClients.length === 1 ? relationClients[0].clientId : "")}</select>
+                    <small data-relation-search-status aria-live="polite">Busca un cliente del directorio, aunque aun no tenga venta en el periodo.</small>
+                </label>
+            </div>
+            <label class="licx-relation-scope">3. Alcance de la relacion
+                <select class="form-select" data-relation-scope aria-label="Alcance de la relacion">
+                    <option value="record">Solo este consumo</option>
+                    <option value="account">Relacion permanente para esta cuenta Intcomex</option>
+                </select>
+            </label>
+            <div class="licx-relation-preview" data-relation-preview aria-live="polite"></div>
+            <p data-relation-error class="text-danger" role="alert"></p>
+            <button type="button" class="btn btn-primary" data-relation-save disabled>Guardar relacion</button>
+            <details class="licx-relation-details"><summary>Ver consumos y ajustes de clasificacion (${items.costItems.length})</summary>${buildCostEditTable(items.costItems)}</details>
+            <details class="licx-relation-details"><summary>Ver facturas y ajustes de clasificacion (${items.billingItems.length})</summary>${buildBillingEditTable(items.billingItems)}</details>
+        </div>`;
+    }
+
+    function relationCostOptions(selectedId, query = "") {
+        const normalized = query.toLocaleLowerCase("es");
+        const matches = relationCosts.filter(item => [item.originalClientName, item.cliente, item.nit, item.accountOriginal, item.account, item.producto, item.mes]
+            .join(" ").toLocaleLowerCase("es").includes(normalized));
+        const visible = matches.slice(0, 100);
+        const selected = relationCosts.find(item => item.recordId === selectedId);
+        if (selected && matches.includes(selected) && !visible.includes(selected)) visible.unshift(selected);
+        return `<option value="">${matches.length ? `Selecciona un consumo (${matches.length} disponibles)` : "No hay consumos con esa busqueda"}</option>` + visible.map(item =>
+            `<option value="${escapeHtml(item.recordId)}" ${item.recordId === selectedId ? "selected" : ""}>${escapeHtml(item.originalClientName || item.cliente)} · ${escapeHtml(item.producto || "Consumo")} · ${escapeHtml(item.mes)} · ${formatCurrency(item.valor)}</option>`).join("");
+    }
+
+    function relationClientOptions(selectedId = "") {
+        return `<option value="">Selecciona el cliente de facturacion</option>` + relationClients.map(client =>
+            `<option value="${escapeHtml(client.clientId)}" ${client.clientId === selectedId ? "selected" : ""}>${escapeHtml(client.clientName)}${client.nit ? ` · NIT ${escapeHtml(client.nit)}` : ""}</option>`).join("");
+    }
+
+    function refreshRelationshipPreview() {
+        const cost = relationCosts.find(item => item.recordId === editDialog.querySelector("[data-relation-cost]")?.value);
+        const client = relationClients.find(item => item.clientId === editDialog.querySelector("[data-relation-client]")?.value);
+        const scope = editDialog.querySelector("[data-relation-scope]");
+        if (!scope) return;
+        // A per-consumption exception must be edited explicitly; a general rule does not remove it.
+        scope.querySelector('[value="account"]').disabled = !cost?.accountIdOriginal || !!cost?.recordRelationId;
+        if (scope.selectedOptions[0]?.disabled) scope.value = "record";
+        editDialog.querySelector("[data-relation-origin]").textContent = cost
+            ? `Cuenta Intcomex: ${cost.accountOriginal || cost.account || "Sin identificar"}. Cliente actual del cruce: ${cost.cliente || "Sin relacion"}.${cost.accountMappingApplied ? " Relacion guardada aplicada." : ""}`
+            : "Puedes buscar costos de otras filas dentro del periodo y tipo seleccionados.";
+        const scopeText = scope.value === "record"
+            ? "Afecta unicamente este registro de consumo. Los demas consumos y las futuras cargas conservan su relacion."
+            : "Afecta los consumos actuales y futuros de esta cuenta Intcomex, en todos los periodos. Respeta las excepciones guardadas por consumo.";
+        editDialog.querySelector("[data-relation-preview]").textContent = cost && client
+            ? `${cost.originalClientName || cost.cliente} → ${client.clientName}. ${scopeText}`
+            : `Selecciona un consumo y un cliente. ${scopeText}`;
+        editDialog.querySelector("[data-relation-save]").disabled = !cost || !client;
+    }
+
+    function handleRelationshipInput(event) {
+        if (event.target.matches("[data-relation-cost-search]")) {
+            const select = editDialog.querySelector("[data-relation-cost]");
+            select.innerHTML = relationCostOptions(select.value, event.target.value);
+            refreshRelationshipPreview();
+        }
+        if (!event.target.matches("[data-relation-client-search]")) return;
+        clearTimeout(relationSearchTimer);
+        const sequence = ++relationSearchSequence;
+        const query = event.target.value.trim();
+        relationClients = [];
+        editDialog.querySelector("[data-relation-client]").innerHTML = relationClientOptions();
+        refreshRelationshipPreview();
+        editDialog.querySelector("[data-relation-search-status]").textContent = query.length < 2 ? "Escribe al menos dos caracteres." : "Buscando clientes...";
+        if (query.length < 2) return;
+        relationSearchTimer = setTimeout(async () => {
+            try {
+                const url = new URL(app.dataset.searchClientsUrl, window.location.origin);
+                url.searchParams.set("query", query);
+                const response = await fetch(url, { credentials: "same-origin" });
+                const clients = await readJsonResponse(response);
+                if (sequence !== relationSearchSequence || editDialog.hidden) return;
+                relationClients = Array.isArray(clients) ? clients : [];
+                editDialog.querySelector("[data-relation-client]").innerHTML = relationClientOptions();
+                editDialog.querySelector("[data-relation-search-status]").textContent = relationClients.length ? `${relationClients.length} cliente(s). Selecciona la razon social correcta.` : "No se encontraron clientes. Prueba el nombre o el NIT sin digito de verificacion.";
+            } catch (error) {
+                if (sequence === relationSearchSequence && !editDialog.hidden) editDialog.querySelector("[data-relation-search-status]").textContent = error.message || "No fue posible consultar los clientes.";
+            }
+        }, 250);
+    }
+
+    async function saveRelationship() {
+        const cost = relationCosts.find(item => item.recordId === editDialog.querySelector("[data-relation-cost]").value);
+        const client = relationClients.find(item => item.clientId === editDialog.querySelector("[data-relation-client]").value);
+        const scope = editDialog.querySelector("[data-relation-scope]").value;
+        if (!cost || !client) return;
+        const button = editDialog.querySelector("[data-relation-save]");
+        button.disabled = true;
+        editDialog.querySelector("[data-relation-error]").textContent = "";
+        try {
+            const result = await postJson(app.dataset.saveClientRelationUrl, {
+                costRecordId: cost.recordId, clientId: client.clientId, scope, expectedCostVersion: cost.sourceVersion,
+                expectedMappingId: scope === "record" ? cost.recordRelationId || "" : cost.accountRelationId || "",
+                expectedMappingVersion: scope === "record" ? cost.recordRelationVersion || "" : cost.accountRelationVersion || ""
+            });
+            closeEditDialog();
+            await loadCruce();
+            showStatus("success", result?.message || "Relacion guardada y cruce recalculado.");
+        } catch (error) {
+            editDialog.querySelector("[data-relation-error]").textContent = error.message || "No se pudo guardar la relacion.";
+        } finally { button.disabled = false; }
+    }
+
     function openClientEditDialog(clientKey, clientName) {
         const dialog = ensureEditDialog();
         const items = getClientEditItems(clientKey);
-        dialog.querySelector("[data-edit-title]").textContent = `Mapeo - ${clientName || "Cliente"}`;
+        dialog.querySelector("[data-edit-title]").textContent = `Relacion costo y venta · ${clientName || "Cliente"}`;
         dialog.querySelector("[data-edit-subtitle]").textContent =
-            `${items.accountItems.length} cuenta(s) origen | ${items.costItems.length} costo(s) | ${items.billingItems.length} factura(s)`;
-        dialog.querySelector("[data-edit-body]").innerHTML = buildClientEditBody(items);
+            `${currentData?.periodLabel || "Periodo seleccionado"} · ${items.costItems.length} consumo(s) · ${items.billingItems.length} factura(s)`;
+        relationSearchSequence++;
+        dialog.querySelector("[data-edit-body]").innerHTML = buildRelationshipBody(items);
+        refreshRelationshipPreview();
         dialog.hidden = false;
         document.body.classList.add("licx-modal-open");
         dialog.querySelector("[data-edit-close]")?.focus();
@@ -1296,6 +1432,8 @@
             return;
         }
 
+        relationSearchSequence++;
+        clearTimeout(relationSearchTimer);
         editDialog.hidden = true;
         document.body.classList.remove("licx-modal-open");
     }
@@ -1310,10 +1448,10 @@
         editDialog.hidden = true;
         editDialog.innerHTML = `
             <div class="licx-modal__backdrop" data-edit-backdrop></div>
-            <section class="licx-modal__dialog" role="dialog" aria-modal="true" aria-label="Editar cruce de cliente">
+            <section class="licx-modal__dialog" role="dialog" aria-modal="true" aria-label="Relacion costo y venta">
                 <header class="licx-modal__header">
                     <div>
-                        <div class="licx-kicker">Editar cliente</div>
+                        <div class="licx-kicker">Cruce de licenciamiento</div>
                         <h2 data-edit-title>Cliente</h2>
                         <span data-edit-subtitle></span>
                     </div>
@@ -1326,7 +1464,9 @@
         `;
         editDialog.querySelector("[data-edit-close]")?.addEventListener("click", closeEditDialog);
         editDialog.querySelector("[data-edit-backdrop]")?.addEventListener("click", closeEditDialog);
-        editDialog.addEventListener("input", handleAccountSearchInput);
+        editDialog.addEventListener("input", handleRelationshipInput);
+        editDialog.addEventListener("change", refreshRelationshipPreview);
+        editDialog.addEventListener("click", event => { if (event.target.closest("[data-relation-save]")) saveRelationship(); });
         editDialog.addEventListener("click", handleClientEditAction);
         document.body.appendChild(editDialog);
         return editDialog;
@@ -1339,106 +1479,7 @@
                 && (row.matrixClientKey || buildRowClientKey(row)) === clientKey);
         const costItems = distinctByRecordId(rows.flatMap((row) => row.trace?.costItems || []));
         const billingItems = distinctByRecordId(rows.flatMap((row) => row.trace?.billingItems || []));
-        const accountItems = buildAccountMapItems(costItems);
-        return { accountItems, costItems, billingItems };
-    }
-
-    function buildClientEditBody(items) {
-        return `
-            <div class="licx-edit-sections">
-                <section>
-                    <h3>Mapeo permanente de Account ID</h3>
-                    ${buildAccountMapTable(items.accountItems)}
-                </section>
-                <section>
-                    <h3>Costos licenciamiento</h3>
-                    ${buildCostEditTable(items.costItems)}
-                </section>
-                <section>
-                    <h3>Facturacion</h3>
-                    ${buildBillingEditTable(items.billingItems)}
-                </section>
-            </div>
-        `;
-    }
-
-    function buildAccountMapItems(costItems) {
-        const map = new Map();
-        for (const item of Array.isArray(costItems) ? costItems : []) {
-            const sourceAccountId = (item.accountIdOriginal || item.accountId || "").toString();
-            const sourceAccountName = (item.accountOriginal || item.account || "").toString();
-            const key = (sourceAccountId || sourceAccountName).toLowerCase();
-            if (!key || map.has(key)) {
-                continue;
-            }
-
-            map.set(key, {
-                sourceAccountId,
-                sourceAccountName,
-                sourceClientName: item.cliente || "",
-                currentAccountId: item.accountId || "",
-                currentAccountName: item.account || "",
-                currentClientName: item.cliente || "",
-                mappingId: item.accountMappingId || "",
-                mappingApplied: item.accountMappingApplied === true
-            });
-        }
-
-        return [...map.values()].sort((left, right) =>
-            (left.sourceAccountName || left.sourceAccountId).localeCompare(right.sourceAccountName || right.sourceAccountId, "es"));
-    }
-
-    function buildAccountMapTable(items) {
-        if (!items.length) {
-            return "<div class=\"licx-empty licx-empty--small\">Esta fila no tiene cuentas de costo para mapear.</div>";
-        }
-
-        return `
-            <div class="licx-table-wrap licx-table-wrap--detail">
-                <table class="table align-middle licx-table licx-map-table">
-                    <thead>
-                        <tr>
-                            <th>Cuenta origen Excel</th>
-                            <th>Cliente detectado</th>
-                            <th>Cuenta destino actual</th>
-                            <th>Nuevo Account ID destino</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${items.map(buildAccountMapRow).join("")}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
-
-    function buildAccountMapRow(item) {
-        const currentOption = item.currentAccountId
-            ? `<option value="${escapeHtml(item.currentAccountId)}">${escapeHtml(item.currentAccountName || item.currentAccountId)}${item.currentClientName ? ` - ${escapeHtml(item.currentClientName)}` : ""}</option>`
-            : "<option value=\"\">Busca una cuenta destino</option>";
-        return `
-            <tr data-source-account-id="${escapeHtml(item.sourceAccountId || "")}" data-source-account-name="${escapeHtml(item.sourceAccountName || "")}" data-source-client-name="${escapeHtml(item.sourceClientName || "")}">
-                <td>
-                    <strong>${escapeHtml(item.sourceAccountName || item.sourceAccountId || "-")}</strong>
-                    <small>${escapeHtml(item.sourceAccountId || "")}</small>
-                </td>
-                <td>${escapeHtml(item.sourceClientName || "-")}</td>
-                <td>
-                    <strong>${escapeHtml(item.currentAccountName || "-")}</strong>
-                    <small>${item.mappingApplied ? "Mapeo aplicado" : "Relacion actual"}</small>
-                </td>
-                <td>
-                    <input class="form-control form-control-sm" data-account-search-input placeholder="Buscar Account ID destino" />
-                    <select class="form-select form-select-sm mt-1" data-target-account-select>
-                        ${currentOption}
-                    </select>
-                </td>
-                <td class="text-end">
-                    <button type="button" class="btn btn-sm btn-primary" data-edit-action="save-account-mapping">Guardar mapeo</button>
-                </td>
-            </tr>
-        `;
+        return { costItems, billingItems };
     }
 
     function buildCostEditTable(items) {
@@ -1457,7 +1498,7 @@
                             <th>Cuenta</th>
                             <th>Tipo contrato</th>
                             <th class="text-end">Costo</th>
-                            <th>Record ID</th>
+                            <th>Referencia tecnica</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1477,11 +1518,8 @@
                     <small>${escapeHtml(item.productoId || "")}</small>
                 </td>
                 <td>
-                    <div class="licx-edit-group">
-                        <input class="form-control form-control-sm" data-account-input value="${escapeHtml(item.account || item.accountId || "")}" />
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-edit-action="save-cost-account">Guardar</button>
-                    </div>
-                    <small>${escapeHtml(item.accountId || "")}</small>
+                    <strong>${escapeHtml(item.accountOriginal || item.account || "Sin cuenta")}</strong>
+                    <small>Cliente del cruce: ${escapeHtml(item.cliente || "Sin relacion")}</small>
                 </td>
                 <td>
                     <div class="licx-edit-group">
@@ -1492,7 +1530,7 @@
                     </div>
                 </td>
                 <td class="text-end">${formatCurrency(item.valor)}</td>
-                <td><code>${escapeHtml(item.recordId || "")}</code></td>
+                <td><details><summary>Ver identificadores</summary><code>${escapeHtml(item.recordId || "")}</code></details></td>
             </tr>
         `;
     }
@@ -1515,7 +1553,7 @@
                             <th>Vertical</th>
                             <th>Tipo contrato</th>
                             <th class="text-end">Venta sin IVA</th>
-                            <th>Record ID</th>
+                            <th>Referencia tecnica</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1553,50 +1591,9 @@
                     </div>
                 </td>
                 <td class="text-end">${formatCurrency(item.valor)}</td>
-                <td><code>${escapeHtml(item.recordId || "")}</code></td>
+                <td><details><summary>Ver identificadores</summary><code>${escapeHtml(item.recordId || "")}</code></details></td>
             </tr>
         `;
-    }
-
-    function handleAccountSearchInput(event) {
-        const input = event.target.closest("[data-account-search-input]");
-        if (!input) {
-            return;
-        }
-
-        window.clearTimeout(accountSearchTimer);
-        accountSearchTimer = window.setTimeout(() => {
-            searchAccountOptions(input).catch((error) => {
-                showStatus("error", error instanceof Error ? error.message : "No fue posible buscar Account IDs.");
-            });
-        }, 350);
-    }
-
-    async function searchAccountOptions(input) {
-        const query = (input.value || "").trim();
-        const row = input.closest("tr");
-        const select = row?.querySelector("[data-target-account-select]");
-        if (!select || query.length < 2) {
-            return;
-        }
-
-        const url = new URL(searchAccountsUrl, window.location.origin);
-        url.searchParams.set("query", query);
-        url.searchParams.set("top", "12");
-        const response = await fetch(url.toString(), {
-            headers: { Accept: "application/json" }
-        });
-        const accounts = await readJsonResponse(response);
-        if (!Array.isArray(accounts) || accounts.length === 0) {
-            select.innerHTML = "<option value=\"\">Sin resultados</option>";
-            return;
-        }
-
-        select.innerHTML = accounts.map((account) => `
-            <option value="${escapeHtml(account.accountId || "")}">
-                ${escapeHtml(account.accountName || account.accountId || "")}${account.clientName ? ` - ${escapeHtml(account.clientName)}` : ""}
-            </option>
-        `).join("");
     }
 
     async function handleClientEditAction(event) {
@@ -1606,30 +1603,18 @@
         }
 
         const row = button.closest("tr[data-record-id]");
-        const mappingRow = button.closest("tr[data-source-account-id], tr[data-source-account-name]");
         const recordId = row?.dataset.recordId || "";
         const action = button.dataset.editAction || "";
-        if (action !== "save-account-mapping" && !recordId) {
+        if (!recordId) {
             showStatus("error", "No se encontro el ID del registro.");
             return;
         }
 
         button.disabled = true;
         try {
-            if (action === "save-account-mapping") {
-                const targetAccountId = mappingRow?.querySelector("[data-target-account-select]")?.value || "";
-                await postJson(saveAccountMappingUrl, {
-                    sourceAccountId: mappingRow?.dataset.sourceAccountId || "",
-                    sourceAccountName: mappingRow?.dataset.sourceAccountName || "",
-                    sourceClientName: mappingRow?.dataset.sourceClientName || "",
-                    targetAccountId
-                });
-            } else if (action === "save-cost-contract") {
+            if (action === "save-cost-contract") {
                 const value = Number(row.querySelector("[data-contract-select]")?.value || 0);
                 await postJson(updateCostContractUrl, { recordIds: [recordId], contractTypeValue: value });
-            } else if (action === "save-cost-account") {
-                const accountId = row.querySelector("[data-account-input]")?.value || "";
-                await postJson(updateCostAccountUrl, { recordId, accountId });
             } else if (action === "save-billing-contract") {
                 const value = Number(row.querySelector("[data-contract-select]")?.value || 0);
                 await postJson(updateBillingContractUrl, { recordIds: [recordId], contractTypeOptionValue: value });

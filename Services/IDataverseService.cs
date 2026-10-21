@@ -429,6 +429,8 @@ public interface IDataverseService
     Task<LicenciamientoCruceDashboardDto> GetLicenciamientoCruceDashboardAsync(int year, int month, string periodMode = "month", CancellationToken ct = default);
     Task<LicenciamientoCruceUpdateCostAccountResultDto> UpdateLicenciamientoCruceCostAccountAsync(LicenciamientoCruceUpdateCostAccountRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoCruceUpdateBillingVerticalResultDto> UpdateLicenciamientoCruceBillingVerticalAsync(LicenciamientoCruceUpdateBillingVerticalRequestDto request, CancellationToken ct = default);
+    Task<IReadOnlyList<LicenciamientoCruceClientOptionDto>> SearchLicenciamientoCruceClientsAsync(string query, CancellationToken ct = default);
+    Task<LicenciamientoCruceSaveAccountMappingResultDto> SaveLicenciamientoCruceClientRelationAsync(LicenciamientoCruceClientRelationRequestDto request, CancellationToken ct = default);
     Task<IReadOnlyList<LicenciamientoCruceAccountLookupDto>> SearchLicenciamientoCruceAccountsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<LicenciamientoCruceSaveAccountMappingResultDto> SaveLicenciamientoCruceAccountMappingAsync(LicenciamientoCruceSaveAccountMappingRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoCruceUpdateCostInvoiceDateResultDto> UpdateLicenciamientoCruceCostInvoiceDateAsync(LicenciamientoCruceUpdateCostInvoiceDateRequestDto request, CancellationToken ct = default);

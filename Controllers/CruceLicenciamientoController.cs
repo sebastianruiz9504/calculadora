@@ -238,6 +238,23 @@ public sealed class CruceLicenciamientoController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SearchClients([FromQuery] string query = "", CancellationToken ct = default)
+    {
+        try { return Ok(await _dataverse.SearchLicenciamientoCruceClientsAsync(query, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SaveClientRelation([FromBody] LicenciamientoCruceClientRelationRequestDto? request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest(CreateErrorPayload("Solicitud invalida."));
+        try { return Ok(await _dataverse.SaveLicenciamientoCruceClientRelationAsync(request, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+    }
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SaveAccountMapping([FromBody] LicenciamientoCruceSaveAccountMappingRequestDto? request, CancellationToken ct)

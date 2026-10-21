@@ -512,30 +512,34 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(recordId))
             throw new InvalidOperationException("Selecciona un costo valido.");
 
-        if (!TryParseDateOnly((request.InvoiceDate ?? "").Trim(), out var invoiceDate))
-            throw new InvalidOperationException("La fecha factura seleccionada no es valida.");
-
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
-        var payload = new Dictionary<string, object?>
+        var consumptionMonth = LicensingConsumptionPeriod.ConsumptionMonth(request.ConsumptionMonth, null);
+        if (!consumptionMonth.HasValue) throw new InvalidOperationException("Selecciona un mes de consumo valido.");
+        var user = _httpContextAccessor.HttpContext?.User ?? throw new InvalidOperationException("No HttpContext available.");
+        var metadata = await ResolveLicensingMetadataAsync(user, ct);
+        var path = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({recordId})";
+        var select = $"?$select={LicensingInvoiceDateField},{LicensingBillingIntervalField}";
+        using var before = JsonDocument.Parse(await CallDataverseGetJsonAsync(path + select, user, ct));
+        var version = ReadString(before.RootElement, "@odata.etag");
+        if (string.IsNullOrWhiteSpace(request.ExpectedCostVersion) || version != request.ExpectedCostVersion)
+            throw new InvalidOperationException("El consumo cambio. Actualiza la ficha antes de mover el mes.");
+        var payload = new Dictionary<string, object?> { [LicensingBillingIntervalField] = consumptionMonth.Value.ToString("MM/yyyy", CultureInfo.InvariantCulture) };
+        using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        using var response = await _downstreamApi.CallApiForUserAsync("Dataverse", options =>
         {
-            [LicensingInvoiceDateField] = ConvertLicensingPayloadValue(metadata, LicensingInvoiceDateField, invoiceDate)
-        };
-
-        await CallDataverseSendAsync(
-            $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({recordId})",
-            "PATCH",
-            payload,
-            httpContext.User,
-            ct);
-
+            options.RelativePath = path; options.HttpMethod = "PATCH";
+            options.CustomizeHttpRequestMessage = message => message.Headers.TryAddWithoutValidation("If-Match", version);
+        }, user: user, content: content, cancellationToken: ct);
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("No se pudo mover el consumo. Actualiza la ficha y revisa el registro.");
+        using var after = JsonDocument.Parse(await CallDataverseGetJsonAsync(path + select, user, ct));
+        if (LicensingConsumptionPeriod.ConsumptionMonth(ReadString(after.RootElement, LicensingBillingIntervalField), null) != consumptionMonth
+            || ReadString(before.RootElement, LicensingInvoiceDateField) != ReadString(after.RootElement, LicensingInvoiceDateField))
+            throw new InvalidOperationException("No fue posible confirmar el periodo guardado.");
         return new LicenciamientoCruceUpdateCostInvoiceDateResultDto
         {
-            Message = $"Costo movido a {invoiceDate:yyyy-MM}.",
+            Message = $"Consumo movido a {consumptionMonth:yyyy-MM}; se conserva la fecha de factura del proveedor.",
             RecordId = recordId,
-            InvoiceDate = invoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            Month = invoiceDate.ToString("yyyy-MM", CultureInfo.InvariantCulture)
+            InvoiceDate = ReadDateOnly(after.RootElement, LicensingInvoiceDateField)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            Month = consumptionMonth.Value.ToString("yyyy-MM", CultureInfo.InvariantCulture)
         };
     }
 
@@ -1024,7 +1028,7 @@ public sealed partial class DataverseService
             return null;
 
         var targetAccountId = NormalizeOptionalGuid(ReadString(item, LicenciamientoCruceAccountMapTargetAccountIdField));
-        if (string.IsNullOrWhiteSpace(targetAccountId))
+        if (string.IsNullOrWhiteSpace(targetAccountId) && string.IsNullOrWhiteSpace(ReadString(item, LicenciamientoCruceAccountMapTargetClientIdField)))
             return null;
 
         var active = !item.TryGetProperty(LicenciamientoCruceAccountMapActiveField, out _)
@@ -1033,6 +1037,7 @@ public sealed partial class DataverseService
         return new LicenciamientoCruceAccountMapping
         {
             MappingId = mappingId,
+            Version = ReadString(item, "@odata.etag"),
             SourceAccountId = NormalizeOptionalGuid(ReadString(item, LicenciamientoCruceAccountMapSourceAccountIdField)),
             SourceAccountName = ReadString(item, LicenciamientoCruceAccountMapSourceAccountNameField).Trim(),
             SourceClientName = ReadString(item, LicenciamientoCruceAccountMapSourceClientNameField).Trim(),
@@ -1086,7 +1091,7 @@ public sealed partial class DataverseService
         foreach (var row in costRows)
         {
             var group = FirstLicenciamientoCruceBusinessGroup(
-                GetLicenciamientoCruceBusinessGroup(accountGroups.ByAccountId, NormalizeOptionalGuid(row.AccountId)),
+                row.DirectClientRelation ? LicenciamientoCruceBusinessGroupInfo.Empty : GetLicenciamientoCruceBusinessGroup(accountGroups.ByAccountId, NormalizeOptionalGuid(row.AccountId)),
                 GetLicenciamientoCruceBusinessGroup(clientGroups, NormalizeOptionalGuid(row.ClientId)),
                 GetLicenciamientoCruceBusinessGroup(accountGroups.ByClientId, NormalizeOptionalGuid(row.ClientId)));
 
@@ -1496,13 +1501,12 @@ public sealed partial class DataverseService
 
         try
         {
-            var filter = Uri.EscapeDataString($"{LicensingInvoiceDateField} ne null");
+            var filter = Uri.EscapeDataString($"{LicensingInvoiceDateField} ne null or {LicensingBillingIntervalField} ne null");
             var orderBy = Uri.EscapeDataString($"{LicensingInvoiceDateField} desc");
-            var relativeUrl = $"/api/data/v9.2/{licensingMetadata.BaseMetadata.EntitySetName}?$select={LicensingInvoiceDateField}&$filter={filter}&$orderby={orderBy}&$top=1";
+            var relativeUrl = $"/api/data/v9.2/{licensingMetadata.BaseMetadata.EntitySetName}?$select={LicensingInvoiceDateField},{LicensingBillingIntervalField}&$filter={filter}&$orderby={orderBy}";
             var rows = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
-            var costDate = rows.Count > 0 ? ReadDateOnly(rows[0], LicensingInvoiceDateField) : null;
-            if (costDate.HasValue)
-                dates.Add(new DateOnly(costDate.Value.Year, costDate.Value.Month, 1));
+            var months = rows.Select(row => LicensingConsumptionPeriod.ConsumptionMonth(ReadString(row, LicensingBillingIntervalField), ReadDateOnly(row, LicensingInvoiceDateField))).Where(month => month.HasValue).Select(month => month!.Value).ToList();
+            if (months.Count > 0) dates.Add(months.Max());
         }
         catch (Exception ex) when (ex is InvalidOperationException or JsonException)
         {
@@ -1714,13 +1718,8 @@ public sealed partial class DataverseService
             Month = month.Month
         };
 
-    private static DateOnly GetLicenciamientoCruceCostMonth(LicenciamientoCruceCostRow row)
-    {
-        if (row.InvoiceDate.HasValue)
-            return new DateOnly(row.InvoiceDate.Value.Year, row.InvoiceDate.Value.Month, 1);
-
-        return new DateOnly(row.CostMonth.Year, row.CostMonth.Month, 1);
-    }
+    private static DateOnly GetLicenciamientoCruceCostMonth(LicenciamientoCruceCostRow row) =>
+        new(row.CostMonth.Year, row.CostMonth.Month, 1);
 
     private static DateOnly GetLicenciamientoCruceBillingMonth(BillingRecordRow row)
     {
@@ -1740,11 +1739,7 @@ public sealed partial class DataverseService
         CancellationToken ct)
     {
         var select = BuildLicensingSelectClause(metadata);
-        var filter = BuildBillingDateFilter(
-            LicensingInvoiceDateField,
-            "date-only",
-            invoiceMonthStart,
-            invoiceMonthEnd);
+        var filter = LicensingConsumptionPeriod.Filter(invoiceMonthStart, invoiceMonthEnd);
         var orderBy = Uri.EscapeDataString($"{LicensingInvoiceDateField} asc,{LicensingCustomerNameField} asc");
         var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
@@ -1753,6 +1748,7 @@ public sealed partial class DataverseService
             .Select(item => ParseLicenciamientoCruceCostRow(metadata, item, fallbackCostMonth, billingOffsetMonths))
             .Where(static row => row is not null)
             .Cast<LicenciamientoCruceCostRow>()
+            .Where(row => row.CostMonth >= invoiceMonthStart && row.CostMonth < invoiceMonthEnd)
             .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
             .ToList();
@@ -1773,8 +1769,7 @@ public sealed partial class DataverseService
             return null;
 
         var invoiceDate = ReadDateOnly(item, LicensingInvoiceDateField);
-        var costMonth = invoiceDate
-            ?? TryParseLicenciamientoCruceMonth(record.BillingInterval)
+        var costMonth = LicensingConsumptionPeriod.ConsumptionMonth(record.BillingInterval, invoiceDate)
             ?? fallbackCostMonth;
         costMonth = new DateOnly(costMonth.Year, costMonth.Month, 1);
 
@@ -1790,6 +1785,8 @@ public sealed partial class DataverseService
         return new LicenciamientoCruceCostRow
         {
             RecordId = record.RecordId,
+            SourceVersion = ReadString(item, "@odata.etag"),
+            OriginalClientName = record.NombreCliente,
             AccountId = NormalizeOptionalGuid(record.CompanyAccountId),
             OriginalAccountId = NormalizeOptionalGuid(record.CompanyAccountId),
             ClientName = clientName,
@@ -1822,16 +1819,23 @@ public sealed partial class DataverseService
 
         foreach (var row in rows)
         {
+            var recordMapping = mappings.FirstOrDefault(m => m.SourceAccountName == LicensingRecordRelationKey(row.RecordId));
+            var accountMapping = mappings.FirstOrDefault(m => !string.IsNullOrWhiteSpace(row.OriginalAccountId) && m.SourceAccountId == row.OriginalAccountId);
+            row.RecordRelationId = recordMapping?.MappingId ?? "";
+            row.RecordRelationVersion = recordMapping?.Version ?? "";
+            row.AccountRelationId = accountMapping?.MappingId ?? "";
+            row.AccountRelationVersion = accountMapping?.Version ?? "";
             var mapping = FindLicenciamientoCruceMappingForCostRow(row, mappings);
-            if (mapping is null || string.IsNullOrWhiteSpace(mapping.TargetAccountId))
+            if (mapping is null)
                 continue;
 
             row.OriginalAccountId = FirstNonEmpty(row.OriginalAccountId, row.AccountId);
             row.OriginalAccountDisplay = FirstNonEmpty(row.OriginalAccountDisplay, row.CompanyAccountDisplay);
-            row.AccountId = mapping.TargetAccountId;
+            if (!string.IsNullOrWhiteSpace(mapping.TargetAccountId)) row.AccountId = mapping.TargetAccountId;
             row.CompanyAccountDisplay = FirstNonEmpty(mapping.TargetAccountName, row.CompanyAccountDisplay);
             row.AccountMappingId = mapping.MappingId;
             row.AccountMappingApplied = true;
+            row.DirectClientRelation = string.IsNullOrWhiteSpace(mapping.TargetAccountId);
             row.ClientId = NormalizeOptionalGuid(mapping.TargetClientId);
             row.ClientName = FirstNonEmpty(mapping.TargetClientName, row.ClientName);
         }
@@ -1877,6 +1881,8 @@ public sealed partial class DataverseService
         LicenciamientoCruceCostRow row,
         IReadOnlyList<LicenciamientoCruceAccountMapping> mappings)
     {
+        var recordMapping = mappings.FirstOrDefault(mapping => mapping.SourceAccountName == LicensingRecordRelationKey(row.RecordId));
+        if (recordMapping is not null) return recordMapping;
         var sourceAccountId = NormalizeOptionalGuid(FirstNonEmpty(row.OriginalAccountId, row.AccountId));
         if (!string.IsNullOrWhiteSpace(sourceAccountId))
         {
@@ -1934,6 +1940,7 @@ public sealed partial class DataverseService
 
         foreach (var row in rows)
         {
+            if (row.DirectClientRelation && !string.IsNullOrWhiteSpace(row.ClientId)) continue;
             var accountId = NormalizeOptionalGuid(row.AccountId);
             if (string.IsNullOrWhiteSpace(accountId) || !resolutions.TryGetValue(accountId, out var resolution))
                 continue;
@@ -2595,7 +2602,7 @@ public sealed partial class DataverseService
                 Key = "cost-date",
                 Label = "Fecha costo",
                 Status = "ok",
-                Detail = $"Los costos se filtran por {LicensingInvoiceDateField} en consumo {FormatLicenciamientoCruceMonthRange(consumptionStart, consumptionEnd)}; no se usa modifiedon."
+                Detail = $"Los costos se ubican por mes de consumo ({LicensingBillingIntervalField}); si falta, se usa el mes anterior a la factura del proveedor. Consumo {FormatLicenciamientoCruceMonthRange(consumptionStart, consumptionEnd)}."
             },
             new LicenciamientoCruceValidationDto
             {
@@ -2718,6 +2725,12 @@ public sealed partial class DataverseService
             AccountOriginal = FirstNonEmpty(row.OriginalAccountDisplay, row.CompanyAccountDisplay),
             AccountMappingId = row.AccountMappingId,
             AccountMappingApplied = row.AccountMappingApplied,
+            SourceVersion = row.SourceVersion,
+            OriginalClientName = row.OriginalClientName,
+            RecordRelationId = row.RecordRelationId,
+            RecordRelationVersion = row.RecordRelationVersion,
+            AccountRelationId = row.AccountRelationId,
+            AccountRelationVersion = row.AccountRelationVersion,
             Producto = row.ProductDisplay,
             ProductoId = row.ProductId,
             TipoContrato = row.ContractTypeLabel,
@@ -2860,6 +2873,8 @@ public sealed partial class DataverseService
         if (!string.IsNullOrWhiteSpace(cost.BusinessGroupKey) || !string.IsNullOrWhiteSpace(billing.BusinessGroupKey))
             return false;
 
+        if (!string.IsNullOrWhiteSpace(cost.ClientId) && !string.IsNullOrWhiteSpace(billing.ClientId)
+            && !string.Equals(cost.ClientId, billing.ClientId, StringComparison.OrdinalIgnoreCase)) return false;
         return !string.IsNullOrWhiteSpace(NormalizeLicenciamientoCruceClientKey(cost.ClientName))
             && !string.IsNullOrWhiteSpace(NormalizeLicenciamientoCruceClientKey(billing.ClientName));
     }
@@ -3183,6 +3198,13 @@ public sealed partial class DataverseService
         public string OriginalAccountDisplay { get; set; } = "";
         public string AccountMappingId { get; set; } = "";
         public bool AccountMappingApplied { get; set; }
+        public bool DirectClientRelation { get; set; }
+        public string SourceVersion { get; set; } = "";
+        public string OriginalClientName { get; set; } = "";
+        public string RecordRelationId { get; set; } = "";
+        public string RecordRelationVersion { get; set; } = "";
+        public string AccountRelationId { get; set; } = "";
+        public string AccountRelationVersion { get; set; } = "";
         public string Vendor { get; set; } = "";
         public string ProductId { get; set; } = "";
         public string ProductDisplay { get; set; } = "";
@@ -3204,6 +3226,7 @@ public sealed partial class DataverseService
     private sealed class LicenciamientoCruceAccountMapping
     {
         public string MappingId { get; init; } = "";
+        public string Version { get; init; } = "";
         public string SourceAccountId { get; init; } = "";
         public string SourceAccountName { get; init; } = "";
         public string SourceClientName { get; init; } = "";

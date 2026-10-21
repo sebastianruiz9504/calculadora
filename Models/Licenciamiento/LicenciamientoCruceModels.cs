@@ -188,6 +188,12 @@ public sealed class LicenciamientoCruceTraceItemDto
     public string AccountOriginal { get; set; } = "";
     public string AccountMappingId { get; set; } = "";
     public bool AccountMappingApplied { get; set; }
+    public string SourceVersion { get; set; } = "";
+    public string OriginalClientName { get; set; } = "";
+    public string RecordRelationId { get; set; } = "";
+    public string RecordRelationVersion { get; set; } = "";
+    public string AccountRelationId { get; set; } = "";
+    public string AccountRelationVersion { get; set; } = "";
     public string Producto { get; set; } = "";
     public string ProductoId { get; set; } = "";
     public string TipoContrato { get; set; } = "";
@@ -311,6 +317,25 @@ public sealed class LicenciamientoCruceUpdateCostInvoiceDateRequestDto
 {
     public string RecordId { get; set; } = "";
     public string InvoiceDate { get; set; } = "";
+    public string ConsumptionMonth { get; set; } = "";
+    public string ExpectedCostVersion { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceClientOptionDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string Nit { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceClientRelationRequestDto
+{
+    public string CostRecordId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string Scope { get; set; } = "";
+    public string ExpectedCostVersion { get; set; } = "";
+    public string ExpectedMappingId { get; set; } = "";
+    public string ExpectedMappingVersion { get; set; } = "";
 }
 
 public sealed class LicenciamientoCruceUpdateCostInvoiceDateResultDto

@@ -620,6 +620,28 @@
     gap: 1rem;
 }
 
+.licx-relationship { display: grid; gap: 1rem; }
+.licx-relation-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: stretch; }
+.licx-relation-card { display: grid; align-content: start; gap: .6rem; padding: 1.1rem; border: 1px solid #cadbdc; border-radius: .8rem; background: #f2f8f8; }
+.licx-relation-card h3 { font-size: .85rem; color: #42656b; margin: 0; }
+.licx-relation-card strong { font-size: 1rem; overflow-wrap: anywhere; }
+.licx-relation-card span, .licx-relation-help { color: #536575; font-size: .85rem; }
+.licx-relation-card.is-missing { border-style: dashed; background: #fff9ec; }
+.licx-relation-arrow { align-self: center; color: #39737a; font-size: 1.8rem; }
+.licx-relation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.licx-relation-fields label, .licx-relation-scope { display: grid; gap: .55rem; min-width: 0; font-size: .9rem; font-weight: 600; }
+.licx-relation-fields small { font-weight: 400; color: #526777; }
+.licx-relation-preview { padding: 1rem; border-radius: .5rem; background: #edf4ff; color: #173c64; }
+.licx-relation-details { border-top: 1px solid #dde5ec; padding-top: .8rem; }
+.licx-relation-details summary { cursor: pointer; font-weight: 600; margin-bottom: .7rem; }
+.licx-relationship > .btn { justify-self: start; }
+.licx-relationship .licx-edit-table { min-width: 780px; }
+.licx-relationship .form-select { text-overflow: ellipsis; }
+@media (max-width: 720px) {
+    .licx-relation-pair, .licx-relation-fields { grid-template-columns: 1fr; }
+    .licx-relation-arrow { justify-self: center; }
+}
+
 .licx-edit-sections h3 {
     margin: 0 0 .55rem;
     color: #102a43;
