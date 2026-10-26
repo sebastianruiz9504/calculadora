@@ -78,6 +78,17 @@ public class HomeController : Controller
             _logger.LogError(feature.Error, "Unhandled exception while processing {Path}", feature.Path);
         }
 
+        if (new PathString(feature?.Path).StartsWithSegments("/Calculator")
+            && Request.GetTypedHeaders().Accept?.Any(header =>
+                string.Equals(header.MediaType.Value, "application/json", StringComparison.OrdinalIgnoreCase)) == true)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "No fue posible completar la operación en la calculadora. Comparte el código de seguimiento con soporte.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
         var showDiagnostics = IsLocalRequest(HttpContext);
         return View(new ErrorViewModel
         {

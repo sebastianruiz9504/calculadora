@@ -1438,14 +1438,34 @@ function toDateInputValue(value) {
     }
 
     function buildApiErrorMessage(payload, fallbackMessage) {
+        if (typeof payload === "string") return safeApiErrorText(payload) || fallbackMessage;
         if (!payload || typeof payload !== "object") return fallbackMessage;
 
         const parts = [];
-        if (payload.message) parts.push(normalizeInlineMessage(payload.message));
-        if (payload.detail) parts.push(`Detalle: ${normalizeInlineMessage(payload.detail)}`);
-        if (payload.traceId) parts.push(`TraceId: ${normalizeInlineMessage(payload.traceId)}`);
+        const message = safeApiErrorText(payload.message);
+        const detail = safeApiErrorText(payload.detail);
+        const traceId = safeApiErrorText(payload.traceId);
+        if (message) parts.push(message);
+        if (detail) parts.push(`Detalle: ${detail}`);
+        if (traceId) parts.push(`TraceId: ${traceId}`);
 
         return parts.filter(Boolean).join(" ") || fallbackMessage;
+    }
+
+    function safeApiErrorText(value) {
+        const text = normalizeInlineMessage(value);
+        return /<\s*(?:!doctype\b|\/?[a-z][\w:-]*(?:\s|\/?>))/i.test(text) ? "" : text;
+    }
+
+    function parseErrorResponseMessage(rawBody, fallbackMessage) {
+        const trimmedBody = (rawBody || "").trim();
+        if (!trimmedBody) return fallbackMessage;
+
+        try {
+            return buildApiErrorMessage(JSON.parse(trimmedBody), fallbackMessage);
+        } catch {
+            return safeApiErrorText(trimmedBody) || fallbackMessage;
+        }
     }
 
     async function readErrorResponseMessage(res, fallbackMessage) {
@@ -1456,14 +1476,7 @@ function toDateInputValue(value) {
             return fallbackMessage;
         }
 
-        const trimmedBody = rawBody.trim();
-        if (!trimmedBody) return fallbackMessage;
-
-        try {
-            return buildApiErrorMessage(JSON.parse(trimmedBody), fallbackMessage);
-        } catch {
-            return normalizeInlineMessage(trimmedBody) || fallbackMessage;
-        }
+        return parseErrorResponseMessage(rawBody, fallbackMessage);
     }
 
     function formatDateOptionLabel(value) {
@@ -2191,19 +2204,7 @@ async function saveScenarioToDataverse(scenario, lines) {
         });
 
         if (!res.ok) {
-            const rawBody = await res.text();
-            let result = null;
-            if (rawBody.trim()) {
-                try {
-                    result = JSON.parse(rawBody);
-                } catch {
-                    result = null;
-                }
-            }
-            throw new Error(
-                result?.message
-                || normalizeInlineMessage(rawBody)
-                || "Error eliminando escenario.");
+            throw new Error(await readErrorResponseMessage(res, "Error eliminando escenario."));
         }
     }
 
@@ -2229,8 +2230,7 @@ async function saveScenarioToDataverse(scenario, lines) {
             });
 
             if (!res.ok) {
-                const txt = await res.text();
-                throw new Error(txt || "Error calculando.");
+                throw new Error(await readErrorResponseMessage(res, "Error calculando."));
             }
 
             const data = await res.json();
@@ -2296,8 +2296,7 @@ async function saveScenarioToDataverse(scenario, lines) {
             });
 
             if (!res.ok) {
-                const txt = await res.text();
-                throw new Error(txt || "Error exportando.");
+                throw new Error(await readErrorResponseMessage(res, "Error exportando."));
             }
 
             const blob = await res.blob();
@@ -3039,12 +3038,11 @@ async function saveScenarioToDataverse(scenario, lines) {
 
         const validationRes = await fetch("/Calculator/ValidateProvisioning", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify(payload)
         });
         if (!validationRes.ok) {
-            const txt = await validationRes.text();
-            setProvisioningStatus(txt || "Error validando adjunto.");
+            setProvisioningStatus(await readErrorResponseMessage(validationRes, "Error validando adjunto."));
             return;
         }
 
@@ -3056,7 +3054,7 @@ async function saveScenarioToDataverse(scenario, lines) {
         try {
             const res = await fetch(PROVISIONING_SUBMIT_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
                 body: JSON.stringify(payload)
             });
 
@@ -3071,9 +3069,7 @@ async function saveScenarioToDataverse(scenario, lines) {
             }
 
             if (!res.ok) {
-                const message = result
-                    ? buildApiErrorMessage(result, `Error HTTP ${res.status}`)
-                    : (normalizeInlineMessage(rawBody) || `Error HTTP ${res.status}`);
+                const message = parseErrorResponseMessage(rawBody, `No fue posible enviar la solicitud (HTTP ${res.status}).`);
                 if (result?.flowAccepted) {
                     const s = getActiveScenario();
                     if (s) {
@@ -3086,6 +3082,10 @@ async function saveScenarioToDataverse(scenario, lines) {
                     return;
                 }
                 throw new Error(message);
+            }
+
+            if (result?.ok !== true) {
+                throw new Error("El servidor no confirmó el envío de la solicitud. Verifica tu sesión antes de continuar.");
             }
 
             const requestId = result?.requestId || "";
