@@ -2855,8 +2855,10 @@ public sealed class CalculatorController : Controller
     private static decimal Round2(decimal v) =>
         Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
-    private static int RoundWholeNumber(decimal value) =>
-        (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
+    // Keep the flow's integer JSON contract without limiting monetary amounts
+    // (including COP commissions) to Int32.MaxValue.
+    private static long RoundWholeNumber(decimal value) =>
+        (long)Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
     private static string BuildFileName(string? scenarioName)
     {

@@ -22,6 +22,45 @@ namespace CotizadorInterno.Web.Tests;
 public sealed class CalculatorScenarioAccessTests
 {
     [Fact]
+    public async Task NewHardwareProductCanBeProvisionedWithCommissionAboveInt32()
+    {
+        var (dataverse, data) = CreateDataverse();
+        data.CurrentUser = User("commercial-owner", hasCrm: false);
+        var scenario = Scenario("hardware-scenario", data.CurrentUser.SystemUserId);
+        var storedLine = scenario.Lines[0];
+        storedLine.BusinessType = (int)BusinessType.Hardware;
+        storedLine.ProductId = "";
+        storedLine.ProductDescription = "Servidor nuevo";
+        storedLine.CostUnit = 10_000_000m;
+        storedLine.MarginPercent = 20m;
+        storedLine.ContractMonths = 1;
+        data.UserScenarios = [scenario];
+        var request = ProvisioningRequest(scenario.ScenarioId);
+        var line = request.LineItems[0];
+        line.ProductoId = "";
+        line.ProductoNombre = storedLine.ProductDescription;
+        line.Tipo = "Hardware";
+        line.CostoUnd = storedLine.CostUnit;
+        line.Number = storedLine.CostUnit;
+        line.VentaUnd = 12_000_000m;
+        line.DuracionMeses = 1;
+        line.VentaMensual = 12_000_000m;
+        line.VentaTotal = 12_000_000m;
+        var events = new List<string>();
+        var (crm, _) = CreateCrm();
+        var controller = CreateController(dataverse, crm, events);
+
+        var result = await controller.SubmitProvisioning(request, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, data.ProductEnsureCalls);
+        Assert.Equal("new-hardware-product", line.ProductoId);
+        Assert.Equal("Servidor nuevo", data.LastProductInput?.Description);
+        Assert.True(request.Resultado!.Comision > int.MaxValue);
+        Assert.Equal(new[] { "flow" }, events);
+    }
+
+    [Fact]
     public async Task ProvisioningWhenCrmSyncIsDisabledContinuesWithoutReadingOrWritingCrm()
     {
         var (dataverse, data) = CreateDataverse();
@@ -887,6 +926,8 @@ public sealed class CalculatorScenarioAccessTests
         public ScenarioStoredDto? GlobalScenario { get; set; }
         public Exception? GlobalReadException { get; set; }
         public Exception? OwnerUpsertException { get; set; }
+        public int ProductEnsureCalls { get; private set; }
+        public ProductCreateInput? LastProductInput { get; private set; }
         public int GlobalReads { get; private set; }
         public int GlobalUpdates { get; private set; }
         public int OwnerUpserts { get; private set; }
@@ -905,6 +946,14 @@ public sealed class CalculatorScenarioAccessTests
         {
             switch (targetMethod?.Name)
             {
+                case nameof(IDataverseService.EnsureCalculatorProductAsync):
+                    ProductEnsureCalls++;
+                    LastProductInput = Assert.IsType<ProductCreateInput>(args![0]);
+                    return Task.FromResult(new ProductLookupItem
+                    {
+                        Id = "new-hardware-product",
+                        Description = LastProductInput.Description
+                    });
                 case nameof(IDataverseService.GetCurrentUserAsync):
                     return Task.FromResult(CurrentUser);
                 case nameof(IDataverseService.GetScenariosForUserAsync):
