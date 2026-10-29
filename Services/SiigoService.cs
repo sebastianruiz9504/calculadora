@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Services;
 
-public sealed class SiigoService : ISiigoService
+public sealed partial class SiigoService : ISiigoService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

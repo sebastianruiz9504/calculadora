@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/month-close.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/hardware.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/copiers-mto-v2-calendar.css" asp-append-version="true" />
@@ -87,6 +88,7 @@
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes" data-dashboard-group-tabs="taxes pnl">Contabilidad</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="ytd">YTD</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="month-close">Cierre de mes</button>
     </section>
 
     <section class="dashboard-group-tabs" data-dashboard-group-panel="support" data-dashboard-group-tabs="copiers support-cloud" aria-label="Subsecciones de soporte" hidden>
@@ -136,6 +138,8 @@
             <button type="button" class="btn btn-primary dashboard-refresh-btn" id="dashboardRefreshBtn">Actualizar</button>
         </div>
     </section>
+
+    <partial name="_MonthClose" />
 
     <div class="dashboard-tab-panel is-active" data-dashboard-panel="today">
         <section class="dashboard-today" aria-labelledby="dashboardTodayTitle">
@@ -3028,6 +3032,7 @@
     <script src="~/js/dashboard-licenciamiento-detail.js" asp-append-version="true"></script>
     <script src="~/js/copiers-mto-v2-calendar.js" asp-append-version="true"></script>
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
+    <script src="~/js/month-close.js" asp-append-version="true"></script>
     <script src="~/js/hardware.js" asp-append-version="true"></script>
     <script src="~/js/support-cloud.js" asp-append-version="true"></script>
 }

@@ -1,0 +1,162 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr07a_sharedcommondataserviceforapps_0fe63"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr07a_sharedsharepointonline_9fbec"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_file_is_created_in_a_folder_(deprecated)": {
+          "recurrence": {
+            "interval": 5,
+            "frequency": "Minute"
+          },
+          "metadata": {
+            "%252fShared%2bDocuments%252fFacturas%2bGastos%252fFacturas": "/Shared Documents/Facturas Gastos/Facturas",
+            "operationMetadataId": "37501a6a-36d4-461d-9a56-2af8a7dac37e",
+            "%252fFacturas%2bDigital%2bTech": "/Facturas Digital Tech"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "OnNewFile",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "https://digitaltechco.sharepoint.com/sites/2023",
+              "folderId": "%252fFacturas%2bDigital%2bTech",
+              "inferContentType": true
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Predict": {
+          "runAfter": {
+            "Get_file_metadata_using_path": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "531eecdd-848c-4668-a3af-413ba97faa2c",
+            "flowSystemMetadata": {
+              "portalOperationId": "aibuilderpredict",
+              "portalOperationGroup": "aibuilder",
+              "portalOperationApiDisplayNameOverride": "AI Builder",
+              "portalOperationIconOverride": "https://content.powerapps.com/resource/makerx/static/pauto/images/designeroperations/aiBuilderNew.51dbdb6b.png",
+              "portalOperationBrandColorOverride": "#0A76C4",
+              "portalOperationApiTierOverride": "Standard"
+            }
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "aibuilderpredict",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "recordId": "e1cb80ac-bbf3-4f31-ae84-ed3cdabeb839",
+              "item/requestv2/mimeType": "application/pdf",
+              "item/requestv2/base64Encoded": "@triggerOutputs()?['body']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_file_metadata_using_path": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "bbf15d92-be96-4b9e-bfe6-2616679fa147"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetFileMetadataByPath",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "https://digitaltechco.sharepoint.com/sites/2023",
+              "path": "@triggerOutputs()?['headers/x-ms-file-path-encoded']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "Predict": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "04bf98da-36ba-408e-9607-7b1c1b7c4f1a"
+          },
+          "type": "Compose",
+          "inputs": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/invoiceId/value']"
+        },
+        "Update_file_properties": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "fca07dc7-3846-40fd-b8d9-d41c432a1afc"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchFileItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "https://digitaltechco.sharepoint.com/sites/2023",
+              "table": "951358d0-a809-44a8-8951-60ff2321918d",
+              "id": "@outputs('Get_file_metadata_using_path')?['body/ItemId']",
+              "item/Proveedor": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/vendorName/value']",
+              "item/NIT": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/vendorTaxId/value']",
+              "item/Emision": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/invoiceDate/value']",
+              "item/Vencimiento": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/dueDate/value']",
+              "item/ValorTotal": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/invoiceTotal/value']",
+              "item/IVA": "@outputs('Predict')?['body/responsev2/predictionOutput/labels/IVA/value']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

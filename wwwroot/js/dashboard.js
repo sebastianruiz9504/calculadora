@@ -13086,6 +13086,7 @@
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
             dashboardPeriodScope.hidden = state.activeTab === "today"
+                || state.activeTab === "month-close"
                 || state.activeTab === "agent"
                 || (state.activeTab === "billing" && state.billingSubtab !== "overview")
                 || state.activeTab === "portfolio"
@@ -13417,6 +13418,11 @@
         });
 
         syncDashboardGroupTabs();
+
+        if (tabKey === "month-close") {
+            window.dispatchEvent(new CustomEvent("dashboard:month-close"));
+            return;
+        }
 
         if (tabKey === "today") {
             if (state.todayDashboard) {
@@ -15738,6 +15744,8 @@
     if (initialDashboardParameters.get("tab") === "copiers" && initialDashboardParameters.get("copiersTab") === "maintenance-v2") {
         state.copiersSubtab = "maintenance-v2";
         setActiveTab("copiers");
+    } else if (initialDashboardParameters.get("tab") === "month-close") {
+        setActiveTab("month-close");
     } else {
         loadToday();
     }

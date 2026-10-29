@@ -490,3 +490,6 @@ $RECYCLE.BIN/
 # Local runtime settings with password hashes
 App_Data/public-data-export-settings.json
 App_Data/copiers-submissions-v1/
+
+# Local financial reconstruction and production backup artifacts
+/tmp/
