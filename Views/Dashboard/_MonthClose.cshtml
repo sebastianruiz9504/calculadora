@@ -22,7 +22,7 @@
                 <div id="mcBankAccounts" class="mc-bank-accounts" hidden></div>
                 <p id="mcNeeded" class="mc-needed"></p>
                 <div class="mc-detail-tools"><input id="mcSearch" type="search" placeholder="Buscar documento, cliente o comprobante…" aria-label="Buscar en el reporte"><span id="mcCount"></span></div>
-                <div class="mc-table-wrap"><table><caption class="visually-hidden" id="mcTableCaption">Detalle del reporte de cierre mensual</caption><thead id="mcTableHead"></thead><tbody id="mcTableBody"></tbody></table></div>
+                <div class="mc-table-wrap" role="region" aria-label="Tabla del reporte; desplazamiento horizontal disponible" tabindex="0"><table><caption class="visually-hidden" id="mcTableCaption">Detalle del reporte de cierre mensual</caption><thead id="mcTableHead"></thead><tbody id="mcTableBody"></tbody></table></div>
                 <div class="mc-pagination"><button type="button" id="mcPrevious" class="mc-button">← Anterior</button><span id="mcPage"></span><button type="button" id="mcNext" class="mc-button">Siguiente →</button></div>
             </section>
             <details class="mc-panel mc-evidence"><summary>Alcance, calidad e integridad del cierre</summary><ul id="mcWarnings"></ul><p>Los pagos posteriores no alteran este corte. Las correcciones se conservan como otra versión, sin reemplazar la anterior.</p><p>Los reportes operativos solo se capturan cuando existe información temporal suficiente. “Pendiente” no significa saldo cero.</p><code id="mcHash"></code></details>

@@ -153,6 +153,16 @@ builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));
 builder.Services.Configure<HardwareOptions>(builder.Configuration.GetSection("Hardware"));
 
+if (args.Contains("--month-close-review-receivables") || args.Contains("--month-close-apply-receivables"))
+{
+    using var commandApp = builder.Build();
+    using var commandScope = commandApp.Services.CreateScope();
+    await MonthCloseReceivableRevisionRunner.RunAsync(commandScope.ServiceProvider.GetRequiredService<IMonthCloseRepository>(),
+        builder.Configuration["MonthClose:SourcePath"], builder.Configuration["MonthClose:RevisionPath"] ?? "tmp/month-close-policy-2025",
+        args.Contains("--month-close-apply-receivables"), default);
+    return;
+}
+
 if (args.Contains("--month-close-capture") || args.Contains("--month-close-dry-run") || args.Contains("--month-close-replay"))
 {
     using var commandApp = builder.Build();

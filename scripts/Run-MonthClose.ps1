@@ -1,4 +1,4 @@
-param([ValidateSet('Preview','Capture')][string]$Mode='Preview',[ValidateRange(2025,2100)][int]$Year=2026,[string]$RevisePeriod='',[string]$BankEvidencePath='')
+param([ValidateSet('Preview','Capture','ReviewReceivables','ApplyReceivables')][string]$Mode='Preview',[ValidateRange(2025,2100)][int]$Year=2026,[string]$RevisePeriod='',[string]$BankEvidencePath='',[string]$SourcePath='',[string]$RevisionPath='tmp/month-close-policy-2025')
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $dotnetPath='C:/Users/SebastianRuiz/AppData/Local/Microsoft/dotnet/dotnet.exe'
@@ -12,13 +12,16 @@ $start=[System.Diagnostics.ProcessStartInfo]::new($dotnetPath)
 $start.UseShellExecute=$false
 $start.WorkingDirectory=(Get-Location).Path
 $start.ArgumentList.Add('bin/Release/net10.0/CotizadorInterno.Web.dll')
-$start.ArgumentList.Add($(if($Mode -eq 'Preview'){'--month-close-dry-run'}else{'--month-close-capture'}))
+$commandMode=@{Preview='--month-close-dry-run';Capture='--month-close-capture';ReviewReceivables='--month-close-review-receivables';ApplyReceivables='--month-close-apply-receivables'}
+$start.ArgumentList.Add($commandMode[$Mode])
 foreach($setting in $settings){$start.Environment[$setting.name]=$setting.value}
 $start.Environment['MonthClose__Year']=[string]$Year
 $start.Environment['Logging__LogLevel__Default']='Warning'
 $start.Environment['Logging__LogLevel__System.Net.Http.HttpClient']='Warning'
 if($RevisePeriod){$start.Environment['MonthClose__RevisePeriod']=$RevisePeriod}
 if($BankEvidencePath){$start.Environment['MonthClose__BankEvidencePath']=(Resolve-Path -LiteralPath $BankEvidencePath).Path}
+if($SourcePath){$start.Environment['MonthClose__SourcePath']=(Resolve-Path -LiteralPath $SourcePath).Path}
+$start.Environment['MonthClose__RevisionPath']=$RevisionPath
 $process=[System.Diagnostics.Process]::Start($start)
 $process.WaitForExit()
 if($process.ExitCode -ne 0){throw "La operación de cierre terminó con código $($process.ExitCode)."}
