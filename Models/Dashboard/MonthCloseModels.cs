@@ -17,7 +17,10 @@ public sealed class MonthCloseReport
     public List<MonthCloseColumn> Columns { get; set; } = [];
     public List<Dictionary<string, object?>> Rows { get; set; } = [];
     public List<MonthCloseBankAccount> BankAccounts { get; set; } = [];
+    public List<MonthCloseSettlementAssumption> SettlementAssumptions { get; set; } = [];
 }
+public sealed record MonthCloseSettlementAssumption(string SourceId, string Document, string Party,
+    string PaymentDate, decimal InvoiceTotal, decimal PaymentAmount, string Reason, string Reference);
 public sealed record MonthCloseMetric(string Key, string Title, string State, string Message,
     string Needed, string Unit, decimal? Total, int Count, int Unresolved);
 public sealed class MonthCloseSummary

@@ -62,6 +62,21 @@ Ejecutar desde la raíz y compilar Release primero. El script obtiene únicament
 
 El soporte bancario JSON usa `archiveSha256`, `statements` (file, account enmascarada a cuatro dígitos, period AAAAMM, opening, credits, debits, closing, rows, documentSha256) y `transactions` (id, date AAAA-MM-DD, account, description, value con signo, balance, source, page, sequence). La validación rechaza duplicados, saldos inconsistentes y movimientos fuera del extracto. La carga es administrativa por CLI; no se ha abierto un endpoint de importación ni se publican los PDFs en `wwwroot`.
 
-## Verificación
+## Revisión autorizada de cartera de 2025
+
+El criterio práctico es una revisión administrativa explícita; no altera facturas ni se aplica a las capturas automáticas o a 2026. Parte de las versiones guardadas y conserva todos los otros reportes y exclusiones anteriores. Los pagos legados positivos y fechados antes del corte se pueden tratar como pagados con diferencia máxima aproximada del 11% (COP 1 para redondeo). Las retenciones negativas o superiores a la factura quedan como alerta y no justifican pagos. Las fechas anteriores a la emisión se conservan y señalan como posibles anticipos. Sin fecha o con diferencias mayores, el saldo continúa pendiente.
+
+Los casos Siigo requieren NIT y documento exactos, saldo actual cero y un único comprobante vinculado por el total (tolerancia COP 1). Si el comprobante es anterior al corte, se asume cancelado sin volver a descontar la nota sobre el pago de cierre; si es posterior, se conserva el importe menos las notas identificadas al corte. Estos son supuestos autorizados, no conciliaciones bancarias individuales. El Excel de cartera incluye `Pagos asumidos` con la fuente, fecha, importes, referencia y advertencias de cada decisión.
+
+```powershell
+# Fuente congelada de la reconstrucción original; genera plan y propuestas sin escribir:
+./scripts/Run-MonthClose.ps1 -Mode ReviewReceivables -Year 2025 -SourcePath tmp/month-close-source.json
+# Después de revisar las doce propuestas, guarda exactamente esas versiones:
+./scripts/Run-MonthClose.ps1 -Mode ApplyReceivables -Year 2025
+```
+
+El plan comprueba hashes originales y propuestos, detecta revisiones concurrentes y permite reintentos sin duplicados. Los archivos quedan en `tmp/month-close-policy-2025` y no se incluyen en Git ni en el paquete público. La tabla del detalle conserva el desplazamiento horizontal dentro de su propio contenedor, incluido en pantallas pequeñas.
+
+## Pruebas y aceptación
 
 Las pruebas `MonthCloseTests` cubren pagos posteriores, abonos parciales, notas crédito, cruces por tercero/documento, obligaciones no conciliadas, límites de calendario de Colombia, rechazo de meses abiertos, ausencia de inventario histórico, integridad SHA-256, revisiones deterministas, caché sin llamadas operativas y permisos salariales. La validación de despliegue debe incluir lectura de los cierres persistidos, segunda captura sin duplicados, navegación de meses, búsqueda/paginación y exportación autenticadas.

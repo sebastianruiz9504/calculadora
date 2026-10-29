@@ -72,6 +72,22 @@ public sealed class MonthCloseController(MonthCloseService service,IDataverseSer
         sheet.Columns(1,report.Columns.Count).Width=22;sheet.Column(2).Width=40;
         if(report.Rows.Count>0)sheet.Range(6,1,report.Rows.Count+6,report.Columns.Count).SetAutoFilter();
         sheet.SheetView.FreezeRows(6);
+        if (report.SettlementAssumptions.Count > 0)
+        {
+            var assumed = workbook.AddWorksheet("Pagos asumidos");
+            var headers = new[]{"Documento","Tercero","Fecha de pago registrada","Total factura","Valor pagado","Diferencia","Criterio / advertencias","Referencia","ID fuente"};
+            for(var c=0;c<headers.Length;c++) assumed.Cell(1,c+1).Value=headers[c];
+            for(var i=0;i<report.SettlementAssumptions.Count;i++)
+            {
+                var a=report.SettlementAssumptions[i];var row=i+2;
+                assumed.Cell(row,1).Value=a.Document;assumed.Cell(row,2).Value=a.Party;assumed.Cell(row,3).Value=a.PaymentDate;
+                assumed.Cell(row,4).Value=a.InvoiceTotal;assumed.Cell(row,5).Value=a.PaymentAmount;assumed.Cell(row,6).Value=a.InvoiceTotal-a.PaymentAmount;
+                assumed.Cell(row,7).Value=a.Reason;assumed.Cell(row,8).Value=a.Reference;assumed.Cell(row,9).Value=a.SourceId;
+            }
+            assumed.Row(1).Style.Font.Bold=true;assumed.Columns(1,9).Width=24;assumed.Column(2).Width=40;assumed.Column(7).Width=65;
+            assumed.Columns(4,6).Style.NumberFormat.Format="#,##0.00";assumed.SheetView.FreezeRows(1);
+            assumed.Range(1,1,report.SettlementAssumptions.Count+1,9).SetAutoFilter();
+        }
         if (report.BankAccounts.Count > 0)
         {
             var balances = workbook.AddWorksheet("Saldos por cuenta");
