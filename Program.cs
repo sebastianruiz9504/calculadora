@@ -10,6 +10,7 @@ using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.CopiersMtoV2;
 using CotizadorInterno.Web.Services.Crm;
 using CotizadorInterno.Web.Services.MesaAyuda;
+using CotizadorInterno.Web.Services.MonthClose;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddUserSecrets(typeof(Program).Assembly, optional: true);
@@ -83,6 +84,10 @@ builder.Services.AddResponseCompression(options =>
     options.Providers.Add<GzipCompressionProvider>();
 });
 builder.Services.AddScoped<IDataverseService, DataverseService>();
+builder.Services.AddScoped<IMonthCloseRepository>(sp => (IMonthCloseRepository)sp.GetRequiredService<IDataverseService>());
+builder.Services.AddScoped<IMonthCloseSiigoSource>(sp => (IMonthCloseSiigoSource)sp.GetRequiredService<ISiigoService>());
+builder.Services.AddScoped<MonthCloseService>();
+builder.Services.AddHostedService<MonthCloseHostedService>();
 builder.Services.AddScoped<ICopiersMtoV2CounterService>(services =>
     (ICopiersMtoV2CounterService)services.GetRequiredService<IDataverseService>());
 builder.Services.AddSingleton<CotizadorInterno.Web.Services.SoporteCloud.SharedLiveSurveyStore>();
@@ -147,6 +152,39 @@ builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));
 builder.Services.Configure<HardwareOptions>(builder.Configuration.GetSection("Hardware"));
+
+if (args.Contains("--month-close-capture") || args.Contains("--month-close-dry-run") || args.Contains("--month-close-replay"))
+{
+    using var commandApp = builder.Build();
+    using var commandScope = commandApp.Services.CreateScope();
+    var service = commandScope.ServiceProvider.GetRequiredService<MonthCloseService>();
+    var yearText = builder.Configuration["MonthClose:Year"];
+    var year = int.TryParse(yearText, out var requestedYear) ? requestedYear : MonthCloseEngine.BogotaToday(DateTimeOffset.UtcNow).Year;
+    if (args.Contains("--month-close-dry-run") || args.Contains("--month-close-replay"))
+    {
+        var replay = args.Contains("--month-close-replay");
+        var input = replay ? System.Text.Json.JsonSerializer.Deserialize<CotizadorInterno.Web.Models.Dashboard.MonthCloseInput>(
+            await File.ReadAllTextAsync("tmp/month-close-source.json"), MonthCloseCodec.Json)!
+            : new CotizadorInterno.Web.Models.Dashboard.MonthCloseInput
+        {
+            Tables = await commandScope.ServiceProvider.GetRequiredService<IMonthCloseRepository>().ReadSourcesAsync(default),
+            Siigo = await commandScope.ServiceProvider.GetRequiredService<IMonthCloseSiigoSource>().ReadMonthCloseDocumentsAsync(default),
+            RetrievedAt = DateTimeOffset.UtcNow
+        };
+        Directory.CreateDirectory("tmp");
+        if (!replay) await File.WriteAllTextAsync("tmp/month-close-source.json", System.Text.Json.JsonSerializer.Serialize(input, MonthCloseCodec.Json));
+        foreach (var month in Enumerable.Range(1, 12))
+        {
+            var start = new DateOnly(year, month, 1);
+            if (start.AddMonths(1) > MonthCloseEngine.BogotaToday(input.RetrievedAt)) break;
+            var snapshot = MonthCloseEngine.Build(start.ToString("yyyy-MM"), 1, input);
+            await File.WriteAllTextAsync($"tmp/month-close-{start:yyyy-MM}.json", System.Text.Json.JsonSerializer.Serialize(snapshot, MonthCloseCodec.Json));
+            Console.WriteLine($"{start:yyyy-MM}: " + string.Join("; ", snapshot.Reports.Select(r => $"{r.Key}={r.Total} ({r.Rows.Count} filas, {r.Unresolved} pendientes)")));
+        }
+    }
+    else Console.WriteLine($"Cierres guardados: {await service.CaptureMissingAsync(year, default, builder.Configuration["MonthClose:RevisePeriod"])}");
+    return;
+}
 
 if (args.Any(static arg => string.Equals(arg, "--validate-sharepoint-rebates", StringComparison.OrdinalIgnoreCase)))
 {
