@@ -4,7 +4,7 @@ La pestaña `/Dashboard?tab=month-close` consulta versiones guardadas en Dataver
 
 ## Persistencia y operación
 
-- Tabla organizacional `cr07a_cierremensual`, colección `cr07a_cierremensuals`, solución `InvoiceProcessing`. `scripts/provision_month_close.py --apply` crea el esquema de forma idempotente y comprueba organización y publicador.
+- Tabla organizacional `cr07a_cierremensual`, colección `cr07a_cierremensuals`, solución `InvoiceProcessing`. `scripts/provision_month_close.py --apply` crea el esquema de forma idempotente y comprueba organización y publicador. Antes de capturar 2025, ejecutar este comando: amplía también el límite de año de las instalaciones existentes, con respaldo de metadatos y verificación posterior.
 - Una fila por período y revisión, con resumen ligero y contenido JSON comprimido. GUID determinista y `If-None-Match: *`: las carreras y reintentos no sobrescriben versiones. El contenido se verifica con SHA-256 al guardar y al leer. El hash detecta alteraciones; no es una firma externa ni sustituye una política de auditoría del entorno.
 - `MonthCloseHostedService` revisa cada diez minutos los meses cerrados que faltan, empezando 45 segundos después del arranque. El App Service debe conservar Always On. El primero del mes, durante la primera hora de Colombia, se captura además el estado operativo disponible. Una recuperación posterior queda marcada como reconstrucción; no inventa inventario ni saldos de vacaciones anteriores.
 - Las correcciones crean otra revisión y conservan la anterior. No existe endpoint web para sobrescribir cierres. La captura no modifica facturas, gastos ni pagos.
