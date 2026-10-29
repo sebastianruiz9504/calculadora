@@ -10,6 +10,7 @@ La pestaña `/Dashboard?tab=month-close` consulta versiones guardadas en Dataver
 - Las correcciones crean otra revisión y conservan la anterior. No existe endpoint web para sobrescribir cierres. La captura no modifica facturas, gastos ni pagos.
 - Índice en caché cinco minutos, contenido verificado treinta minutos, consultas concurrentes agrupadas, detalle de 50 filas (máximo 100), búsqueda y Excel desde la versión guardada. El navegador no persiste datos financieros en almacenamiento local.
 - Acceso al módulo Dashboard obligatorio. Las cifras, filas y exportaciones de vacaciones requieren adicionalmente RH o Nómina. El resumen compartido en caché no se modifica al ocultar información salarial.
+- Los cierres admiten períodos desde enero de 2025. El detalle y las cifras de bancos requieren adicionalmente el permiso existente de Conciliación; también se ocultan del índice para usuarios sin ese permiso.
 
 ## Alcance financiero
 
@@ -18,6 +19,12 @@ La pestaña `/Dashboard?tab=month-close` consulta versiones guardadas en Dataver
 **Proveedores:** compras Siigo y aplicaciones de la cuenta 2205 en comprobantes y recibos de egreso. Se cruzan por NIT y número interno o factura del proveedor, normalizando ceros iniciales. Una referencia ambigua o una diferencia contra el saldo actual impide presentar un saldo histórico. La cobertura es parcial: documentos soporte, otros pasivos y comprobantes sin desglose requieren auxiliar adicional. Los registros de gastos de Dataverse se usan para identificar proveedores, no para presumir deuda.
 
 **Facturación:** base de facturas emitidas durante el mes menos base de notas crédito del mismo mes. Impuestos y retenciones se separan del total neto. Se conserva la clasificación Cloud/Copiers disponible al reconstruir; `Sin asignar` permanece dentro del total. La clasificación actual no prueba cuál era la clasificación histórica.
+
+**Facturación anterior a Siigo:** se incluyen documentos de Dataverse que no aparecen en Siigo. Para documentos migrados `DT<n>` / `FV-2-<n>`, se exige una coincidencia única de NIT, importe y emisión con máximo un día de diferencia. Se conservan los importes de Siigo y la clasificación disponible en Dataverse, sin duplicar el documento. Los registros marcados DEMO se excluyen con advertencia. La base e IVA legados deben sumar el total bruto; si no concilian, quedan sin valor. Las retenciones imposibles se muestran pendientes. La ausencia de notas crédito históricas mantiene el reporte parcial.
+
+**Bancos:** soporte opcional entregado al comando de mantenimiento. Se verifican hashes de procedencia, secuencias, saldo tras cada movimiento, abonos/cargos totales y continuidad entre meses. Las filas se agrupan por período del extracto: un ajuste con fecha valor del mes anterior se conserva en el extracto que lo reporta, sin alterar el cierre bancario previo. Se guarda el saldo inicial/final por cuenta, los movimientos y las referencias al PDF/página. Los abonos bancarios no se aplican automáticamente a facturas ni se clasifican todos como ingresos; incluyen transferencias internas. El Excel contiene movimientos, saldos por cuenta y hashes de los soportes.
+
+Cuando todas las obligaciones de un reporte tienen saldo indeterminado, el subtotal queda pendiente, no cero. Los cierres de 2025 necesitan conciliar el auxiliar inicial al 31/12/2024. Los cierres previamente guardados conservan su contenido y hash.
 
 Estos cierres reconstruidos representan la evidencia contable disponible al capturarlos, incluyendo documentos registrados retroactivamente. No prueban lo que mostraba el sistema en aquella fecha. Los subtotales de cartera/proveedores no deben interpretarse como saldos contables completos.
 
@@ -44,11 +51,16 @@ Ejecutar desde la raíz y compilar Release primero. El script obtiene únicament
 ```powershell
 ./scripts/Run-MonthClose.ps1 -Mode Preview -Year 2026
 ./scripts/Run-MonthClose.ps1 -Mode Capture -Year 2026
+# Soporte bancario local verificado; nunca se incorpora a Git ni al ZIP del sitio:
+./scripts/Run-MonthClose.ps1 -Mode Preview -Year 2025 -BankEvidencePath tmp/bank-evidence.json
+./scripts/Run-MonthClose.ps1 -Mode Capture -Year 2025 -BankEvidencePath tmp/bank-evidence.json
 # Solo después de corregir/conciliar la fuente; conserva v1 y crea v2:
 ./scripts/Run-MonthClose.ps1 -Mode Capture -Year 2026 -RevisePeriod 2026-09
 ```
 
 `--month-close-replay` recalcula únicamente archivos locales de previsualización a partir de `tmp/month-close-source.json`; no persiste cierres. `MonthClose:Enabled=false` detiene la captura automática sin afectar la consulta de cierres existentes. No se deben versionar fuentes financieras, archivos temporales ni configuración de producción.
+
+El soporte bancario JSON usa `archiveSha256`, `statements` (file, account enmascarada a cuatro dígitos, period AAAAMM, opening, credits, debits, closing, rows, documentSha256) y `transactions` (id, date AAAA-MM-DD, account, description, value con signo, balance, source, page, sequence). La validación rechaza duplicados, saldos inconsistentes y movimientos fuera del extracto. La carga es administrativa por CLI; no se ha abierto un endpoint de importación ni se publican los PDFs en `wwwroot`.
 
 ## Verificación
 

@@ -7,13 +7,14 @@ namespace CotizadorInterno.Web.Services.MonthClose;
 // Pure calculation: no live I/O, no mutation of invoices or historical payments.
 public static partial class MonthCloseEngine
 {
-    public static readonly string[] ReportKeys = ["receivables", "payables", "billing", "forecast", "inventory", "assets", "vacations"];
+    public const int FirstYear = 2025;
+    public static readonly string[] ReportKeys = ["receivables", "payables", "billing", "forecast", "inventory", "assets", "vacations", "banks"];
     public static DateOnly BogotaToday(DateTimeOffset utc) => DateOnly.FromDateTime(utc.ToOffset(TimeSpan.FromHours(-5)).DateTime);
     public static DateOnly ParsePeriod(string period)
     {
         if (!DateOnly.TryParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start)
-            || start.Year < 2026 || start.Year > 2100)
-            throw new ArgumentException("El período debe tener formato AAAA-MM, desde enero de 2026.");
+            || start.Year < FirstYear || start.Year > 2100)
+            throw new ArgumentException("El período debe tener formato AAAA-MM, desde enero de 2025.");
         return start;
     }
 
@@ -32,10 +33,11 @@ public static partial class MonthCloseEngine
                 Cutoff = end.AddDays(-1).ToString("yyyy-MM-dd"), Mode = captureOperational ? "captured" : "reconstructed" },
             SourceCounts = input.Tables.Concat(input.Siigo).ToDictionary(x => x.Key, x => x.Value.Count)
         };
-        var dvInvoices = input.Source("billing");
+        var dvInvoices = input.Source("billing").Where(x => !IsDemoInvoice(x)).ToList();
         var mapping = dvInvoices.GroupBy(x => S(x, "cr07a_name") + "|" + S(x, "cr07a_nitempresa"))
             .ToDictionary(g => g.Key, g => g.First());
         var invoices = input.Source("invoices");
+        var representedLegacyKeys = LinkLegacyInvoices(dvInvoices, invoices, mapping);
         var invoiceById = invoices.Where(x => S(x, "id") != "").GroupBy(x => S(x, "id")).ToDictionary(g => g.Key, g => g.First());
         var clients = input.Source("clients").GroupBy(x => S(x, "cr07a_nit")).ToDictionary(g => g.Key, g => S(g.First(), "cr07a_nombre"));
         var notes = input.Source("credit-notes").GroupBy(x => S(P(x, "invoice"), "id")).ToDictionary(g => g.Key, g => g.ToList());
@@ -75,16 +77,17 @@ public static partial class MonthCloseEngine
         var siigoKeys = invoices.Select(x => S(x,"name")+"|"+S(P(x,"customer"),"identification")).ToHashSet();
         foreach (var inv in dvInvoices.Where(x => D(x,"cr07a_fechadeemision") is { } d && d<end
             && !siigoKeys.Contains(S(x,"cr07a_name")+"|"+S(x,"cr07a_nitempresa"))
+            && !representedLegacyKeys.Contains(S(x,"cr07a_name")+"|"+S(x,"cr07a_nitempresa"))
             && (D(x,"cr07a_fechadepago") is not { } paid || paid >= end || N(x,"cr07a_valorpago") < N(x,"cr07a_totalfactura")-1)))
         {
             ar.Unresolved++;
-            ar.Rows.Add(Row(("document",S(inv,"cr07a_name")),("party",S(inv,"cr07a_cliente")),("taxId",S(inv,"cr07a_nitempresa")),
+            ar.Rows.Add(Row(("document",S(inv,"cr07a_name")),("party",clients.GetValueOrDefault(S(inv,"cr07a_nitempresa"),S(inv,"cr07a_cliente"))),("taxId",S(inv,"cr07a_nitempresa")),
                 ("date",D(inv,"cr07a_fechadeemision")?.ToString("yyyy-MM-dd")),("total",N(inv,"cr07a_totalfactura")),("balance",null),
                 ("quality","Registro legado sin auxiliar histórico verificable"),("source",S(inv,"cr07a_facturacionid"))));
         }
-        ar.Total = Sum(ar,"balance");
+        ar.Total = ar.Unresolved > 0 && ar.Rows.All(r => r["balance"] is null) ? null : Sum(ar,"balance");
         result.Reports.Add(ar);
-        result.Summary.Aging = new[] {"Al día","1–30 días","31–60 días","Más de 60 días"}.Select((x,i)=>new MonthCloseSlice(x,Round(age[i]))).ToList();
+        result.Summary.Aging = ar.Total.HasValue ? new[] {"Al día","1–30 días","31–60 días","Más de 60 días"}.Select((x,i)=>new MonthCloseSlice(x,Round(age[i]))).ToList() : [];
 
         var ap = BuildPayables(input, end, today);
         result.Reports.Add(ap);
@@ -95,6 +98,7 @@ public static partial class MonthCloseEngine
         billing.Needed="Completar las facturas sin vertical; para sublíneas Cloud se necesita la relación entre cada ítem facturado y su línea comercial.";
         foreach(var doc in invoices.Where(x=>D(x,"date") is {} d && d>=start && d<end)) AddBilling(doc,1,null);
         foreach(var doc in input.Source("credit-notes").Where(x=>D(x,"date") is {} d && d>=start && d<end)) AddBilling(doc,-1,invoiceById.GetValueOrDefault(S(P(doc,"invoice"),"id")));
+        AddLegacyBilling(billing, dvInvoices, siigoKeys, representedLegacyKeys, clients, start, end);
         void AddBilling(JsonElement doc,int sign,JsonElement? original)
         {
             var invoice=original ?? doc;
@@ -106,12 +110,17 @@ public static partial class MonthCloseEngine
                 ("line",line),("base",sign*amounts.Base),("tax",sign*amounts.Tax),("retentions",sign*amounts.Retentions),
                 ("total",sign*N(doc,"total")),("quality",sign<0?"Nota crédito del período":"Factura emitida"),("source",S(doc,"id"))));
         }
-        billing.Total=Sum(billing,"base"); result.Reports.Add(billing);
-        result.Summary.BillingLines=billing.Rows.GroupBy(x=>Convert.ToString(x["line"])??"Sin asignar").Select(g=>new MonthCloseSlice(g.Key,g.Sum(x=>Convert.ToDecimal(x["base"])))).ToList();
+        billing.Total=billing.Unresolved > 0 && billing.Rows.All(r => r["base"] is null) ? null : Sum(billing,"base"); result.Reports.Add(billing);
+        if (billing.Unresolved > 0) billing.State = "partial";
+        result.Summary.BillingLines=billing.Rows.Where(x=>x["base"] is not null).GroupBy(x=>Convert.ToString(x["line"])??"Sin asignar").Select(g=>new MonthCloseSlice(g.Key,g.Sum(x=>Convert.ToDecimal(x["base"])))).ToList();
         AddOperational(result,input,captureOperational);
+        AddBanks(result,input,period);
         result.Summary.Warnings.Add("Los cierres reconstruidos no equivalen a una captura tomada en el pasado. Los saldos pendientes de soporte se identifican y no se presentan como cero.");
         if(ar.Unresolved>0)result.Summary.Warnings.Add($"Cartera: {ar.Unresolved} documentos sin saldo histórico determinable, excluidos del total identificable.");
         result.Summary.Warnings.Add($"Proveedores: saldo parcial identificable de compras Siigo. {ap.Unresolved} documentos sin saldo verificable quedan excluidos del total; faltan auxiliares de documentos soporte y obligaciones fuera de compras.");
+        if (start.Year == 2025) result.Summary.Warnings.Add("Cartera 2025: falta conciliar el auxiliar inicial al 31/12/2024 y aplicaciones de documentos legados. Una fecha única de pago no reconstruye abonos parciales.");
+        var demos = input.Source("billing").Count(x => IsDemoInvoice(x) && D(x,"cr07a_fechadeemision") is {} d && d>=start && d<end);
+        if (demos > 0) result.Summary.Warnings.Add($"Facturación: {demos} registros identificados como DEMO excluidos del mes.");
         result.Summary.Reports=result.Reports.Select(r=>new MonthCloseMetric(r.Key,r.Title,r.State,r.Message,r.Needed,r.Unit,r.Total,r.Rows.Count,r.Unresolved)).ToList();
         return result;
     }

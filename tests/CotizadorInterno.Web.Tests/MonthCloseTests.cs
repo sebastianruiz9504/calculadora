@@ -44,7 +44,7 @@ public sealed class MonthCloseTests
     [Fact] public void MissingApplicationsAreUnknownNotZeroOrInventedDebt()
     {
         var report=Report(MonthCloseEngine.Build("2026-01",1,Input()));
-        Assert.Equal(1,report.Unresolved);Assert.Null(Assert.Single(report.Rows)["balance"]);Assert.Equal(0,report.Total);
+        Assert.Equal(1,report.Unresolved);Assert.Null(Assert.Single(report.Rows)["balance"]);Assert.Null(report.Total);
     }
     [Theory] [InlineData("FV-1","123")] [InlineData("FV-2","456")]
     public void PaymentRequiresBothInvoicePrefixAndCustomer(string prefix,string customer)
@@ -62,7 +62,7 @@ public sealed class MonthCloseTests
         var doc=J("""{"total":112,"retentions":[{"type":"ReteICA","value":2}],"items":[{"taxes":[{"type":"IVA","value":19},{"type":"Retefuente","value":5}]}]}""");
         var values=MonthCloseEngine.Amounts(doc);Assert.Equal((100m,19m,7m),values);
     }
-    [Theory] [InlineData("2026-10")] [InlineData("2026-11")] [InlineData("2026-13")] [InlineData("2025-01")] [InlineData("2026-1")]
+    [Theory] [InlineData("2026-10")] [InlineData("2026-11")] [InlineData("2026-13")] [InlineData("2024-01")] [InlineData("2026-1")]
     public void OpenFutureOrMalformedMonthsCannotBeClosed(string period)=>Assert.ThrowsAny<ArgumentException>(()=>MonthCloseEngine.Build(period,1,Input()));
     [Fact] public void HistoricOperationalValuesAreNeverInventedFromCurrentState()
     {
@@ -113,18 +113,31 @@ public sealed class MonthCloseTests
         var input=Input();input.Tables["billing"]=[J("""{"cr07a_name":"OLD-1","cr07a_nitempresa":"123","cr07a_fechadeemision":"2024-01-01","cr07a_fechadepago":"2025-01-01","cr07a_valorpago":40,"cr07a_totalfactura":100}""")];
         Assert.Contains(Report(MonthCloseEngine.Build("2026-01",1,input)).Rows,r=>Equals(r["document"],"OLD-1")&&r["balance"] is null);
     }
-    [Fact] public async Task VacationDetailsAndExportsDenyDashboardOnlyUserBeforeReadingStoredData()
+    [Theory] [InlineData("vacations")] [InlineData("banks")]
+    public async Task SensitiveDetailsAndExportsDenyDashboardOnlyUserBeforeReadingStoredData(string key)
     {
         var repo=new FakeRepository();using var cache=new MemoryCache(new MemoryCacheOptions());var service=new MonthCloseService(repo,new FakeSiigo(),cache,NullLogger<MonthCloseService>.Instance);
         var dv=DispatchProxy.Create<IDataverseService,UserProxy>();((UserProxy)(object)dv).User=new CurrentUserInfo{ModuleOptionValues=[AppModuleCatalog.Dashboard.OptionValue]};
         var controller=new MonthCloseController(service,dv,NullLogger<MonthCloseController>.Instance);
-        Assert.IsType<ForbidResult>(await controller.Report(Guid.NewGuid(),"vacations"));
-        Assert.IsType<ForbidResult>(await controller.Export(Guid.NewGuid(),"vacations"));Assert.Equal(0,repo.ReadCount);
+        Assert.IsType<ForbidResult>(await controller.Report(Guid.NewGuid(),key));
+        Assert.IsType<ForbidResult>(await controller.Export(Guid.NewGuid(),key));Assert.Equal(0,repo.ReadCount);
     }
     [Fact] public async Task ReadingPanelUsesStoredDataWithoutCallingOperationalSources()
     {
         var repo=new FakeRepository();var siigo=new FakeSiigo();using var cache=new MemoryCache(new MemoryCacheOptions());var service=new MonthCloseService(repo,siigo,cache,NullLogger<MonthCloseService>.Instance);
         await service.ListAsync(2026,default);await service.ListAsync(2026,default);Assert.Equal(1,repo.ListCount);Assert.Equal(0,siigo.ReadCount);
+    }
+    [Fact] public async Task BankSummaryRestrictionDoesNotMutateCachedFinancialValues()
+    {
+        var summary=new MonthCloseSummary{Period="2025-01",Reports=[new("banks","Bancos","verified","Comprobado","","COP",123456,5,0)]};
+        var repo=new FakeRepository{Summaries=[summary]};using var cache=new MemoryCache(new MemoryCacheOptions());
+        var service=new MonthCloseService(repo,new FakeSiigo(),cache,NullLogger<MonthCloseService>.Instance);
+        var dv=DispatchProxy.Create<IDataverseService,UserProxy>();var proxy=(UserProxy)(object)dv;proxy.User=new CurrentUserInfo{ModuleOptionValues=[AppModuleCatalog.Dashboard.OptionValue]};
+        var controller=new MonthCloseController(service,dv,NullLogger<MonthCloseController>.Instance);
+        var denied=Assert.IsType<JsonResult>(await controller.Index(2025));
+        var json=JsonSerializer.Serialize(denied.Value,MonthCloseCodec.Json);Assert.DoesNotContain("123456",json);Assert.Contains("restricted",json);Assert.Equal(123456,summary.Reports[0].Total);
+        proxy.User=new CurrentUserInfo{ModuleOptionValues=[AppModuleCatalog.Dashboard.OptionValue,AppModuleCatalog.Conciliacion.OptionValue]};
+        var allowed=Assert.IsType<JsonResult>(await controller.Index(2025));Assert.Contains("123456",JsonSerializer.Serialize(allowed.Value,MonthCloseCodec.Json));Assert.Equal(1,repo.ListCount);
     }
     public class UserProxy:DispatchProxy
     {
@@ -134,7 +147,8 @@ public sealed class MonthCloseTests
     private sealed class FakeRepository:IMonthCloseRepository
     {
         public int ReadCount,ListCount;
-        public Task<IReadOnlyList<MonthCloseSummary>> ListAsync(int y,CancellationToken ct){ListCount++;return Task.FromResult<IReadOnlyList<MonthCloseSummary>>([]);}
+        public List<MonthCloseSummary> Summaries=[];
+        public Task<IReadOnlyList<MonthCloseSummary>> ListAsync(int y,CancellationToken ct){ListCount++;return Task.FromResult<IReadOnlyList<MonthCloseSummary>>(Summaries);}
         public Task<MonthCloseSnapshot?> ReadAsync(Guid id,CancellationToken ct){ReadCount++;return Task.FromResult<MonthCloseSnapshot?>(null);}
         public Task<bool>CreateAsync(MonthCloseSnapshot s,CancellationToken ct)=>throw new NotSupportedException();
         public Task<Dictionary<string,List<JsonElement>>>ReadSourcesAsync(CancellationToken ct)=>throw new NotSupportedException();

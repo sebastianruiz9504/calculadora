@@ -9,7 +9,7 @@ public sealed class MonthCloseService(IMonthCloseRepository repository,IMonthClo
     private static readonly SemaphoreSlim ReadGate=new(1,1);
     public async Task<IReadOnlyList<MonthCloseSummary>> ListAsync(int year,CancellationToken ct)
     {
-        if(year is <2026 or >2100)throw new ArgumentOutOfRangeException(nameof(year));
+        if(year is <MonthCloseEngine.FirstYear or >2100)throw new ArgumentOutOfRangeException(nameof(year));
         var key=$"month-close:index:{year}";
         if(cache.TryGetValue<IReadOnlyList<MonthCloseSummary>>(key,out var hit))return hit!;
         await ReadGate.WaitAsync(ct);
@@ -35,8 +35,10 @@ public sealed class MonthCloseService(IMonthCloseRepository repository,IMonthClo
         }
         finally{ReadGate.Release();}
     }
-    public async Task<int> CaptureMissingAsync(int year,CancellationToken ct,string? revisePeriod=null)
+    public async Task<int> CaptureMissingAsync(int year,CancellationToken ct,string? revisePeriod=null,MonthCloseBankEvidence? bankEvidence=null)
     {
+        if(year is <MonthCloseEngine.FirstYear or >2100)throw new ArgumentOutOfRangeException(nameof(year));
+        if (bankEvidence is not null) MonthCloseBankImporter.Validate(bankEvidence);
         await CaptureGate.WaitAsync(ct);
         try
         {
@@ -46,7 +48,7 @@ public sealed class MonthCloseService(IMonthCloseRepository repository,IMonthClo
                 .Where(m=>revisePeriod is null?!existing.Any(s=>s.Period==m.ToString("yyyy-MM")):m.ToString("yyyy-MM")==revisePeriod).ToList();
             if(periods.Count==0)return 0;
             logger.LogInformation("Preparando {Count} cierres mensuales de {Year}.",periods.Count,year);
-            var input=new MonthCloseInput{Tables=await repository.ReadSourcesAsync(ct),Siigo=await siigo.ReadMonthCloseDocumentsAsync(ct),RetrievedAt=DateTimeOffset.UtcNow};
+            var input=new MonthCloseInput{Tables=await repository.ReadSourcesAsync(ct),Siigo=await siigo.ReadMonthCloseDocumentsAsync(ct),RetrievedAt=DateTimeOffset.UtcNow,BankEvidence=bankEvidence};
             var saved=0;
             foreach(var p in periods)
             {
