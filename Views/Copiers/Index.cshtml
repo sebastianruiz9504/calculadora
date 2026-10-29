@@ -1,7 +1,6 @@
 @model CotizadorInterno.Web.Models.Copiers.CopiersPageViewModel
 @{
     ViewData["Title"] = "Copiers";
-    var canEditPreventiveMaintenanceFrequency = CotizadorInterno.Web.Models.Copiers.CopiersAccessPolicy.CanEditPreventiveMaintenanceFrequency(Model.CurrentUser);
 }
 
 @section Styles {
@@ -14,9 +13,6 @@
      data-save-maintenance-url="@Url.Action("SaveMaintenance", "Copiers")"
      data-upload-maintenance-url="@Url.Action("UploadMaintenanceAttachment", "Copiers")"
      data-download-maintenance-url="@Url.Action("DownloadMaintenanceAttachment", "Copiers")"
-     data-preventive-maintenance-url="@Url.Action("PreventiveMaintenance", "Copiers")"
-     data-preventive-maintenance-frequency-url="@Url.Action("PreventiveMaintenanceFrequency", "Copiers")"
-     data-schedule-preventive-maintenance-url="@Url.Action("SchedulePreventiveMaintenance", "Copiers")"
      data-calendar-consent-url="@Url.Action("CalendarConsent", "Copiers")"
      data-save-counter-url="@Url.Action("SaveCounter", "Copiers")"
      data-upload-counter-url="@Url.Action("UploadCounterAttachment", "Copiers")"
@@ -42,8 +38,7 @@
      data-equipment-movements-url="@Url.Action("EquipmentMovements", "Copiers")"
      data-line-equipment-assignment-url="@Url.Action("LineEquipmentAssignment", "Copiers")"
      data-line-equipment-assignment-save-url="@Url.Action("LineEquipmentAssignment", "Copiers")"
-     data-client-search-url="@Url.Action("ClientSearch", "Copiers")"
-     data-can-edit-preventive-frequency="@canEditPreventiveMaintenanceFrequency.ToString().ToLowerInvariant()">
+     data-client-search-url="@Url.Action("ClientSearch", "Copiers")">
     <section class="copiers-hero">
         <div>
             <div class="copiers-kicker">Operacion</div>
@@ -60,7 +55,6 @@
 
     <nav class="copiers-tabs" aria-label="Submodulos Copiers">
         <button type="button" class="copiers-tab is-active" data-copiers-tab="maintenance">Mantenimientos</button>
-        <button type="button" class="copiers-tab" data-copiers-tab="preventiveMaintenance">Mantenimientos Preventivos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="billingDays">D&iacute;as de facturaci&oacute;n</button>
         <button type="button" class="copiers-tab" data-copiers-tab="movements">Movimientos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="equipment" hidden>Equipos</button>
@@ -100,35 +94,6 @@
             </table>
         </div>
         <div class="copiers-empty" id="copiersMaintenanceEmpty" hidden>No hay mantenimientos propios para mostrar.</div>
-    </section>
-
-    <section class="copiers-panel" data-copiers-panel="preventiveMaintenance" hidden>
-        <div class="copiers-panel__header">
-            <div>
-                <div class="copiers-kicker">Preventivos</div>
-                <h2 class="copiers-section-title">Mantenimientos Preventivos</h2>
-            </div>
-            <div class="copiers-panel__actions">
-                <div class="copiers-segmented" aria-label="Periodo de validacion">
-                    <button type="button" class="is-active" data-copiers-preventive-period="this-month">Mes vigente</button>
-                    <button type="button" data-copiers-preventive-period="previous-month">Mes pasado</button>
-                </div>
-                <span class="copiers-counter" id="copiersPreventiveCount">0 clientes</span>
-                <button type="button" class="btn btn-outline-secondary" id="copiersPreventiveRefreshBtn">Actualizar</button>
-            </div>
-        </div>
-        <div class="copiers-table-wrap">
-            <table class="table align-middle copiers-table copiers-table--preventive">
-                <thead>
-                    <tr>
-                        <th>Cliente</th>
-                        <th class="text-end">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="copiersPreventiveBody"></tbody>
-            </table>
-        </div>
-        <div class="copiers-empty" id="copiersPreventiveEmpty" hidden>No hay clientes con productos copiers para mostrar.</div>
     </section>
 
     <section class="copiers-panel" data-copiers-panel="billingDays" hidden>
@@ -662,47 +627,6 @@
                     <button type="submit" class="btn btn-primary" id="copiersClientDetailSaveBtn">Guardar cliente</button>
                 </div>
             </section>
-        </form>
-    </div>
-</div>
-
-<div class="copiers-modal" id="copiersPreventiveScheduleModal" hidden>
-    <div class="copiers-modal__backdrop" data-copiers-close="preventiveSchedule"></div>
-    <div class="copiers-modal__dialog copiers-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="copiersPreventiveScheduleTitle">
-        <div class="copiers-modal__header">
-            <div>
-                <div class="copiers-kicker">Agenda</div>
-                <h2 class="copiers-modal__title" id="copiersPreventiveScheduleTitle">Programar mantenimiento</h2>
-                <p class="copiers-modal__text" id="copiersPreventiveScheduleSubtitle"></p>
-            </div>
-            <button type="button" class="btn btn-outline-secondary" data-copiers-close="preventiveSchedule">Cerrar</button>
-        </div>
-        <div class="copiers-status" id="copiersPreventiveScheduleStatus" role="status" aria-live="polite"></div>
-        <form class="copiers-form" id="copiersPreventiveScheduleForm">
-            <input type="hidden" id="copiersPreventiveScheduleClientId" />
-            <input type="hidden" id="copiersPreventiveScheduleClientName" />
-            <div class="copiers-form__grid copiers-form__grid--single">
-                <label class="copiers-field">
-                    <span>Cliente</span>
-                    <input class="form-control" id="copiersPreventiveScheduleClientDisplay" type="text" readonly />
-                </label>
-                <label class="copiers-field">
-                    <span>Fecha</span>
-                    <input class="form-control" id="copiersPreventiveScheduleDate" type="date" required />
-                </label>
-                <label class="copiers-field">
-                    <span>Hora</span>
-                    <input class="form-control" id="copiersPreventiveScheduleTime" type="time" required />
-                </label>
-                <label class="copiers-field">
-                    <span>Duracion (min)</span>
-                    <input class="form-control" id="copiersPreventiveScheduleDuration" type="number" min="15" max="480" step="15" value="60" />
-                </label>
-            </div>
-            <div class="copiers-modal__footer">
-                <button type="button" class="btn btn-outline-secondary" data-copiers-close="preventiveSchedule">Cancelar</button>
-                <button type="submit" class="btn btn-primary" id="copiersPreventiveScheduleSaveBtn">Guardar</button>
-            </div>
         </form>
     </div>
 </div>

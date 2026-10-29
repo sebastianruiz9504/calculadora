@@ -16,6 +16,11 @@ public sealed class CopiersPreventiveMaintenanceBoardDto
 
 public sealed class CopiersPreventiveMaintenanceClientDto
 {
+    public bool HasMonthlyPreventive { get; set; }
+    public int MaintenanceReportCount { get; set; }
+    public int ServicedEquipmentCount { get; set; }
+    public string LastMaintenanceDateDisplay { get; set; } = "";
+    public IReadOnlyList<CopiersPreventiveMaintenanceReportDto> Reports { get; set; } = Array.Empty<CopiersPreventiveMaintenanceReportDto>();
     public string ClientKey { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
@@ -40,6 +45,8 @@ public sealed class CopiersPreventiveMaintenanceClientDto
 
 public sealed class CopiersPreventiveMaintenanceEquipmentDto
 {
+    public string LastMaintenanceDateDisplay { get; set; } = "";
+    public string TechnicianName { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string Serial { get; set; } = "";
     public string ClientId { get; set; } = "";
@@ -61,6 +68,18 @@ public sealed class CopiersPreventiveMaintenanceEquipmentDto
     public long? CounterScans { get; set; }
     public string CounterStatusLabel { get; set; } = "";
     public string CounterStatusTone { get; set; } = "";
+}
+
+public sealed class CopiersPreventiveMaintenanceReportDto
+{
+    public string RecordId { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public string DateValue { get; set; } = "";
+    public string DateDisplay { get; set; } = "";
+    public string TechnicianName { get; set; } = "";
+    public IReadOnlyList<string> EquipmentSerials { get; set; } = Array.Empty<string>();
+    public bool HasAttachment { get; set; }
+    public bool IsHistorical { get; set; }
 }
 
 public sealed class CopiersPreventiveMaintenanceScheduleRequestDto

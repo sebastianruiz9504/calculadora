@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="~/css/hardware.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/copiers-mto-v2-calendar.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/copiers-preventive-dashboard.css" asp-append-version="true" />
 }
 
 <div class="dashboard-shell"
@@ -1471,6 +1472,7 @@
             <button type="button" class="dashboard-subtab" data-copiers-subtab="counters">Contadores</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance">Mantenimientos</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance-v2">Mantenimiento V2</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="preventive">Mantenimiento preventivo</button>
         </section>
 
         <div class="dashboard-subpanel is-active" data-copiers-subpanel="billing">
@@ -1667,6 +1669,10 @@
                     </div>
                 </article>
             </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-copiers-subpanel="preventive" hidden>
+            <partial name="_CopiersPreventiveMaintenance" />
         </div>
 
         <div class="dashboard-subpanel" data-copiers-subpanel="maintenance-v2" hidden>
@@ -3031,6 +3037,7 @@
 @section Scripts {
     <script src="~/js/dashboard-licenciamiento-detail.js" asp-append-version="true"></script>
     <script src="~/js/copiers-mto-v2-calendar.js" asp-append-version="true"></script>
+    <script src="~/js/copiers-preventive-dashboard.js" asp-append-version="true"></script>
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
     <script src="~/js/month-close.js" asp-append-version="true"></script>
     <script src="~/js/hardware.js" asp-append-version="true"></script>

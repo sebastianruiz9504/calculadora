@@ -3884,7 +3884,8 @@ public sealed partial class DataverseService
         DateOnly periodStart,
         DateOnly periodEnd,
         string counterPeriodLabel,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<CopiersEquipmentRecordRow>? sourceEquipment = null)
     {
         if (billingRows.Count == 0)
             return Array.Empty<CopiersBillingEquipmentDto>();
@@ -3907,7 +3908,7 @@ public sealed partial class DataverseService
                 DashboardEquipmentPrimaryNameField,
                 user,
                 ct);
-            var equipmentRows = (await GetEquipmentRecordsAsync(equipmentMetadata, user, ct))
+            var equipmentRows = (sourceEquipment ?? await GetEquipmentRecordsAsync(equipmentMetadata, user, ct))
                 .Where(static row => !row.InStock)
                 .Where(row => CopiersBillingClientMatches(row, clientIds, clientNames))
                 .ToList();
@@ -3963,7 +3964,7 @@ public sealed partial class DataverseService
                 .ThenBy(static row => row.Serial, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException ex) when (sourceEquipment is null)
         {
             _logger.LogWarning(
                 ex,

@@ -46,7 +46,7 @@ public sealed partial class DataverseService
         throw new InvalidOperationException("La consulta de mantenimientos supera el límite de páginas.");
     }
 
-    private async Task<List<CopiersMaintenanceRecordRow>> GetUnifiedMaintenanceRowsAsync(bool personal,CancellationToken ct,string? equipmentId=null)
+    private async Task<List<CopiersMaintenanceRecordRow>> GetUnifiedMaintenanceRowsAsync(bool personal,CancellationToken ct,string? equipmentId=null, DateOnly? periodStart=null, DateOnly? periodEnd=null)
     {
         var actor=await RequireMtoHistoryAccessAsync(ct);
         // Personal endpoints always enforce the authenticated system user, including administrators.
@@ -54,6 +54,8 @@ public sealed partial class DataverseService
         var fields="dtc_copiersmtov2id,dtc_reference,dtc_title,dtc_formversion,dtc_legacysourcekey,dtc_businessstatus,dtc_workflowstate,dtc_maintenancetype,dtc_servicedate,dtc_technicianuserkey,dtc_techniciannamesnapshot,_dtc_client_value,dtc_clientnamesnapshot,_dtc_equipment_value,dtc_equipmentserialsnapshot,dtc_workperformed,dtc_answersjson,dtc_reportevidencekey,dtc_reportfilename";
         var filter="statecode eq 0 and (dtc_workflowstate eq 827270002 or dtc_workflowstate eq 827270003 or dtc_workflowstate eq 827270004)";
         if(personal) filter+=$" and dtc_technicianuserkey eq '{NormalizeGuid(actor.SystemUserId,nameof(actor.SystemUserId))}'";
+        if (periodStart.HasValue) filter += $" and dtc_servicedate ge {periodStart.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}T00:00:00Z";
+        if (periodEnd.HasValue) filter += $" and dtc_servicedate lt {periodEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}T00:00:00Z";
         var rows=await ReadMtoHistoryAsync($"/api/data/v9.2/dtc_copiersmtov2s?$select={fields}&$filter={Uri.EscapeDataString(filter)}&$orderby=dtc_servicedate desc",ct);
         return rows.SelectMany(CopiersMaintenanceHistory.Project)
             .Where(r=>(!personal || r.TechnicianId.Equals(actor.SystemUserId,StringComparison.OrdinalIgnoreCase)) && (string.IsNullOrWhiteSpace(equipmentId) || r.EquipmentId.Equals(equipmentId,StringComparison.OrdinalIgnoreCase)))

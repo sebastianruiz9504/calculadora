@@ -1,0 +1,27 @@
+.preventive-board { padding: 1.5rem; }
+.preventive-board__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.preventive-board__intro { margin: .5rem 0 0; color: var(--bs-secondary-color, #64748b); }
+.preventive-board__actions, .preventive-board__period { display: flex; align-items: center; gap: .5rem; }
+.preventive-board__period { padding: .25rem; border: 1px solid var(--bs-border-color, #cbd5e1); border-radius: .75rem; }
+.preventive-board__period button { background: transparent; border: 0; border-radius: .5rem; padding: .5rem .75rem; color: inherit; }
+.preventive-board__period button[aria-pressed="true"] { background: #173b53; color: #fff; }
+.preventive-board__summary { margin: 1.25rem 0; font-weight: 600; }
+.preventive-board__search { display: block; max-width: 30rem; margin: 0 0 1rem; font-size: .875rem; }
+.preventive-board__search input { margin-top: .35rem; }
+.preventive-board__status:not(:empty) { padding: .75rem; margin-top: 1rem; border-radius: .5rem; background: #edf5fc; color: #173b53; }
+.preventive-board__status.is-error { background: #fff0ed; color: #9e2917; }
+.preventive-board__table-wrap { overflow-x: auto; }
+.preventive-board__table { min-width: 740px; }
+.preventive-board small { display: block; color: var(--bs-secondary-color, #64748b); margin-top: .3rem; font-size: .8rem; }
+.preventive-board__client { border: 0; background: transparent; padding: .4rem 0; text-align: left; color: inherit; font-weight: 650; }
+.preventive-board__client span { display: inline-block; width: 1.25rem; }
+.preventive-board__badge { display: inline-flex; padding: .4rem .65rem; border-radius: 1rem; font-weight: 600; font-size: .8rem; white-space: nowrap; }
+.preventive-board__badge.is-done { color: #16543c; background: #e2f5eb; }
+.preventive-board__badge.is-pending { color: #805508; background: #fff4d6; }
+.preventive-board__detail > td { background: var(--bs-tertiary-bg, #f8fafc); padding: 1.25rem !important; }
+.preventive-board__detail h3 { font-size: 1rem; margin: 1rem 0 .75rem; }
+.preventive-board__detail h3:first-child { margin-top: 0; }
+.preventive-board__detail p { font-size: .875rem; }
+.preventive-board__table select { min-width: 8.5rem; font-size: .875rem; }
+.preventive-board button:focus-visible, .preventive-board a:focus-visible { outline: 3px solid #63a7d2; outline-offset: 3px; }
+@media (max-width: 700px) { .preventive-board { padding: 1rem; } .preventive-board__actions { width: 100%; flex-wrap: wrap; } }

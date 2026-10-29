@@ -1,0 +1,32 @@
+<section class="dashboard-panel preventive-board" id="dashboardCopiersPreventive"
+         data-board-url="@Url.Action("Board", "CopiersPreventiveMaintenance")"
+         data-frequency-url="@Url.Action("Frequency", "CopiersPreventiveMaintenance")"
+         data-report-url="@Url.Action("CopiersMaintenanceAttachment", "Dashboard")"
+         aria-labelledby="preventiveHeading">
+    @Html.AntiForgeryToken()
+    <header class="preventive-board__header">
+        <div>
+            <div class="dashboard-panel__kicker">Copiers</div>
+            <h2 class="dashboard-panel__title" id="preventiveHeading">Mantenimiento preventivo</h2>
+            <p class="preventive-board__intro">Visitas preventivas finalizadas por cliente durante el mes seleccionado.</p>
+        </div>
+        <div class="preventive-board__actions">
+            <div class="preventive-board__period" role="group" aria-label="Mes de consulta">
+                <button type="button" data-preventive-period="this-month" aria-pressed="true">Mes vigente</button>
+                <button type="button" data-preventive-period="previous-month" aria-pressed="false">Mes pasado</button>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-preventive-refresh>Actualizar</button>
+        </div>
+    </header>
+    <div class="preventive-board__status" data-preventive-status role="status" aria-live="polite"></div>
+    <div class="preventive-board__summary" data-preventive-summary></div>
+    <label class="preventive-board__search">Buscar cliente
+        <input type="search" class="form-control" data-preventive-search placeholder="Nombre del cliente o ciudad" autocomplete="off" />
+    </label>
+    <div class="preventive-board__table-wrap">
+        <table class="table dashboard-table preventive-board__table">
+            <thead><tr><th>Cliente</th><th>Periodicidad</th><th>Estado del mes</th><th>Último preventivo</th><th>Equipos atendidos</th></tr></thead>
+            <tbody data-preventive-body></tbody>
+        </table>
+    </div>
+</section>

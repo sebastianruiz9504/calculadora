@@ -13276,6 +13276,8 @@
                 ? "maintenance"
             : subtabKey === "maintenance-v2"
                 ? "maintenance-v2"
+            : subtabKey === "preventive"
+                ? "preventive"
                 : "billing";
         syncCopiersSubtabVisibility();
 
@@ -13300,6 +13302,11 @@
         }
 
         if (state.activeTab !== "copiers") {
+            return;
+        }
+
+        if (state.copiersSubtab === "preventive") {
+            window.CopiersPreventiveDashboard?.activate();
             return;
         }
 
@@ -15741,8 +15748,8 @@
     syncDashboardGroupTabs();
     syncCopiersSubtabVisibility();
     const initialDashboardParameters = new URLSearchParams(window.location.search);
-    if (initialDashboardParameters.get("tab") === "copiers" && initialDashboardParameters.get("copiersTab") === "maintenance-v2") {
-        state.copiersSubtab = "maintenance-v2";
+    if (initialDashboardParameters.get("tab") === "copiers" && ["maintenance-v2", "preventive"].includes(initialDashboardParameters.get("copiersTab"))) {
+        state.copiersSubtab = initialDashboardParameters.get("copiersTab");
         setActiveTab("copiers");
     } else if (initialDashboardParameters.get("tab") === "month-close") {
         setActiveTab("month-close");

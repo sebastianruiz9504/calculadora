@@ -4,6 +4,7 @@ using System.Text.Json;
 using CotizadorInterno.Web.Models.Copiers;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.RH;
+using CotizadorInterno.Web.Models.Permissions;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -35,119 +36,69 @@ public sealed partial class DataverseService
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (!AppModuleAccessPolicy.CanAccess(AppModule.Dashboard, currentUser)
+            || !AppModuleAccessPolicy.CanAccess(AppModule.Copiers, currentUser))
+            throw new UnauthorizedAccessException("El panel de preventivos requiere acceso a Dashboard y Copiers.");
+
         var today = GetBogotaToday();
         var periodDefinition = ResolveCopiersPreventivePeriod(period, today);
-        var periodStart = periodDefinition.StartInclusive;
-        var periodEnd = periodDefinition.EndExclusive;
-        var periodKey = periodDefinition.Value;
-        var dashboard = await GetCopiersDashboardCoreAsync(
-            periodStart,
-            periodEnd,
-            periodDefinition.Label,
-            ct);
-        var dashboardEquipment = dashboard.Groups
-            .SelectMany(static group => group.Equipment)
-            .Where(static item => !string.IsNullOrWhiteSpace(item.RecordId))
+        var start = periodDefinition.StartInclusive;
+        var end = periodDefinition.EndExclusive;
+        var maintenance = await GetUnifiedMaintenanceRowsAsync(false, ct, periodStart: start, periodEnd: end);
+        // Keep the per-equipment projection; the general history view collapses multi-equipment visits.
+        var completed = CopiersPreventiveMaintenanceSummary.CompletedInPeriod(maintenance.Select(row => new CopiersMaintenanceRowDto
+        {
+            RecordId = row.RecordId, InternalId = row.InternalId, ClientId = row.ClientId, ClientName = row.ClientName,
+            EquipmentId = row.EquipmentId, EquipmentSerial = row.EquipmentSerial, DateValue = row.DateValue,
+            DateDisplay = row.DateDisplay, TechnicianName = row.TechnicianName, TechnicianId = row.TechnicianId,
+            MaintenanceTypeValue = row.MaintenanceTypeValue, MaintenanceStatusValue = row.MaintenanceStatusValue,
+            HasAttachment = row.HasAttachment, IsHistorical = row.IsHistorical
+        }), start, end);
+        var billingMetadata = await ResolveRhEntityMetadataAsync(_dashboardCopiersTableLogicalName, _dashboardCopiersTableSetName,
+            _dashboardCopiersIdField, _dashboardCopiersPrimaryNameField, httpContext.User, ct);
+        var billing = await GetCopiersRecordsAsync(billingMetadata, httpContext.User, ct);
+        var equipmentMetadata = await ResolveRhEntityMetadataAsync(DashboardEquipmentTableLogicalName, DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField, DashboardEquipmentPrimaryNameField, httpContext.User, ct);
+        var inventory = await GetEquipmentRecordsAsync(equipmentMetadata, httpContext.User, ct);
+        // Include assigned equipment and serviced clients even without a billing product.
+        var clientSources = billing.Concat(inventory.Where(row => !row.InStock && !string.IsNullOrWhiteSpace(row.ClientId))
+                .Select(row => new CopiersBillingRecordRow { ClientId = row.ClientId, ClientName = row.ClientName }))
+            .Concat(completed.Select(row => new CopiersBillingRecordRow { ClientId = row.ClientId, ClientName = row.ClientName }))
             .ToList();
-        var monthlyCounterEquipmentIds = dashboardEquipment
-            .Where(static item => item.HasCurrentCounter)
-            .Select(static item => NormalizeOptionalGuid(item.RecordId))
-            .Where(static item => !string.IsNullOrWhiteSpace(item))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var monthlyMaintenanceEquipmentIds = await GetPreventiveMonthlyMaintenanceEquipmentIdsAsync(
-            periodStart,
-            periodEnd,
-            httpContext.User,
-            ct);
-        var schedulesByClientKey = await GetPreventiveSchedulesByClientKeyAsync(periodKey, httpContext.User, ct);
-        var clientSettingsById = await GetPreventiveClientSettingsByIdAsync(
-            dashboard.Groups.Select(static group => group.ClientId),
-            httpContext.User,
-            ct);
-        var currentUser = await GetCurrentUserAsync(ct);
-        var canEditMaintenanceFrequency = CopiersAccessPolicy.CanEditPreventiveMaintenanceFrequency(currentUser);
-        var clients = dashboard.Groups
-            .GroupBy(group => BuildDashboardGroupKey(group.ClientId, group.ClientName), StringComparer.OrdinalIgnoreCase)
+        var equipment = await BuildCopiersBillingEquipmentRowsAsync(clientSources, httpContext.User, start, end,
+            periodDefinition.Label, ct, inventory);
+        var settings = await GetPreventiveClientSettingsByIdAsync(clientSources.Select(row => row.ClientId), httpContext.User, ct);
+        var clients = clientSources.GroupBy(row => BuildDashboardGroupKey(row.ClientId, row.ClientName), StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                var groups = group.ToList();
-                var first = groups[0];
-                var clientId = NormalizeOptionalGuid(first.ClientId);
-                clientSettingsById.TryGetValue(clientId, out var clientSettings);
-                var maintenanceFrequency = ResolvePreventiveMaintenanceFrequencyValue(clientSettings?.MaintenanceFrequency)
-                    ?? ResolvePreventiveMaintenanceFrequency(groups);
-                var equipment = groups
-                    .SelectMany(static item => item.Equipment)
-                    .Where(static item => !string.IsNullOrWhiteSpace(item.RecordId))
-                    .GroupBy(static item => item.RecordId, StringComparer.OrdinalIgnoreCase)
-                    .Select(static equipmentGroup => equipmentGroup.First())
-                    .Select(item =>
-                    {
-                        var dto = ToPreventiveMaintenanceEquipment(item);
-                        var equipmentId = NormalizeOptionalGuid(dto.RecordId);
-                        dto.HasMonthlyMaintenance = monthlyMaintenanceEquipmentIds.Contains(equipmentId);
-                        dto.HasMonthlyCounter = monthlyCounterEquipmentIds.Contains(equipmentId);
-                        dto.MaintenanceButtonLabel = dto.HasMonthlyMaintenance
-                            ? "Mantenimiento registrado"
-                            : "Registrar mantenimiento";
-                        dto.MaintenanceButtonTone = dto.HasMonthlyMaintenance ? "success" : "outline-primary";
-                        dto.CounterButtonLabel = dto.HasMonthlyCounter
-                            ? "Contador registrado"
-                            : "Registrar contador";
-                        dto.CounterButtonTone = dto.HasMonthlyCounter ? "success" : "outline-secondary";
-                        return dto;
-                    })
-                    .OrderBy(static item => item.Serial, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                schedulesByClientKey.TryGetValue(group.Key, out var schedule);
-                var maintenanceRegistered = equipment.Count(static item => item.HasMonthlyMaintenance);
-                var pendingMaintenance = equipment.Count - maintenanceRegistered;
-                var countersRegistered = equipment.Count(static item => item.HasMonthlyCounter);
-                var pendingCounters = equipment.Count - countersRegistered;
-                var clientState = ResolvePreventiveClientState(
-                    equipment.Count,
-                    maintenanceRegistered,
-                    countersRegistered);
-
-                return new CopiersPreventiveMaintenanceClientDto
+                var first = group.First();
+                var id = NormalizeOptionalGuid(first.ClientId);
+                settings.TryGetValue(id, out var clientSettings);
+                var frequency = ResolvePreventiveMaintenanceFrequencyValue(clientSettings?.MaintenanceFrequency)
+                    ?? ResolvePreventiveMaintenanceFrequencyValue(string.Join(" ", group.Select(row => row.ProductName)))
+                    ?? new CopiersPreventiveFrequency("monthly", "Mensual", false);
+                var client = new CopiersPreventiveMaintenanceClientDto
                 {
-                    ClientKey = group.Key,
-                    ClientId = clientId,
-                    ClientName = FirstNonEmpty(first.ClientName, "Sin cliente"),
-                    ClientCity = clientSettings?.City ?? "",
-                    EquipmentCount = equipment.Count,
-                    MaintenanceFrequencyKey = maintenanceFrequency.Key,
-                    MaintenanceFrequencyLabel = maintenanceFrequency.Label,
-                    IsBimonthlyMaintenance = maintenanceFrequency.IsBimonthly,
-                    IsScheduledThisMonth = schedule is not null,
-                    ScheduledDateDisplay = schedule?.ScheduledDateDisplay ?? "",
-                    MonthlyStatusLabel = clientState.StatusLabel,
-                    MonthlyStatusTone = clientState.StatusTone,
-                    ScheduleButtonLabel = clientState.ButtonLabel,
-                    ScheduleButtonTone = clientState.ButtonTone,
-                    ScheduleButtonDisabled = clientState.ButtonDisabled,
-                    MaintenanceRegisteredCount = maintenanceRegistered,
-                    PendingMaintenanceCount = pendingMaintenance,
-                    CountersRegisteredCount = countersRegistered,
-                    PendingCountersCount = pendingCounters,
-                    Equipment = equipment
+                    ClientKey = group.Key, ClientId = id, ClientName = FirstNonEmpty(first.ClientName, "Sin cliente"),
+                    ClientCity = clientSettings?.City ?? "", MaintenanceFrequencyKey = frequency.Key,
+                    MaintenanceFrequencyLabel = frequency.Label, IsBimonthlyMaintenance = frequency.IsBimonthly,
+                    Equipment = equipment.Where(row => !string.IsNullOrWhiteSpace(id)
+                            && string.Equals(NormalizeOptionalGuid(row.ClientId), id, StringComparison.OrdinalIgnoreCase))
+                        .GroupBy(row => row.RecordId, StringComparer.OrdinalIgnoreCase).Select(rows => rows.First())
+                        .Select(ToPreventiveMaintenanceEquipment).OrderBy(row => row.Serial, StringComparer.OrdinalIgnoreCase).ToList()
                 };
-            })
-            .OrderBy(static item => item.ClientName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
+                CopiersPreventiveMaintenanceSummary.Apply(client, completed);
+                return client;
+            }).OrderBy(row => row.ClientName, StringComparer.OrdinalIgnoreCase).ToList();
         return new CopiersPreventiveMaintenanceBoardDto
         {
-            AsOfDateLabel = dashboard.AsOfDateLabel,
-            CounterPeriodLabel = periodDefinition.Label,
-            PeriodFilter = periodDefinition.Filter,
-            PeriodLabel = periodDefinition.Label,
-            PeriodValue = periodKey,
-            PeriodStartValue = periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            PeriodEndValue = periodEnd.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            CanEditMaintenanceFrequency = canEditMaintenanceFrequency,
-            RecordsCount = clients.Count,
-            Clients = clients
+            AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture), CounterPeriodLabel = periodDefinition.Label,
+            PeriodFilter = periodDefinition.Filter, PeriodLabel = periodDefinition.Label, PeriodValue = periodDefinition.Value,
+            PeriodStartValue = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            PeriodEndValue = end.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            CanEditMaintenanceFrequency = CopiersAccessPolicy.CanEditPreventiveMaintenanceFrequency(currentUser),
+            RecordsCount = clients.Count, Clients = clients
         };
     }
 
