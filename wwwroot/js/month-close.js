@@ -5,8 +5,8 @@
     const $ = id => document.getElementById(id);
     const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     const names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    const tones = ["#3478db", "#cc7b25", "#875ad3", "#008f83", "#008f83", "#875ad3", "#b16c8b"];
-    const labels = { partial: "Parcial · revisar", reconstructed: "Reconstruido", unavailable: "Pendiente de historial", restricted: "Acceso restringido", captured: "Capturado" };
+    const tones = ["#3478db", "#cc7b25", "#875ad3", "#008f83", "#008f83", "#875ad3", "#b16c8b", "#20956c"];
+    const labels = { partial: "Parcial · revisar", reconstructed: "Reconstruido", unavailable: "Pendiente de historial", restricted: "Acceso restringido", captured: "Capturado", verified: "Comprobado con extractos" };
     const money = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });
     const compact = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 });
     const number = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
@@ -14,7 +14,9 @@
     const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
     const state = { loaded: false, loading: false, data: null, period: null, snapshot: null, key: null, page: 1, pages: 1, indexRequest: null, detailRequest: null, generation: 0 };
     const localYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "America/Bogota" }).format(new Date()));
-    for (let y = Math.max(2026, localYear); y >= 2026; y--) $("mcYear").add(new Option(String(y), String(y)));
+    for (let y = Math.max(2025, localYear); y >= 2025; y--) $("mcYear").add(new Option(String(y), String(y)));
+    const requestedYear = new URL(window.location.href).searchParams.get("year");
+    if ([...$("mcYear").options].some(o => o.value === requestedYear)) $("mcYear").value = requestedYear;
     function status(text, error = false) { $("mcStatus").textContent = text; $("mcStatus").classList.toggle("is-error", error); }
     function latest() {
         const map = new Map();
@@ -36,6 +38,7 @@
         state.indexRequest?.abort(); state.detailRequest?.abort();
         const request = new AbortController(); state.indexRequest = request;
         state.loading = true; root.setAttribute("aria-busy", "true"); status("Consultando cierres guardados…");
+        $("mcContent").hidden = true; $("mcEmpty").hidden = true;
         try {
             const data = await json(url(root.dataset.indexUrl, { year: $("mcYear").value }), request.signal);
             if (request !== state.indexRequest) return;
@@ -80,11 +83,15 @@
         const items = [
             ["Cuentas por cobrar", reports.find(x => x.key === "receivables")?.total, "Saldo identificable · no incluye filas sin soporte", tones[0]],
             ["Cuentas por pagar", reports.find(x => x.key === "payables")?.total, "Saldo identificable · cobertura parcial", tones[1]],
-            ["Facturación del mes", reports.find(x => x.key === "billing")?.total, "Base neta de notas crédito", tones[2]]
+            ["Facturación del mes", reports.find(x => x.key === "billing")?.total, reports.find(x => x.key === "billing")?.state === "partial" ? "Base identificable · revisar pendientes" : "Base neta de notas crédito", tones[2]]
         ];
         items.forEach(([label,value,hint,tone]) => { const card = el("article", "mc-metric"); card.style.setProperty("--tone", tone); card.append(el("span", "", label), el("strong", "", value === null || value === undefined ? "Pendiente" : "$ " + compact.format(value)), el("small", "", hint)); $("mcMetrics").append(card); });
         const count = reports.filter(r => !["unavailable", "restricted"].includes(r.state)).length;
-        const card = el("article", "mc-metric"); card.style.setProperty("--tone", tones[3]); card.append(el("span", "", "Reportes con datos"), el("strong", "", `${count} / 7`), el("small", "", "Cada reporte muestra su alcance y pendientes")); $("mcMetrics").append(card);
+        const bank = reports.find(r => r.key === "banks" && r.state !== "restricted" && r.total !== null);
+        const card = el("article", "mc-metric"); card.style.setProperty("--tone", tones[3]);
+        card.append(el("span", "", bank ? "Saldo en bancos" : "Reportes con datos"),
+            el("strong", "", bank ? "$ " + compact.format(bank.total) : `${count} / ${reports.length}`),
+            el("small", "", bank ? "Cuentas incluidas · comprobado con extractos" : "Cada reporte muestra su alcance y pendientes")); $("mcMetrics").append(card);
     }
     function drawBars(id, items, colors) {
         const box = $(id); box.replaceChildren(); const max = Math.max(1, ...items.map(x => Math.abs(x.value)));
@@ -99,18 +106,30 @@
     }
     function drawReports() {
         $("mcReports").replaceChildren();
-        state.snapshot.reports.forEach((r,i) => { const b = el("button", "mc-report"); b.type = "button"; b.dataset.state = r.state; b.style.setProperty("--tone", tones[i]); b.setAttribute("aria-pressed", String(state.key === r.key)); b.disabled = r.state === "restricted"; b.append(el("span", "mc-report-index", `0${i + 1}`), el("strong", "", r.title), el("span", "mc-badge", labels[r.state] || r.state), el("small", "", r.state === "unavailable" ? "Ver información necesaria" : r.state === "restricted" ? "Requiere RH o Nómina" : `${number.format(r.count)} registros guardados`)); b.addEventListener("click", () => { state.key = r.key; state.page = 1; $("mcSearch").value = ""; drawReports(); loadReport(); }); $("mcReports").append(b); });
+        state.snapshot.reports.forEach((r,i) => { const b = el("button", "mc-report"); b.type = "button"; b.dataset.state = r.state; b.style.setProperty("--tone", tones[i % tones.length]); b.setAttribute("aria-pressed", String(state.key === r.key)); b.disabled = r.state === "restricted"; b.append(el("span", "mc-report-index", `0${i + 1}`), el("strong", "", r.title), el("span", "mc-badge", labels[r.state] || r.state), el("small", "", r.state === "unavailable" ? "Ver información necesaria" : r.state === "restricted" ? r.message : `${number.format(r.count)} registros guardados`)); b.addEventListener("click", () => { state.key = r.key; state.page = 1; $("mcSearch").value = ""; drawReports(); loadReport(); }); $("mcReports").append(b); });
     }
     async function loadReport() {
         if (!state.key || !state.snapshot) return;
         state.detailRequest?.abort(); const request = new AbortController(); state.detailRequest = request; const generation = state.generation;
         $("mcDetail").hidden = false; $("mcDetail").setAttribute("aria-busy", "true"); $("mcCount").textContent = "Cargando detalle…";
         $("mcExport").hidden = true; $("mcPrevious").disabled = true; $("mcNext").disabled = true; $("mcTableBody").replaceChildren();
+        $("mcBankAccounts").hidden = true; $("mcBankAccounts").replaceChildren();
         try {
             const r = await json(url(root.dataset.reportUrl, { id: state.snapshot.id, key: state.key, page: state.page, pageSize: 50, search: $("mcSearch").value.trim() }), request.signal);
             if (request !== state.detailRequest || generation !== state.generation) return;
             state.page = r.page; state.pages = r.pages; $("mcDetailTitle").textContent = r.title; $("mcTableCaption").textContent = `${r.title} · ${state.period}`;
-            $("mcDetailSubtitle").textContent = r.message; $("mcNeeded").textContent = "Para completar este reporte: " + r.needed;
+            $("mcDetailSubtitle").textContent = r.message;
+            $("mcNeeded").textContent = (r.state === "verified" ? "Cobertura: " : "Para completar este reporte: ") + r.needed;
+            if (r.bankAccounts?.length) {
+                $("mcBankAccounts").hidden = false;
+                r.bankAccounts.forEach(b => {
+                    const box = el("article", "mc-bank-account");
+                    box.append(el("span", "", "Cuenta •••• " + b.account), el("strong", "", "$ " + number.format(b.closing)), el("small", "", "Saldo al cierre"));
+                    const values = el("dl");
+                    [["Saldo inicial",b.opening],["Abonos",b.credits],["Cargos",b.debits]].forEach(([label,value]) => { values.append(el("dt", "", label), el("dd", "", "$ " + number.format(value))); });
+                    box.append(values); $("mcBankAccounts").append(box);
+                });
+            }
             $("mcCount").textContent = `${number.format(r.count)} de ${number.format(r.totalCount)} registros`; $("mcPage").textContent = `Página ${r.page} de ${r.pages}`;
             $("mcPrevious").disabled = r.page <= 1; $("mcNext").disabled = r.page >= r.pages;
             $("mcExport").hidden = !r.totalCount; $("mcExport").href = url(root.dataset.exportUrl, { id: state.snapshot.id, key: state.key });

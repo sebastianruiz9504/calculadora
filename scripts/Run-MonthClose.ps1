@@ -1,4 +1,4 @@
-param([ValidateSet('Preview','Capture')][string]$Mode='Preview',[int]$Year=2026,[string]$RevisePeriod='')
+param([ValidateSet('Preview','Capture')][string]$Mode='Preview',[ValidateRange(2025,2100)][int]$Year=2026,[string]$RevisePeriod='',[string]$BankEvidencePath='')
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $dotnetPath='C:/Users/SebastianRuiz/AppData/Local/Microsoft/dotnet/dotnet.exe'
@@ -18,6 +18,7 @@ $start.Environment['MonthClose__Year']=[string]$Year
 $start.Environment['Logging__LogLevel__Default']='Warning'
 $start.Environment['Logging__LogLevel__System.Net.Http.HttpClient']='Warning'
 if($RevisePeriod){$start.Environment['MonthClose__RevisePeriod']=$RevisePeriod}
+if($BankEvidencePath){$start.Environment['MonthClose__BankEvidencePath']=(Resolve-Path -LiteralPath $BankEvidencePath).Path}
 $process=[System.Diagnostics.Process]::Start($start)
 $process.WaitForExit()
 if($process.ExitCode -ne 0){throw "La operación de cierre terminó con código $($process.ExitCode)."}

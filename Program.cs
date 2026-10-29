@@ -160,6 +160,7 @@ if (args.Contains("--month-close-capture") || args.Contains("--month-close-dry-r
     var service = commandScope.ServiceProvider.GetRequiredService<MonthCloseService>();
     var yearText = builder.Configuration["MonthClose:Year"];
     var year = int.TryParse(yearText, out var requestedYear) ? requestedYear : MonthCloseEngine.BogotaToday(DateTimeOffset.UtcNow).Year;
+    var bankEvidence = await MonthCloseBankImporter.ReadAsync(builder.Configuration["MonthClose:BankEvidencePath"]);
     if (args.Contains("--month-close-dry-run") || args.Contains("--month-close-replay"))
     {
         var replay = args.Contains("--month-close-replay");
@@ -171,6 +172,7 @@ if (args.Contains("--month-close-capture") || args.Contains("--month-close-dry-r
             Siigo = await commandScope.ServiceProvider.GetRequiredService<IMonthCloseSiigoSource>().ReadMonthCloseDocumentsAsync(default),
             RetrievedAt = DateTimeOffset.UtcNow
         };
+        if (bankEvidence is not null) input.BankEvidence = bankEvidence;
         Directory.CreateDirectory("tmp");
         if (!replay) await File.WriteAllTextAsync("tmp/month-close-source.json", System.Text.Json.JsonSerializer.Serialize(input, MonthCloseCodec.Json));
         foreach (var month in Enumerable.Range(1, 12))
@@ -182,7 +184,7 @@ if (args.Contains("--month-close-capture") || args.Contains("--month-close-dry-r
             Console.WriteLine($"{start:yyyy-MM}: " + string.Join("; ", snapshot.Reports.Select(r => $"{r.Key}={r.Total} ({r.Rows.Count} filas, {r.Unresolved} pendientes)")));
         }
     }
-    else Console.WriteLine($"Cierres guardados: {await service.CaptureMissingAsync(year, default, builder.Configuration["MonthClose:RevisePeriod"])}");
+    else Console.WriteLine($"Cierres guardados: {await service.CaptureMissingAsync(year, default, builder.Configuration["MonthClose:RevisePeriod"], bankEvidence)}");
     return;
 }
 

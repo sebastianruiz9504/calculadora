@@ -61,7 +61,7 @@ public static partial class MonthCloseEngine
                 ("applications",before),("balance",balance),("quality",unknown?"Auxiliar incompleto o ambiguo; saldo no determinado":"Reconstruido; aplicaciones concilian con el saldo actual"),
                 ("support",string.Join("; ",apps.Where(x=>x.Date<end).Select(x=>x.Reference).Distinct())),("source",S(purchase,"id"))));
         }
-        report.Total=Sum(report,"balance");
+        report.Total=report.Unresolved>0&&report.Rows.All(r=>r["balance"] is null)?null:Sum(report,"balance");
         return report;
     }
 }

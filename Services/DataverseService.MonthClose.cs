@@ -11,7 +11,7 @@ public sealed partial class DataverseService : IMonthCloseRepository
     private const string MonthCloseSet="cr07a_cierremensuals";
     async Task<IReadOnlyList<MonthCloseSummary>> IMonthCloseRepository.ListAsync(int year,CancellationToken ct)
     {
-        if(year is <2026 or >2100)throw new ArgumentOutOfRangeException(nameof(year));
+        if(year is <MonthCloseEngine.FirstYear or >2100)throw new ArgumentOutOfRangeException(nameof(year));
         var rows=await GetDataverseAppEntitiesAsync($"/api/data/v9.2/{MonthCloseSet}?$select=cr07a_resumen&$filter=cr07a_anio eq {year}&$orderby=cr07a_periodo asc,cr07a_revision desc",ct);
         return rows.Select(x=>JsonSerializer.Deserialize<MonthCloseSummary>(MonthCloseEngine.S(x,"cr07a_resumen"),MonthCloseCodec.Json)!).ToList();
     }
@@ -42,7 +42,7 @@ public sealed partial class DataverseService : IMonthCloseRepository
     async Task<Dictionary<string,List<JsonElement>>> IMonthCloseRepository.ReadSourcesAsync(CancellationToken ct)
     {
         var sources=new (string Key,string Table,string Fields)[]{
-            ("billing","cr07a_facturacions","cr07a_facturacionid,cr07a_name,cr07a_cliente,cr07a_nitempresa,cr07a_vertical,cr07a_fechadeemision,cr07a_fechadepago,cr07a_valorpago,cr07a_totalfactura"),
+            ("billing","cr07a_facturacions","cr07a_facturacionid,cr07a_name,cr07a_cliente,cr07a_nitempresa,cr07a_vertical,cr07a_fechadeemision,cr07a_fechadepago,cr07a_valorpago,cr07a_totalfactura,cr07a_facturaantesdeiva,cr07a_ivavalor,cr07a_rteftevalor,cr07a_rteivavalor,cr07a_reteicavalor"),
             ("clients","cr07a_clientes","cr07a_nit,cr07a_nombre"),
             ("expenses","cr07a_gastodelaempresas","cr07a_gastodelaempresaid,cr07a_folio,cr07a_prefijo,cr07a_nombreemisor,cr07a_nitemisor,cr07a_fechaemision,cr07a_fechadepago,cr07a_valorpago,cr07a_total,cr07a_totalantesdeiva,cr07a_iva,cr07a_retefuente,cr07a_reteica,cr07a_reteiva,cr07a_divisa,cr07a_tipodocumento"),
             ("cloud","cr07a_salesperformancerecords","cr07a_clientname,cr07a_productname,cr07a_valorventatotalmensual,cr07a_fecharenovacion,statecode"),

@@ -16,6 +16,7 @@ public sealed class MonthCloseReport
     public int Unresolved { get; set; }
     public List<MonthCloseColumn> Columns { get; set; } = [];
     public List<Dictionary<string, object?>> Rows { get; set; } = [];
+    public List<MonthCloseBankAccount> BankAccounts { get; set; } = [];
 }
 public sealed record MonthCloseMetric(string Key, string Title, string State, string Message,
     string Needed, string Unit, decimal? Total, int Count, int Unresolved);
@@ -38,6 +39,7 @@ public sealed class MonthCloseSnapshot
     public int SchemaVersion { get; set; } = 1;
     public MonthCloseSummary Summary { get; set; } = new();
     public Dictionary<string, int> SourceCounts { get; set; } = [];
+    public Dictionary<string, string> SourceHashes { get; set; } = [];
     public List<MonthCloseReport> Reports { get; set; } = [];
 }
 public sealed class MonthCloseInput
@@ -45,5 +47,18 @@ public sealed class MonthCloseInput
     public DateTimeOffset RetrievedAt { get; set; }
     public Dictionary<string, List<JsonElement>> Tables { get; set; } = [];
     public Dictionary<string, List<JsonElement>> Siigo { get; set; } = [];
+    public MonthCloseBankEvidence? BankEvidence { get; set; }
     public List<JsonElement> Source(string key) => Tables.GetValueOrDefault(key) ?? Siigo.GetValueOrDefault(key) ?? [];
+}
+
+public sealed record MonthCloseBankAccount(string Account, decimal Opening, decimal Credits, decimal Debits, decimal Closing);
+public sealed record MonthCloseBankStatement(string File, string Account, string Period, decimal Opening,
+    decimal Credits, decimal Debits, decimal Closing, int Rows, string DocumentSha256);
+public sealed record MonthCloseBankTransaction(string Id, DateOnly Date, string Account, string Description,
+    decimal Value, decimal Balance, string Source, int Page, int Sequence);
+public sealed class MonthCloseBankEvidence
+{
+    public string ArchiveSha256 { get; set; } = "";
+    public List<MonthCloseBankStatement> Statements { get; set; } = [];
+    public List<MonthCloseBankTransaction> Transactions { get; set; } = [];
 }
