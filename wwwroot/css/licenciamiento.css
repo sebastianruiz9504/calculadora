@@ -314,7 +314,11 @@
 }
 
 .lic-group-main--client {
-    padding-left: 22px;
+    padding-left: 0;
+}
+
+.lic-group-row--client.is-selected > td {
+    background: var(--lic-brand-soft);
 }
 
 .lic-group-main--product {

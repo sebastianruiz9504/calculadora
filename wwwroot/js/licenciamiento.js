@@ -307,6 +307,7 @@
             direction: "desc"
         },
         boardExpandedGroups: new Set(),
+        boardClientGroups: new Map(),
         latestImportRecordIds: [],
         latestImportFacturaValue: "",
         latestImportFacturaDisplay: "",
@@ -400,6 +401,19 @@
 
         if (target === facturaSelect) {
             refreshTrmScopeNote();
+            return;
+        }
+
+        if (target.matches("[data-lic-client-check]")) {
+            const group = state.boardClientGroups.get(target.getAttribute("data-lic-client-check"));
+            group?.rows.forEach((row) => {
+                if (target.checked) {
+                    state.selectedIds.add(row.recordId);
+                } else {
+                    state.selectedIds.delete(row.recordId);
+                }
+            });
+            renderSelectionState();
             return;
         }
 
@@ -650,7 +664,10 @@
     }
 
     function renderGroupedBoardRows(records) {
-        return buildBoardGroups(records)
+        const groups = buildBoardGroups(records);
+        state.boardClientGroups = new Map(groups.flatMap((invoice) =>
+            invoice.clients.map((client) => [client.key, client])));
+        return groups
             .map(renderInvoiceGroup)
             .join("");
     }
@@ -683,7 +700,13 @@
         const summary = summarizeBoardRows(group.rows);
         return `
             <tr class="lic-group-row lic-group-row--${escapeHtml(level)}">
-                <td colspan="5" data-label="${escapeHtml(labelPrefix)}">
+                ${level === "client" ? `
+                <td class="lic-check-cell" data-label="Seleccionar cliente">
+                    <input class="form-check-input" type="checkbox"
+                           data-lic-client-check="${escapeHtml(group.key)}"
+                           aria-label="Seleccionar registros de ${escapeHtml(group.label)} en esta factura" />
+                </td>` : ""}
+                <td colspan="${level === "client" ? "4" : "5"}" data-label="${escapeHtml(labelPrefix)}">
                     <div class="lic-group-main lic-group-main--${escapeHtml(level)}">
                         <button type="button"
                                 class="lic-group-toggle"
@@ -963,6 +986,18 @@
         const visibleRecords = getVisibleRecords();
         const selected = records.filter((row) => state.selectedIds.has(row.recordId)).length;
         selectedCount.textContent = `${selected} seleccionado${selected === 1 ? "" : "s"}`;
+
+        rowsBody.querySelectorAll("[data-lic-client-check]").forEach((checkbox) => {
+            const rows = state.boardClientGroups.get(checkbox.getAttribute("data-lic-client-check"))?.rows || [];
+            const count = rows.filter((row) => state.selectedIds.has(row.recordId)).length;
+            checkbox.checked = rows.length > 0 && count === rows.length;
+            checkbox.indeterminate = count > 0 && count < rows.length;
+            checkbox.closest("tr").classList.toggle("is-selected", checkbox.checked);
+        });
+        rowsBody.querySelectorAll("[data-lic-row-check]").forEach((checkbox) => {
+            checkbox.checked = state.selectedIds.has(checkbox.getAttribute("data-record-id"));
+            checkbox.closest("tr").classList.toggle("is-selected", checkbox.checked);
+        });
 
         if (selectAll) {
             const visibleSelected = visibleRecords.filter((row) => state.selectedIds.has(row.recordId)).length;
