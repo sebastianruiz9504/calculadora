@@ -1,5 +1,4 @@
-using System.Drawing;
-using System.Drawing.Imaging;
+using SkiaSharp;
 using CotizadorInterno.Web.Models.CopiersMtoV2;
 using CotizadorInterno.Web.Services.CopiersMtoV2;
 using UglyToad.PdfPig;
@@ -155,17 +154,19 @@ public sealed class CopiersMtoV2CompactPdfTests
             new() { FileName = "prueba-impresion.png", Size = 190 * 1024, Sha256 = new string('B', 64) } ]
     };
 
-#pragma warning disable CA1416
     private static byte[] SampleSignature()
     {
-        using var bitmap = new Bitmap(480, 120);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.Clear(Color.White);
-        using var font = new Font("Segoe UI", 27, FontStyle.Italic);
-        graphics.DrawString("Firma de muestra", font, Brushes.MidnightBlue, new PointF(15, 25));
-        using var output = new MemoryStream();
-        bitmap.Save(output, ImageFormat.Jpeg);
-        return output.ToArray();
+        using var bitmap = new SKBitmap(480, 120);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.White);
+        using var paint = new SKPaint { Color = SKColors.MidnightBlue, StrokeWidth = 4, IsAntialias = true, Style = SKPaintStyle.Stroke };
+        using var path = new SKPath();
+        path.MoveTo(15, 75);
+        path.CubicTo(80, 10, 100, 115, 175, 45);
+        path.CubicTo(260, 5, 270, 110, 440, 35);
+        canvas.DrawPath(path, paint);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var encoded = image.Encode(SKEncodedImageFormat.Jpeg, 90);
+        return encoded.ToArray();
     }
-#pragma warning restore CA1416
 }

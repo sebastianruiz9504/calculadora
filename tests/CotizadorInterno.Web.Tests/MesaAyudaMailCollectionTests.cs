@@ -19,6 +19,19 @@ public sealed class MesaAyudaMailCollectionTests
     private const string Mailbox = "sruiz@digitaltechcolombia.com";
 
     [Fact]
+    public void MigrationPilotDoesNotStartAnEnabledMailCollector()
+    {
+        var services = new ServiceCollection();
+        services.AddMesaAyudaMailCollection(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["MesaAyudaMailCollection:Enabled"] = "true",
+            ["Migration:BackgroundWorkersEnabled"] = "false"
+        }).Build());
+        Assert.DoesNotContain(services, s => s.ServiceType == typeof(IHostedService));
+        Assert.Contains(services, s => s.ServiceType == typeof(IMesaAyudaMailCollector));
+    }
+
+    [Fact]
     public void DefaultsAreDisabledAndProductionCredentialHasNoInteractiveFallback()
     {
         var options = new MesaAyudaMailCollectionOptions();

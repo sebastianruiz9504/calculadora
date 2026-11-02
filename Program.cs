@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -14,6 +15,10 @@ using CotizadorInterno.Web.Services.MonthClose;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddUserSecrets(typeof(Program).Assembly, optional: true);
+// Preserve the Windows application's encryption purpose when moving its durable receipts.
+var protectionApplicationName = builder.Configuration["DataProtection:ApplicationName"];
+if (!string.IsNullOrWhiteSpace(protectionApplicationName))
+    builder.Services.AddDataProtection().SetApplicationName(protectionApplicationName);
 var dataverseBaseUrl = builder.Configuration["Dataverse:BaseUrl"]
     ?? throw new InvalidOperationException("Dataverse:BaseUrl missing in configuration.");
 var dataverseScope = $"{dataverseBaseUrl}/user_impersonation";

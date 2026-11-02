@@ -42,7 +42,8 @@ public static class MesaAyudaMailCollectionServiceCollectionExtensions
         }
 
         services.TryAddScoped<IMesaAyudaMailCollector, MesaAyudaMailCollector>();
-        services.AddHostedService<MesaAyudaMailCollectionHostedService>();
+        if (configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+            services.AddHostedService<MesaAyudaMailCollectionHostedService>();
         return services;
     }
 }
