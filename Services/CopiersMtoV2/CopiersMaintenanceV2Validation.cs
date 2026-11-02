@@ -1,8 +1,4 @@
 using System.Net.Mail;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -590,143 +586,13 @@ internal static class CopiersMaintenanceV2Validation
         _ => "application/octet-stream"
     };
 
-    // System.Drawing is intentionally guarded at runtime. The current App Service
-    // target is Windows; non-Windows hosts fail closed before any platform API call.
-#pragma warning disable CA1416
-    private static byte[] ReencodeImage(
-        byte[] content,
-        string outputExtension,
-        CopiersMaintenanceV2Options options,
-        bool isSignature)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            throw new CopiersMaintenanceV2ValidationException(
-                "image_sanitizer_platform_unavailable",
-                "El saneamiento seguro de imágenes no está disponible en este servidor.");
-        }
+    private static byte[] ReencodeImage(byte[] content, string outputExtension,
+        CopiersMaintenanceV2Options options, bool isSignature) =>
+        CopiersPortableImageSanitizer.Reencode(content, outputExtension, options, isSignature);
 
-        try
-        {
-            using var input = new MemoryStream(content, writable: false);
-            using var source = Image.FromStream(input, useEmbeddedColorManagement: true, validateImageData: true);
-            var isJpeg = source.RawFormat.Guid == ImageFormat.Jpeg.Guid;
-            var isPng = source.RawFormat.Guid == ImageFormat.Png.Guid;
-            if ((!isJpeg && !isPng) || (isSignature && !isJpeg))
-                throw new CopiersMaintenanceV2ValidationException("image_content_invalid", "La imagen no tiene un formato JPG o PNG válido.");
+    private static void ValidateSignatureInk(byte[] content, CopiersMaintenanceV2Options options) =>
+        CopiersPortableImageSanitizer.ValidateInk(content, options);
 
-            ApplyExifOrientation(source);
-            var maxDimension = isSignature ? options.MaxSignatureDimensionPixels : options.MaxAttachmentImageDimensionPixels;
-            var maxPixels = isSignature
-                ? checked((long)options.MaxSignatureDimensionPixels * options.MaxSignatureDimensionPixels)
-                : options.MaxAttachmentImagePixels;
-            if (source.Width <= 0
-                || source.Height <= 0
-                || source.Width > maxDimension
-                || source.Height > maxDimension
-                || checked((long)source.Width * source.Height) > maxPixels)
-            {
-                throw new CopiersMaintenanceV2ValidationException("image_dimensions_invalid", "Las dimensiones de la imagen no son seguras.");
-            }
-            if (isSignature
-                && (source.Width < options.MinSignatureWidthPixels || source.Height < options.MinSignatureHeightPixels))
-            {
-                throw new CopiersMaintenanceV2ValidationException("signature_dimensions_invalid", "Las dimensiones de la firma no son válidas.");
-            }
-
-            var pixelFormat = outputExtension == ".png" ? PixelFormat.Format32bppArgb : PixelFormat.Format24bppRgb;
-            using var clean = new Bitmap(source.Width, source.Height, pixelFormat);
-            using (var graphics = Graphics.FromImage(clean))
-            {
-                graphics.Clear(outputExtension == ".png" ? Color.Transparent : Color.White);
-                graphics.CompositingMode = CompositingMode.SourceOver;
-                graphics.CompositingQuality = CompositingQuality.HighQuality;
-                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                graphics.SmoothingMode = SmoothingMode.HighQuality;
-                graphics.DrawImage(source, new Rectangle(0, 0, clean.Width, clean.Height));
-            }
-
-            using var output = new MemoryStream();
-            if (outputExtension == ".png")
-            {
-                clean.Save(output, ImageFormat.Png);
-            }
-            else
-            {
-                var codec = ImageCodecInfo.GetImageEncoders().First(item => item.FormatID == ImageFormat.Jpeg.Guid);
-                using var encoderParameters = new EncoderParameters(1);
-                encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 90L);
-                clean.Save(output, codec, encoderParameters);
-            }
-            return output.ToArray();
-        }
-        catch (CopiersMaintenanceV2ValidationException)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is ArgumentException or ExternalException or OutOfMemoryException)
-        {
-            throw new CopiersMaintenanceV2ValidationException("image_decode_failed", "La imagen está dañada o no puede sanearse de forma segura.");
-        }
-    }
-
-    private static void ApplyExifOrientation(Image image)
-    {
-        const int orientationPropertyId = 0x0112;
-        if (!image.PropertyIdList.Contains(orientationPropertyId))
-            return;
-        var property = image.GetPropertyItem(orientationPropertyId);
-        if (property?.Value is not { Length: >= 2 } bytes)
-            return;
-        var orientation = BitConverter.ToUInt16(bytes, 0);
-        var rotateFlip = orientation switch
-        {
-            2 => RotateFlipType.RotateNoneFlipX,
-            3 => RotateFlipType.Rotate180FlipNone,
-            4 => RotateFlipType.Rotate180FlipX,
-            5 => RotateFlipType.Rotate90FlipX,
-            6 => RotateFlipType.Rotate90FlipNone,
-            7 => RotateFlipType.Rotate270FlipX,
-            8 => RotateFlipType.Rotate270FlipNone,
-            _ => RotateFlipType.RotateNoneFlipNone
-        };
-        if (rotateFlip != RotateFlipType.RotateNoneFlipNone)
-            image.RotateFlip(rotateFlip);
-    }
-
-    private static void ValidateSignatureInk(byte[] content, CopiersMaintenanceV2Options options)
-    {
-        using var input = new MemoryStream(content, writable: false);
-        using var image = new Bitmap(input);
-        var sampleStep = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(((long)image.Width * image.Height) / 1_000_000d)));
-        var inkPixels = 0;
-        var minX = image.Width;
-        var minY = image.Height;
-        var maxX = -1;
-        var maxY = -1;
-        for (var y = 0; y < image.Height; y += sampleStep)
-        {
-            for (var x = 0; x < image.Width; x += sampleStep)
-            {
-                var pixel = image.GetPixel(x, y);
-                if (pixel.R + pixel.G + pixel.B >= 720)
-                    continue;
-                inkPixels++;
-                minX = Math.Min(minX, x);
-                minY = Math.Min(minY, y);
-                maxX = Math.Max(maxX, x);
-                maxY = Math.Max(maxY, y);
-            }
-        }
-        if (inkPixels < options.MinSignatureInkPixels
-            || maxX - minX < options.MinSignatureWidthPixels / 2
-            || maxY - minY < options.MinSignatureHeightPixels / 2)
-        {
-            throw new CopiersMaintenanceV2ValidationException("signature_ink_required", "La imagen de firma está vacía o no contiene trazos suficientes.");
-        }
-    }
-#pragma warning restore CA1416
 
     private static bool HasPrefix(ReadOnlySpan<byte> content, ReadOnlySpan<byte> prefix) =>
         content.Length >= prefix.Length && content[..prefix.Length].SequenceEqual(prefix);

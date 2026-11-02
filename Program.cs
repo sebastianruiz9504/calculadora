@@ -87,7 +87,8 @@ builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<IMonthCloseRepository>(sp => (IMonthCloseRepository)sp.GetRequiredService<IDataverseService>());
 builder.Services.AddScoped<IMonthCloseSiigoSource>(sp => (IMonthCloseSiigoSource)sp.GetRequiredService<ISiigoService>());
 builder.Services.AddScoped<MonthCloseService>();
-builder.Services.AddHostedService<MonthCloseHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<MonthCloseHostedService>();
 builder.Services.AddScoped<ICopiersMtoV2CounterService>(services =>
     (ICopiersMtoV2CounterService)services.GetRequiredService<IDataverseService>());
 builder.Services.AddSingleton<CotizadorInterno.Web.Services.SoporteCloud.SharedLiveSurveyStore>();
@@ -102,7 +103,8 @@ builder.Services.AddScoped<CopiersEquipmentOperationsLedger>();
 builder.Services.AddScoped<CopiersEquipmentOperationsService>();
 builder.Services.AddSingleton<CopiersSubmissionStore>();
 builder.Services.AddScoped<CopiersMtoV2WorkerCounters>();
-builder.Services.AddHostedService<CopiersSubmissionWorker>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<CopiersSubmissionWorker>();
 builder.Services.AddScoped<ICopiersMtoV2CalendarService, CopiersMtoV2CalendarService>();
 builder.Services.AddSingleton<ISharePointRebatesProvider, SharePointRebatesProvider>();
 builder.Services.AddScoped<ICrmRepository, DataverseCrmRepository>();
@@ -139,14 +141,22 @@ builder.Services.AddSingleton<AutomaticTaskSyncQueue>();
 builder.Services.AddSingleton<IAutomaticTaskSyncQueue>(serviceProvider => serviceProvider.GetRequiredService<AutomaticTaskSyncQueue>());
 builder.Services.AddSingleton<ReportesGenerationQueue>();
 builder.Services.AddSingleton<IReportesGenerationQueue>(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
-builder.Services.AddHostedService<AutomaticTaskSyncHostedService>();
-builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
-builder.Services.AddHostedService<MonthlyFinancialReconciliationHostedService>();
-builder.Services.AddHostedService<MonthlySiigoAccountCatalogSyncHostedService>();
-builder.Services.AddHostedService<WeeklyExpenseAccountingRulesHostedService>();
-builder.Services.AddHostedService<WeeklyExpenseAccountingTemplateHostedService>();
-builder.Services.AddHostedService<WeeklyCashFlowImportHostedService>();
-builder.Services.AddHostedService<WeeklyCashFlowMatchingHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<AutomaticTaskSyncHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<MonthlyFinancialReconciliationHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<MonthlySiigoAccountCatalogSyncHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<WeeklyExpenseAccountingRulesHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<WeeklyExpenseAccountingTemplateHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<WeeklyCashFlowImportHostedService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<WeeklyCashFlowMatchingHostedService>();
 builder.Services.AddSingleton<IPublicDataExportSettingsStore, PublicDataExportSettingsStore>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
