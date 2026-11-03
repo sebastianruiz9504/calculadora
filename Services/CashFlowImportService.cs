@@ -228,17 +228,10 @@ public sealed class CashFlowImportService : ICashFlowImportService
 
     private Uri BuildGraphUri(string relativePath)
     {
-        if (Uri.TryCreate(relativePath, UriKind.Absolute, out var absoluteUri))
-            return absoluteUri;
-
         var baseUrl = string.IsNullOrWhiteSpace(_m365Options.GraphBaseUrl)
             ? "https://graph.microsoft.com/v1.0"
             : _m365Options.GraphBaseUrl.TrimEnd('/');
-        var normalizedPath = relativePath.StartsWith("/", StringComparison.Ordinal)
-            ? relativePath
-            : $"/{relativePath}";
-
-        return new Uri($"{baseUrl}{normalizedPath}", UriKind.Absolute);
+        return HttpServiceUri.Resolve(baseUrl, relativePath);
     }
 
     private string[] ResolveGraphTokenScopes()

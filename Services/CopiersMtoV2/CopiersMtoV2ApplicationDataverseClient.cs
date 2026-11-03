@@ -73,9 +73,7 @@ public sealed class CopiersMtoV2ApplicationDataverseClient : ICopiersMtoV2Applic
                 "No fue posible autenticar la identidad de aplicación de MTO Firmado V2.");
         }
 
-        var target = Uri.TryCreate(relativeUrl, UriKind.Absolute, out var absolute)
-            ? absolute
-            : new Uri($"{_baseUrl}/{relativeUrl.TrimStart('/')}", UriKind.Absolute);
+        var target = HttpServiceUri.Resolve(_baseUrl, relativeUrl);
         using var request = new HttpRequestMessage(method, target)
         {
             Content = content

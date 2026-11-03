@@ -667,17 +667,8 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         return items;
     }
 
-    private Uri BuildDataverseAppUri(string relativeUrl)
-    {
-        if (Uri.TryCreate(relativeUrl, UriKind.Absolute, out var absoluteUri))
-            return absoluteUri;
-
-        var normalizedRelativeUrl = relativeUrl.StartsWith("/", StringComparison.Ordinal)
-            ? relativeUrl
-            : $"/{relativeUrl}";
-
-        return new Uri($"{_dataverseBaseUrl}{normalizedRelativeUrl}", UriKind.Absolute);
-    }
+    private Uri BuildDataverseAppUri(string relativeUrl) =>
+        HttpServiceUri.Resolve(_dataverseBaseUrl, relativeUrl);
 
     private Uri BuildGraphUri(string relativePath)
     {
@@ -965,10 +956,7 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         if (string.IsNullOrWhiteSpace(nextLink))
             return null;
 
-        if (Uri.TryCreate(nextLink, UriKind.Absolute, out var absoluteUri))
-            return $"{absoluteUri.AbsolutePath}{absoluteUri.Query}";
-
-        return nextLink;
+        return HttpServiceUri.RelativePathAndQuery(nextLink);
     }
 
     private static string BuildLookupValuePropertyName(string lookupField) =>

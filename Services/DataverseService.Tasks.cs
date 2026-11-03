@@ -1183,7 +1183,7 @@ public sealed partial class DataverseService
         var trimmed = (actionUrl ?? "").Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
             trimmed = "/";
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute))
+        if (HttpServiceUri.TryCreateAbsolute(trimmed, out var absolute))
             return absolute.ToString();
 
         var baseUrl = _tasksApplicationBaseUrl.TrimEnd('/');

@@ -24,7 +24,7 @@ public sealed partial class DataverseService
                 rows.Add(new() { Id=ReadString(row,"cr07a_suministroid"), Label=ReadString(row,"cr07a_nombredelsuministro"),
                     Quantity=row.GetProperty("cr07a_cantidad").GetInt32() });
             path = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() : null;
-            if (path is not null && Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+            if (path is not null && HttpServiceUri.TryCreateAbsolute(path, out var absolute))
             {
                 if (!string.Equals(absolute.Host, new Uri(_dataverseBaseUrl).Host, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("La página de suministros no pertenece al entorno configurado.");
@@ -74,7 +74,7 @@ public sealed partial class DataverseService
             foreach (var row in doc.RootElement.GetProperty("value").EnumerateArray())
                 rows.Add(MapCopiersMtoV2Client(row));
             path = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() : null;
-            if (!string.IsNullOrEmpty(path) && Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+            if (!string.IsNullOrEmpty(path) && HttpServiceUri.TryCreateAbsolute(path, out var absolute))
             {
                 if (!string.Equals(absolute.Host, new Uri(_dataverseBaseUrl).Host, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Dataverse devolvió una página fuera del entorno configurado.");

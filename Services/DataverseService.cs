@@ -1870,10 +1870,7 @@ public sealed partial class DataverseService : IDataverseService
         if (string.IsNullOrWhiteSpace(nextLink))
             return null;
 
-        if (Uri.TryCreate(nextLink, UriKind.Absolute, out var absoluteUri))
-            return $"{absoluteUri.AbsolutePath}{absoluteUri.Query}";
-
-        return nextLink;
+        return HttpServiceUri.RelativePathAndQuery(nextLink);
     }
 
     private static void AddFormattedValueHeaders(HttpRequestMessage request)
@@ -2399,17 +2396,8 @@ public sealed partial class DataverseService : IDataverseService
         return await client.SendAsync(request, ct);
     }
 
-    private Uri BuildDataverseAppUri(string relativeUrl)
-    {
-        if (Uri.TryCreate(relativeUrl, UriKind.Absolute, out var absoluteUri))
-            return absoluteUri;
-
-        var normalizedRelativeUrl = relativeUrl.StartsWith("/", StringComparison.Ordinal)
-            ? relativeUrl
-            : $"/{relativeUrl}";
-
-        return new Uri($"{_dataverseBaseUrl}{normalizedRelativeUrl}", UriKind.Absolute);
-    }
+    private Uri BuildDataverseAppUri(string relativeUrl) =>
+        HttpServiceUri.Resolve(_dataverseBaseUrl, relativeUrl);
 
     private async Task<string> CallDataverseAppGetJsonAsync(
         string relativeUrl,

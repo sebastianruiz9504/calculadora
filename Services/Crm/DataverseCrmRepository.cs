@@ -2629,10 +2629,8 @@ public sealed class DataverseCrmRepository : ICrmRepository
 
     private static string ToRelativeDataverseUrl(string nextLink)
     {
-        if (Uri.TryCreate(nextLink, UriKind.Absolute, out var absolute))
-            return absolute.PathAndQuery;
-
-        return nextLink.StartsWith("/", StringComparison.Ordinal) ? nextLink : $"/{nextLink}";
+        var relative = HttpServiceUri.RelativePathAndQuery(nextLink);
+        return relative.StartsWith("/", StringComparison.Ordinal) ? relative : $"/{relative}";
     }
 
     private static int GetCount(JsonElement root)
