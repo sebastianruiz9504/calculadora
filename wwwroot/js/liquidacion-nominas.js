@@ -2170,7 +2170,8 @@
         const warnings = Array.isArray(row.warnings)
             ? row.warnings.filter((warning) => {
                 const normalized = normalizeText(warning);
-                if (normalized.includes("suma de porcentajes")) {
+                // Draft/server day warnings describe an earlier calculation; rebuild them below.
+                if (isBlockingCoverageWarning(warning) || normalized.includes("suma de porcentajes")) {
                     return false;
                 }
 
