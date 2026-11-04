@@ -56,7 +56,8 @@
         const days = [];
         for (let key = start; key < end; key = addDays(key, 1)) {
             const inMonth = key >= first && key < until;
-            days.push({ key, inMonth, events: inMonth ? events.filter(event => event.id && eventDay(event) === key)
+            days.push({ key, inMonth, events: inMonth ? events.filter(event => event.id && (eventDay(event) === key
+                || event.activityKind === "counter" && key === first && eventDay(event) < first && Date.parse(event.endAtUtc) > localDayStart(first)))
                 .sort((a, b) => String(a.startAtUtc).localeCompare(String(b.startAtUtc)) || String(a.id).localeCompare(String(b.id))) : [] });
         }
         return days;
@@ -102,6 +103,7 @@
         if (normalized.includes("correct")) return { label: "Correctivo", css: "corrective" };
         if (normalized.includes("movimiento") || normalized === "movement") return { label: "Movimiento", css: "movement" };
         if (normalized.includes("toner")) return { label: "Entrega de tóner", css: "toner" };
+        if (normalized === "toma de contador" || normalized === "counter") return { label: "Toma de contador", css: "counter" };
         if (["entrega de equipo", "retiro", "cambio", "salida interna", "recepcion interna", "recepcion de equipo"].includes(normalized)) return { label: value, css: "movement" };
         return { label: String(value || "Mantenimiento"), css: "other" };
     }

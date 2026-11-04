@@ -150,6 +150,8 @@ public sealed partial class DataverseService : ICopiersMtoV2CounterService
             throw new CopiersMaintenanceV2ValidationException("counter_history_changed", "La lectura anterior cambió o no corresponde al equipo. Vuelve a seleccionar el equipo y revisa los contadores.");
         if (command.CopiesCounter < previous.CopiesCounter || command.ScansCounter < previous.ScansCounter)
             throw new CopiersMaintenanceV2ValidationException("counter_decreased", "Los contadores actuales no pueden ser menores que la lectura anterior.");
+        if (previous.RecordedAtUtc > normalized.ReadingAtUtc)
+            throw new CopiersMaintenanceV2ValidationException("counter_date_before_previous", "La fecha y hora de retiro no pueden ser anteriores a la lectura previa del equipo.");
     }
 
     private async Task<JsonElement?> ReadCopiersMtoCounterByIdAsync(string id, RhEntityMetadata metadata, ClaimsPrincipal user, CancellationToken ct)

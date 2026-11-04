@@ -31,7 +31,7 @@ BUSINESS_FIELDS = {
     "cr07a_entrega": (("dtc_signedreportkey",36),("dtc_signedfingerprint",64),("dtc_reference",100)),
 }
 
-def api(method, path, body=None):
+def api(method, path, body=None, skill="dv-metadata"):
     if method not in ("GET", "POST"):
         raise RuntimeError("Only read and additive create/publish operations are permitted")
     executable = shutil.which("dataverse")
@@ -40,7 +40,7 @@ def api(method, path, body=None):
     command = [shutil.which("node"), str(launcher)] if Path(executable).suffix.lower() == ".cmd" and launcher.is_file() else [executable]
     args = command + ["api", "request", "--target", "dataverse", "--method", method,
             "--path", "/api/data/v9.2/" + path.replace("$", "%24"), "--environment", ENV,
-            "--context", "app=dataverse-skills/1.11.3;skill=dv-metadata;agent=codex"]
+            "--context", f"app=dataverse-skills/1.16.0;skill={skill};agent=codex"]
     with tempfile.TemporaryDirectory(prefix="copiers-activity-metadata-") as temp:
         if body is not None:
             body_path = Path(temp) / "payload.json"
@@ -50,7 +50,7 @@ def api(method, path, body=None):
     output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.stdout + result.stderr)
     start, end = output.find("{"), output.rfind("}")
     value = json.loads(output[start:end+1]) if start >= 0 and end >= start else {}
-    if result.returncode or "error" in value:
+    if result.returncode or "error" in value or "ErrorCode" in value or "HTTP Error" in output:
         raise RuntimeError(f"Metadata {method} {path}: " + output[-1600:])
     return value
 
@@ -75,6 +75,10 @@ def columns(logical):
                 for option, value, name in zip(p["OptionSet"]["Options"], (827270010,827270011), ("Movimiento de equipo", "Entrega de toner")):
                     option["Value"] = value
                     option["Label"] = base.label(name)
+                counter = copy.deepcopy(p["OptionSet"]["Options"][-1])
+                counter["Value"] = 827270012
+                counter["Label"] = base.label("Toma de contador")
+                p["OptionSet"]["Options"].append(counter)
                 p["DisplayName"] = base.label("Tipo de atencion")
         result.append(p)
     if logical == "dtc_copiersactivityv2":

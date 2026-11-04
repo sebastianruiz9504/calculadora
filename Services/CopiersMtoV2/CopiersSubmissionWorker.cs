@@ -86,7 +86,7 @@ public sealed class CopiersSubmissionWorker(CopiersSubmissionStore store, IServi
             }
             if (CopiersEquipmentOperation.Read(request.MovementDetailsJson)?.Internal == true)
                 return await services.GetRequiredService<CopiersEquipmentOperationsService>().CompleteInternalAsync(payload.Draft, request, payload.Actor, ct);
-            var service = request.ActivityKind != "maintenance" ? services.GetRequiredService<CopiersActivityV2Runtime>().CreateService()
+            var service = request.ActivityKind != "maintenance" ? services.GetRequiredService<CopiersActivityV2Runtime>().CreateService(services.GetRequiredService<CopiersMtoV2WorkerCounters>())
                 : new CopiersMaintenanceV2Service(services.GetRequiredService<ICopiersMaintenanceV2DataverseRepository>(),
                     services.GetRequiredService<ICopiersMtoV2PdfBuilder>(), services.GetRequiredService<IOptions<CopiersMaintenanceV2Options>>(),
                     services.GetRequiredService<IOptions<CopiersMaintenanceV2DataverseOptions>>(), services.GetRequiredService<TimeProvider>(),

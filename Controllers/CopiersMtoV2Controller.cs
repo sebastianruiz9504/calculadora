@@ -419,9 +419,14 @@ public sealed class CopiersMtoV2Controller : Controller
         var maintenanceType = int.TryParse(FormValue("MaintenanceTypeValue"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedType)
             ? parsedType
             : (int?)null;
-        if (request.ActivityKind != "maintenance") maintenanceType = request.ActivityKind == "movement"
-            ? CopiersActivityV2Bindings.MovementType : CopiersActivityV2Bindings.TonerType;
-        var kindLabel = request.ActivityKind == "movement" ? "Movimiento de equipo" : request.ActivityKind == "toner" ? "Entrega de tóner" : "Mantenimiento";
+        if (request.ActivityKind != "maintenance") maintenanceType = request.ActivityKind switch
+        {
+            "movement" => CopiersActivityV2Bindings.MovementType,
+            "toner" => CopiersActivityV2Bindings.TonerType,
+            "counter" => CopiersActivityV2Bindings.CounterType,
+            _ => throw new CopiersMaintenanceV2ValidationException("activity_invalid", "Selecciona un tipo de atención válido.")
+        };
+        var kindLabel = request.ActivityKind == "maintenance" ? "Mantenimiento" : CopiersActivityV2Bindings.Label(maintenanceType!.Value);
 
         return new CopiersMaintenanceV2DraftRequestDto
         {
@@ -448,7 +453,7 @@ public sealed class CopiersMtoV2Controller : Controller
     private string NormalizeActivityKind(string? value)
     {
         var kind = string.IsNullOrWhiteSpace(value) ? "maintenance" : value.Trim();
-        if (kind is not ("maintenance" or "movement" or "toner"))
+        if (kind is not ("maintenance" or "movement" or "toner" or "counter"))
             throw new CopiersMaintenanceV2ValidationException("activity_invalid", "Selecciona un tipo de atención válido.");
         if (kind != "maintenance" && !_options.ActivitiesEnabled)
             throw new CopiersMaintenanceV2ValidationException("activities_disabled", "Las nuevas actas todavía no están habilitadas.");

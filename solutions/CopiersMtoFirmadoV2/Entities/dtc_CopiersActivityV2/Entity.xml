@@ -1424,6 +1424,11 @@
                   <label description="Entrega de toner" languagecode="3082" />
                 </labels>
               </option>
+              <option value="827270012" IsHidden="0">
+                <labels>
+                  <label description="Toma de contador" languagecode="3082" />
+                </labels>
+              </option>
             </options>
           </optionset>
           <displaynames>

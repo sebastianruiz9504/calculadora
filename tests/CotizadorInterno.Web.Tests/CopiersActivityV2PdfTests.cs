@@ -11,6 +11,7 @@ public sealed class CopiersActivityV2PdfTests
     [Theory]
     [InlineData("movement", "Movimiento de equipo")]
     [InlineData("toner", "Entrega de tóner")]
+    [InlineData("counter", "Toma de contador")]
     public async Task ActivityReportIsOneCorporateLetterPageWithTypedFactsAndClientSignature(string kind, string title)
     {
         var model = Model(kind);
@@ -25,7 +26,7 @@ public sealed class CopiersActivityV2PdfTests
             Assert.Contains(expected, text);
         Assert.Equal(3, page.GetImages().Count());
         Assert.Equal(2, page.GetImages().Count(x => x.WidthInSamples == 2637 && x.HeightInSamples == 502));
-        foreach (var secret in new[] { "Contadores", "Preventivo", "Correctivo", "SECRET-ID", "STOCK-PRIVATE", "UBICACION-INTERNA-DEC0Y", "REGISTRO-INTERNO-DEC0Y" })
+        foreach (var secret in new[] { "Preventivo", "Correctivo", "SECRET-ID", "STOCK-PRIVATE", "UBICACION-INTERNA-DEC0Y", "REGISTRO-INTERNO-DEC0Y" })
             Assert.DoesNotContain(secret, text);
         if (kind == "movement")
         {
@@ -33,6 +34,14 @@ public sealed class CopiersActivityV2PdfTests
             Assert.Contains("Cliente origen de muestra SAS", text);
             Assert.Contains("Reubicación por reorganización de la oficina", text);
             Assert.DoesNotContain("Suministro", text);
+        }
+        else if (kind == "counter")
+        {
+            Assert.Contains("Contadores", text);
+            Assert.Contains("Impresiones", text);
+            Assert.Contains("Escaneos", text);
+            Assert.DoesNotContain("Suministro", text);
+            Assert.DoesNotContain("Trabajo realizado", text);
         }
         else
         {
@@ -82,6 +91,7 @@ public sealed class CopiersActivityV2PdfTests
         model.FormVersion = CopiersActivityV2Bindings.FormVersion;
         model.ClientName = "Cliente destino de muestra SAS";
         model.WorkPerformed = kind == "movement" ? "Reubicación por reorganización de la oficina. Se entrega el equipo en el destino indicado."
+            : kind == "counter" ? "Toma de contadores de impresiones y escaneos del equipo."
             : "Entrega de dos unidades de tóner negro Ricoh MP 501. El cliente confirma la recepción del suministro.";
         model.CustomerObservations = "Entrega recibida y verificada por el cliente.";
         model.Answers = model.Answers.Where(x => x.Key != "recommendations").Concat(new[] {

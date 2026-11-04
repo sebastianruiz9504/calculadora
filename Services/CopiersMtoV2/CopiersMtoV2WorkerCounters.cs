@@ -50,6 +50,8 @@ public sealed class CopiersMtoV2WorkerCounters(ICopiersMtoV2ApplicationDataverse
                 throw new CopiersMaintenanceV2ValidationException("counter_history_changed", "La lectura anterior cambió. Requiere revisión interna.");
             if (c.CopiesCounter < c.PreviousCopiesCounter || c.ScansCounter < c.PreviousScansCounter)
                 throw new CopiersMaintenanceV2ValidationException("counter_decreased", "Los contadores actuales son menores que la lectura anterior.");
+            if (DateTimeOffset.Parse(Text(previous, "cr07a_fechadetomadecontador"), CultureInfo.InvariantCulture) > c.ReadingAtUtc)
+                throw new CopiersMaintenanceV2ValidationException("counter_date_before_previous", "La fecha y hora de retiro no pueden ser anteriores a la lectura previa del equipo.");
         }
         var existing = await ReadAsync($"{Set}({id})?$select={Fields}", ct);
         if (existing.HasValue) EnsureMatches(existing.Value, c);

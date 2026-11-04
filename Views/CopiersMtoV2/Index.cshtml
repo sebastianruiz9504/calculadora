@@ -194,8 +194,15 @@
                 </label>
 
                 <label class="mto-v2-field">
-                    <span>Inicio de la visita <b aria-hidden="true">*</b></span>
+                    <span><span id="mtoV2VisitStartLabel">Inicio de la visita</span> <b aria-hidden="true">*</b></span>
                     <input class="form-control" type="datetime-local" name="ServiceStartedAtLocal" id="mtoV2ServiceStartedAtLocal" required />
+                    <small data-activity-panel="counter" hidden>Hora de Colombia.</small>
+                </label>
+
+                <label class="mto-v2-field" data-activity-panel="counter" hidden>
+                    <span>Fecha y hora de retiro <b aria-hidden="true">*</b></span>
+                    <input class="form-control" type="datetime-local" name="ServiceEndedAtLocal" id="mtoV2ServiceEndedAtLocal" required disabled />
+                    <small>Hora de Colombia. Debe ser posterior al ingreso.</small>
                 </label>
 
                 <label class="mto-v2-field">
@@ -280,7 +287,7 @@
                 </div>
             </section>
 
-            <section class="mto-v2-subcard" aria-labelledby="mtoV2CountersTitle" data-activity-panel="maintenance">
+            <section class="mto-v2-subcard" aria-labelledby="mtoV2CountersTitle" data-activity-panel="maintenance counter">
                 <div class="mto-v2-subcard__header">
                     <div>
                         <span class="mto-v2-eyebrow">Lecturas</span>

@@ -84,7 +84,9 @@ function activityHarness(reader = async () => ({ items: [] })) {
     const root = nodes.copiersMtoV2App, form = nodes.mtoV2Form;
     const panels = [1, 2, 3, 4].map(step => { const panel = new Element(); panel.dataset.stepPanel = String(step); return panel; });
     const activityPanels = [
-        ["maintenance", ["mtoV2ServiceResult", "mtoV2WorkPerformed", "mtoV2CopiesBefore", "mtoV2CopiesAfter", "mtoV2ScansBefore", "mtoV2ScansAfter", "mtoV2Recommendations"]],
+        ["maintenance", ["mtoV2ServiceResult", "mtoV2WorkPerformed", "mtoV2Recommendations"]],
+        ["maintenance counter", ["mtoV2CopiesBefore", "mtoV2CopiesAfter", "mtoV2ScansBefore", "mtoV2ScansAfter"]],
+        ["counter", ["mtoV2ServiceEndedAtLocal"]],
         ["movement", ["mtoV2OriginClientName", "mtoV2MovementReason"]],
         ["toner", ["mtoV2SupplyId", "mtoV2SupplyQuantity"]]
     ].map(([kind, ids]) => { const panel = new Element(); panel.dataset.activityPanel = kind; panel.controls = ids.map(id => nodes[id]); return panel; });
@@ -1263,6 +1265,43 @@ function visitTimesHarness() {
     const update = bind("updateVisitTimes", { elements, Date: FakeDate, formatLocalDateTime: bind("formatLocalDateTime") });
     return { elements, update, setNow(value) { now = value; } };
 }
+
+test("counter capture preserves the selected Colombia entry and exit when signing or clearing a signature", () => {
+    const elements = { serviceStartedAtLocal: control("2026-11-03T08:10"), serviceEndedAtLocal: control("2026-11-03T08:35"),
+        serviceStartedAtUtc: control(), serviceEndedAtUtc: control(), signatureStartedAt: {}, signatureEndedAt: {} };
+    const update = bind("updateVisitTimes", { elements, activityKind: () => "counter", formatLocalDateTime: bind("formatLocalDateTime") });
+    update(true);
+    assert.equal(elements.serviceStartedAtUtc.value, "2026-11-03T13:10:00.000Z");
+    assert.equal(elements.serviceEndedAtUtc.value, "2026-11-03T13:35:00.000Z");
+    elements.serviceEndedAtUtc.value = "";
+    update(true);
+    assert.equal(elements.serviceEndedAtUtc.value, "2026-11-03T13:35:00.000Z");
+    elements.serviceEndedAtLocal.value = "";
+    update(true);
+    assert.equal(elements.serviceEndedAtUtc.value, "");
+});
+
+test("counter is an independent activity with current readings and no maintenance or stock fields", () => {
+    const h = activityHarness();
+    h.elements.maintenanceType.value = "counter";
+    h.changeActivityType();
+    assert.equal(h.elements.activityKind.value, "counter");
+    assert.equal(h.elements.formVersion.value, "copiers-activity-v2-2026-09-10");
+    assert.equal(h.elements.copiesAfter.disabled, false);
+    assert.equal(h.elements.scansAfter.disabled, false);
+    assert.equal(h.elements.serviceEndedAtLocal.disabled, false);
+    for (const id of ["mtoV2WorkPerformed", "mtoV2ServiceResult", "mtoV2SupplyQuantity", "mtoV2MovementReason"])
+        assert.equal(h.nodes[id].disabled, true);
+    h.elements.copiesAfter.value = "0";
+    h.elements.scansAfter.value = "120";
+    const answers = Object.fromEntries(h.buildStructuredAnswers().map(x => [x.key, x.value]));
+    assert.equal(answers.activity_kind, "counter");
+    assert.equal(answers.copies_after, "0");
+    assert.equal(answers.scans_after, "120");
+    for (const key of ["maintenance_type", "service_result", "recommendations", "supply_id", "movement_reason"])
+        assert.equal(answers[key], undefined);
+    assert.match(script, /"mtoV2ServiceEndedAtLocal"/);
+});
 
 test("entry and exit are visible before tracing the signature and exit stays frozen while navigating", () => {
     const h = visitTimesHarness();

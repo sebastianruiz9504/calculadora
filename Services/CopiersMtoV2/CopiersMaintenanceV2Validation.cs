@@ -161,14 +161,15 @@ internal static class CopiersMaintenanceV2Validation
 
     public static int MaintenanceType(int? value, CopiersMaintenanceV2DataverseOptions bindings)
     {
-        if (value == bindings.MaintenanceTypeCorrectiveValue || value == bindings.MaintenanceTypePreventiveValue)
+        if (value == bindings.MaintenanceTypeCorrectiveValue || value == bindings.MaintenanceTypePreventiveValue
+            || bindings.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet && value == CopiersActivityV2Bindings.CounterType)
             return value.Value;
         throw new CopiersMaintenanceV2ValidationException("maintenance_type_invalid", "El tipo de mantenimiento seleccionado no es válido.");
     }
 
     public static string MaintenanceTypeLabel(int? value, CopiersMaintenanceV2DataverseOptions bindings) =>
         bindings.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet
-            ? MaintenanceType(value, bindings) == CopiersActivityV2Bindings.MovementType ? "Movimiento de equipo" : "Entrega de tóner"
+            ? CopiersActivityV2Bindings.Label(MaintenanceType(value, bindings))
             : MaintenanceType(value, bindings) == bindings.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Preventivo";
 
     public static void ValidateCustomerEmail(string? value)

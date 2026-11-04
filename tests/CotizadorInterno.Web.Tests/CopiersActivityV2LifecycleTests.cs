@@ -422,11 +422,88 @@ public sealed class CopiersActivityV2LifecycleTests
         public readonly Repository Repository;
         public readonly Business Business;
         public readonly PdfSpy Pdf;
+        public readonly CounterSpy Counters = new();
         public Lifecycle(string kind) { Repository=new(Record(kind),Operations); Business=new(Operations); Pdf=new(Operations); }
         public CopiersMaintenanceV2Service Service(DateTimeOffset? now=null, bool activityBindings=true) => new(Repository,Pdf,
             Options.Create(new CopiersMaintenanceV2Options { ActivitiesEnabled=true }),
             Options.Create(activityBindings ? CopiersActivityV2Bindings.Create(Bindings()) : Bindings()),
-            new Clock(now ?? Now), NullLogger<CopiersMaintenanceV2Service>.Instance, business:Business);
+            new Clock(now ?? Now), NullLogger<CopiersMaintenanceV2Service>.Instance, counters:Counters, business:Business);
+    }
+    private sealed class CounterSpy : ICopiersMtoV2CounterService
+    {
+        public CopiersMtoV2CounterSaveCommand? Persisted;
+        public int Created;
+        public bool Fail;
+        public Task<CopiersMtoV2CounterReadingDto> GetLatestAsync(string client, string equipment, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> ValidateForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default)
+        {
+            if (Persisted is not null && Persisted.FinalizationFingerprint != command.FinalizationFingerprint)
+                throw new CopiersMaintenanceV2ConcurrencyException("Signed counter changed");
+            return Task.FromResult(Persisted is not null);
+        }
+        public Task<CopiersMtoV2CounterSaveResult> SaveForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default)
+        {
+            if (Fail) throw new InvalidOperationException("Counter write failed");
+            var reused = Persisted is not null;
+            if (!reused) { Persisted = command; Created++; }
+            return Task.FromResult(new CopiersMtoV2CounterSaveResult(RecordId, reused));
+        }
+    }
+
+    private static CopiersMaintenanceV2FinalizeMultipartRequestDto CounterRequest()
+    {
+        var request = Request("counter");
+        request.WorkPerformed = "";
+        var answers = JsonSerializer.Deserialize<List<CopiersMaintenanceV2FormAnswerInputDto>>(request.AnswersJson)!;
+        answers.RemoveAll(x => x.Key.StartsWith("supply_") || x.Key.StartsWith("movement_") || x.Key.StartsWith("origin_") || x.Key.StartsWith("destination_"));
+        answers.AddRange(new[] { ("copies_after", "120"), ("scans_after", "0"), ("counters", "untrusted") }
+            .Select(x => new CopiersMaintenanceV2FormAnswerInputDto { Key = x.Item1, Value = x.Item2 }));
+        request.AnswersJson = JsonSerializer.Serialize(answers);
+        return request;
+    }
+
+    [Fact]
+    public async Task CounterActivityWritesReadingAtChosenExitAndRetriesWithoutMaintenanceOrStockWrites()
+    {
+        var f = new Lifecycle("counter");
+        f.Repository.Record.MaintenanceTypeValue = CopiersActivityV2Bindings.CounterType;
+        await f.Service().CreateOrGetDraftAsync(DraftRequest(f.Repository.Record), Actor());
+        f.Repository.FailBeforeStaging = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service().FinalizeMultipartAsync(CounterRequest(), Actor()));
+        var changed = CounterRequest(); changed.CustomerObservations = "Changed";
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => f.Service().FinalizeMultipartAsync(changed, Actor()));
+        await f.Service(Now.AddDays(2)).FinalizeMultipartAsync(CounterRequest(), Actor());
+        var replay = await f.Service(Now.AddDays(2)).FinalizeMultipartAsync(CounterRequest(), Actor());
+        Assert.True(replay.IdempotentReplay);
+        Assert.Equal(1, f.Counters.Created);
+        Assert.Equal(120, f.Counters.Persisted!.CopiesCounter);
+        Assert.Equal(0, f.Counters.Persisted.ScansCounter);
+        Assert.Equal(CounterRequest().ServiceEndedAtUtc, f.Counters.Persisted.ReadingAtUtc);
+        Assert.Equal(1, f.Repository.PublishCalls);
+        Assert.Equal(0, f.Business.ValidateCalls);
+        Assert.Empty(f.Business.Commits);
+        Assert.All(f.Pdf.Models, m => Assert.Contains(m.Answers, a => a.Key == "activity_kind" && a.Value == "counter"));
+    }
+
+    [Theory]
+    [InlineData("missing_end")]
+    [InlineData("equal_times")]
+    [InlineData("changed_time")]
+    [InlineData("invalid_counter")]
+    [InlineData("write_failure")]
+    public async Task CounterCannotPublishWithInvalidTimesReadingsOrFailedPersistence(string problem)
+    {
+        var f = new Lifecycle("counter"); f.Repository.Record.MaintenanceTypeValue = CopiersActivityV2Bindings.CounterType;
+        var request = CounterRequest();
+        if (problem == "missing_end") request.ServiceEndedAtUtc = null;
+        if (problem == "equal_times") request.ServiceEndedAtUtc = request.ServiceStartedAtUtc;
+        if (problem == "changed_time") request.ServiceEndedAtUtc = request.ServiceEndedAtUtc!.Value.AddMinutes(-1);
+        if (problem == "invalid_counter") ChangeAnswer(request, "copies_after", "-1");
+        f.Counters.Fail = problem == "write_failure";
+        await Assert.ThrowsAnyAsync<Exception>(() => f.Service().FinalizeMultipartAsync(request, Actor()));
+        Assert.Equal(0, f.Counters.Created);
+        Assert.Equal(0, f.Repository.PublishCalls);
+        Assert.Empty(f.Business.Commits);
     }
     private sealed class Clock(DateTimeOffset now) : TimeProvider { public override DateTimeOffset GetUtcNow() => now; }
     private sealed class PdfSpy(List<string> operations) : ICopiersMtoV2PdfBuilder

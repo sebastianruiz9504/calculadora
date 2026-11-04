@@ -29,12 +29,7 @@ internal static class CopiersMtoV2CompactCapture
         _ = CopiersMaintenanceV2Validation.Required(request.WorkPerformed, "work_performed_required", "el trabajo realizado", WorkMaxLength);
         _ = CopiersMaintenanceV2Validation.Optional(request.CustomerObservations, "customer_observations_too_long", "Las observaciones del cliente", NotesMaxLength);
         _ = CopiersMaintenanceV2Validation.Optional(Value(answers, "recommendations"), "recommendations_too_long", "Las recomendaciones", NotesMaxLength);
-        var copiesBefore = Counter(answers, "copies_before", required: false);
-        var copiesAfter = Counter(answers, "copies_after", required: true);
-        var scansBefore = Counter(answers, "scans_before", required: false);
-        var scansAfter = Counter(answers, "scans_after", required: true);
-
-        return answers.Select(answer => new CopiersMaintenanceV2FormAnswerSnapshot
+        return CanonicalizeCounters(answers).Select(answer => new CopiersMaintenanceV2FormAnswerSnapshot
         {
             Key = answer.Key, Label = answer.Label, SortOrder = answer.SortOrder,
             Value = answer.Key switch
@@ -43,14 +38,31 @@ internal static class CopiersMtoV2CompactCapture
                 "service_ended_at" => FormatVisit(ended),
                 "service_started_at_utc" => started.ToString("O", CultureInfo.InvariantCulture),
                 "service_ended_at_utc" => ended.ToString("O", CultureInfo.InvariantCulture),
-                "copies_before" => Number(copiesBefore),
-                "copies_after" => Number(copiesAfter),
-                "scans_before" => Number(scansBefore),
-                "scans_after" => Number(scansAfter),
-                "counters" => $"Impresión: {Display(copiesBefore)} / {Display(copiesAfter)}. Escaneo: {Display(scansBefore)} / {Display(scansAfter)}.",
                 _ => answer.Value
             }
         }).ToList();
+    }
+
+    internal static IReadOnlyList<CopiersMaintenanceV2FormAnswerSnapshot> CanonicalizeCounters(
+        IReadOnlyList<CopiersMaintenanceV2FormAnswerSnapshot> answers)
+    {
+        var copiesBefore = Counter(answers, "copies_before", false);
+        var copiesAfter = Counter(answers, "copies_after", true);
+        var scansBefore = Counter(answers, "scans_before", false);
+        var scansAfter = Counter(answers, "scans_after", true);
+        if (copiesAfter < copiesBefore || scansAfter < scansBefore)
+            throw Invalid("counter_decreased", "Los contadores actuales no pueden ser menores que la lectura anterior.");
+        return answers.Select(answer => new CopiersMaintenanceV2FormAnswerSnapshot
+        {
+            Key = answer.Key, Label = answer.Label, SortOrder = answer.SortOrder,
+            Value = answer.Key switch
+            {
+                "copies_before" => Number(copiesBefore), "copies_after" => Number(copiesAfter),
+                "scans_before" => Number(scansBefore), "scans_after" => Number(scansAfter),
+                "counters" => $"Impresión: {Display(copiesBefore)} / {Display(copiesAfter)}. Escaneo: {Display(scansBefore)} / {Display(scansAfter)}.",
+                _ => answer.Value
+            }
+        }).ToArray();
     }
 
     public static CopiersMtoV2CounterSaveCommand CounterCommand(

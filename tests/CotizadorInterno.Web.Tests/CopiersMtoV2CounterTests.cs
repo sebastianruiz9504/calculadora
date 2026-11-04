@@ -218,6 +218,16 @@ public sealed class CopiersMtoV2CounterTests
     }
 
     [Fact]
+    public async Task SelectedExitBeforePreviousReadingCannotWriteACounter()
+    {
+        using var fixture = new Fixture();
+        fixture.Transport.Records[PreviousId] = Counter(PreviousId, 500, 70, "2026-09-08T16:00:00Z");
+        var command = Command(previous: true, at: "2026-09-08T15:59:00Z");
+        var error = await Assert.ThrowsAsync<CopiersMaintenanceV2ValidationException>(() => fixture.Service.SaveForMaintenanceAsync(command));
+        Assert.Equal("counter_date_before_previous", error.Code);
+    }
+
+    [Fact]
     public async Task NoHistoryAtVisitEndDoesNotConflictWithAReadingUploadedLater()
     {
         using var fixture = new Fixture();
@@ -268,11 +278,11 @@ public sealed class CopiersMtoV2CounterTests
             DataverseService.BuildCopiersMtoV2CounterRecordId(PreviousId));
     }
 
-    private static CopiersMtoV2CounterSaveCommand Command(long? copies = 550, long? scans = 80, bool previous = false, string fingerprint = Fingerprint) => new()
+    private static CopiersMtoV2CounterSaveCommand Command(long? copies = 550, long? scans = 80, bool previous = false, string fingerprint = Fingerprint, string at = "2026-09-10T11:25:37.345-05:00") => new()
     {
         MaintenanceRecordId = MaintenanceId, SubmissionKey = "mto-v2-counter-retry-12345678", ClientId = ClientId,
         FinalizationFingerprint = fingerprint,
-        EquipmentId = EquipmentId, EquipmentSerial = "SERIAL-001", ReadingAtUtc = DateTimeOffset.Parse("2026-09-10T11:25:37.345-05:00"),
+        EquipmentId = EquipmentId, EquipmentSerial = "SERIAL-001", ReadingAtUtc = DateTimeOffset.Parse(at),
         CopiesCounter = copies, ScansCounter = scans, PreviousCounterRecordId = previous ? PreviousId : "",
         PreviousCopiesCounter = previous ? 500 : null, PreviousScansCounter = previous ? 70 : null,
         PreviousDateValue = previous ? "2026-09-08" : ""

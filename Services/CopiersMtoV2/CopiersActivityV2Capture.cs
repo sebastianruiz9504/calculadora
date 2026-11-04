@@ -12,13 +12,12 @@ internal static class CopiersActivityV2Capture
         CopiersMaintenanceV2FinalizeMultipartRequestDto request, CopiersMaintenanceV2DraftRecord row,
         IReadOnlyList<CopiersMaintenanceV2FormAnswerSnapshot> answers)
     {
-        var kind = row.MaintenanceTypeValue switch { CopiersActivityV2Bindings.MovementType => "movement",
-            CopiersActivityV2Bindings.TonerType => "toner", _ => throw Invalid("Tipo de atención no válido.") };
+        var kind = CopiersActivityV2Bindings.Kind(row.MaintenanceTypeValue);
         Match(Value(answers, "activity_kind"), kind);
         Match(request.ActivityKind, kind);
         var started = request.ServiceStartedAtUtc ?? throw Invalid("Falta la hora de entrada.");
         var ended = request.ServiceEndedAtUtc ?? throw Invalid("Falta la hora de salida.");
-        if (started > ended || request.DeviceSignedAtUtc is null || ended > request.DeviceSignedAtUtc
+        if (started > ended || kind == "counter" && started == ended || request.DeviceSignedAtUtc is null || ended > request.DeviceSignedAtUtc
             || DateOnly.FromDateTime(started.ToOffset(TimeSpan.FromHours(-5)).DateTime) != row.ServiceDate)
             throw Invalid("Revisa la entrada y salida de la visita antes de firmar.");
         foreach (var (key, value) in new[] { ("service_started_at_utc", started), ("service_ended_at_utc", ended) })
@@ -32,6 +31,12 @@ internal static class CopiersActivityV2Capture
             if (!string.IsNullOrEmpty(request.OriginClientId)) _ = CopiersMaintenanceV2Validation.RequiredGuid(request.OriginClientId, "origin_invalid", "El origen");
             _ = CopiersMaintenanceV2Validation.Required(Value(answers, "origin_client_name"), "origin_required", "el origen", 850);
             request.WorkPerformed = reason;
+        }
+        else if (kind == "counter")
+        {
+            _ = CopiersMaintenanceV2Validation.RequiredGuid(row.EquipmentId, "equipment_invalid", "El equipo");
+            answers = CopiersMtoV2CompactCapture.CanonicalizeCounters(answers);
+            request.WorkPerformed = "Toma de contadores de impresiones y escaneos del equipo.";
         }
         else
         {

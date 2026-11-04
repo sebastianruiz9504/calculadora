@@ -13,11 +13,12 @@ public sealed class CopiersActivityV2Runtime(
     ICopiersMtoV2PdfBuilder pdf,
     ICopiersActivityV2BusinessService business,
     TimeProvider clock,
-    ILoggerFactory loggers)
+    ILoggerFactory loggers,
+    ICopiersMtoV2CounterService? counters = null)
 {
     internal CopiersMaintenanceV2DataverseRepository CreateRepository() => new(client, accessor,
         Options.Create(CopiersActivityV2Bindings.Create(bindings.Value)), clock, loggers.CreateLogger<CopiersMaintenanceV2DataverseRepository>());
-    public ICopiersMaintenanceV2Service CreateService()
+    public ICopiersMaintenanceV2Service CreateService(ICopiersMtoV2CounterService? counterService = null)
     {
         if (!options.Value.ActivitiesEnabled)
             throw new CopiersMaintenanceV2ValidationException("activities_disabled", "Las nuevas actas todavía no están habilitadas.");
@@ -25,7 +26,7 @@ public sealed class CopiersActivityV2Runtime(
         var repository = new CopiersMaintenanceV2DataverseRepository(client, accessor, mapped, clock,
             loggers.CreateLogger<CopiersMaintenanceV2DataverseRepository>());
         return new CopiersMaintenanceV2Service(repository, pdf, options, mapped, clock,
-            loggers.CreateLogger<CopiersMaintenanceV2Service>(), business: business);
+            loggers.CreateLogger<CopiersMaintenanceV2Service>(), counters: counterService ?? counters, business: business);
     }
 
     // This existence probe uses organization-wide application reads. A delegated
@@ -45,7 +46,7 @@ public sealed class CopiersActivityV2Runtime(
     {
         var id = CopiersMaintenanceV2Validation.RequiredGuid(recordId, "record_invalid", "El registro");
         var o = activityKind == "maintenance" ? bindings.Value : CopiersActivityV2Bindings.Create(bindings.Value);
-        if (activityKind is not ("maintenance" or "movement" or "toner")
+        if (activityKind is not ("maintenance" or "movement" or "toner" or "counter")
             || (activityKind != "maintenance" && !options.Value.ActivitiesEnabled))
             throw new CopiersMaintenanceV2ValidationException("activity_invalid", "El tipo de atención no es válido.");
         using var response = await client.SendAsync($"/api/data/v9.2/{o.MainEntitySetName}({id})?$select={o.TechnicianUserIdField},{o.WorkflowStateField},{o.EmailStateField},{o.ServiceReferenceField},{o.LastErrorCodeField}",

@@ -103,16 +103,25 @@ public sealed class CopiersMtoV2CalendarService(
         var allTechnicians = string.Equals(technicianId, AllTechnicians, StringComparison.OrdinalIgnoreCase);
         var technician = allTechnicians ? AllTechnicians : NormalizeGuid(technicianId);
         // ServiceDate is the form's date-only value. Do not compare it to a server-local timezone.
+        var fromUtc = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), BogotaOffset).ToUniversalTime();
+        var untilUtc = new DateTimeOffset(until.ToDateTime(TimeOnly.MinValue), BogotaOffset).ToUniversalTime();
+        var periodFilter = $"({_o.ServiceDateField} ge {from:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z)";
+        // Signing happens after the selected exit. This bounds the overlap query
+        // without requiring another timestamp column or scanning all old visits.
+        if (IsActivity) periodFilter += $" or ({_o.MaintenanceTypeField} eq {CopiersActivityV2Bindings.CounterType}"
+            + $" and {_o.ServiceDateField} lt {from:yyyy-MM-dd}T00:00:00Z and {_o.DeviceSignedAtUtcField} ge {fromUtc:yyyy-MM-ddTHH:mm:ssZ})";
         var historicalFilter = IsActivity ? "" : $" or {_o.WorkflowStateField} eq {CopiersMaintenanceHistory.HistoricalState}";
         var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null){historicalFilter})"
             + (allTechnicians ? "" : $" and {_o.TechnicianUserIdField} eq '{technician}'")
-            + $" and {_o.ServiceDateField} ge {from:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z";
+            + $" and ({periodFilter})";
         var rows = await QueryAsync($"{_o.MainEntitySetName}?$select={EventFields()}&$filter={Uri.EscapeDataString(filter)}"
             + $"&$orderby={_o.ServiceDateField} asc,{_o.MainIdField} asc", ct);
         var events = rows.Where(x => IsVisible(x)
-                && (allTechnicians || string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase))
-                && ServiceDate(x) >= from && ServiceDate(x) < until)
-            .Select(MapEvent).ToList();
+                && (allTechnicians || string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase)))
+            .Select(MapEvent).Where(x => x.ActivityKind == "counter"
+                ? x.StartAtUtc < untilUtc && x.EndAtUtc > fromUtc
+                : string.CompareOrdinal(x.ServiceDate, from.ToString("yyyy-MM-dd")) >= 0
+                    && string.CompareOrdinal(x.ServiceDate, until.ToString("yyyy-MM-dd")) < 0).ToList();
         if (!IsActivity && ActivitiesEnabled)
             events.AddRange(await ActivityReader().ReadPeriodAsync(technician, from, until, ct));
         return events.OrderBy(x => x.StartAtUtc).ThenBy(x => x.Id).ToArray();
@@ -294,7 +303,8 @@ public sealed class CopiersMtoV2CalendarService(
         var end = recordedEnd ?? Instant(row, _o.DeviceSignedAtUtcField) ?? Instant(row, _o.ServerFinalizedAtUtcField);
         var start = ParseRecordedInstant(answers.FirstOrDefault(x => x.Key == "service_started_at_utc")?.Value)
             ?? ParseVisitStart(answers.FirstOrDefault(x => x.Key == "service_started_at")?.Value);
-        var estimated = !start.HasValue || !end.HasValue || end <= start || end - start > TimeSpan.FromDays(1);
+        var isCounter = IsActivity && Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.CounterType;
+        var estimated = !start.HasValue || !end.HasValue || end <= start || !isCounter && end - start > TimeSpan.FromDays(1);
         if (estimated)
         {
             end ??= new DateTimeOffset(ServiceDate(row).ToDateTime(new TimeOnly(12, 0)), BogotaOffset).ToUniversalTime();
@@ -306,8 +316,8 @@ public sealed class CopiersMtoV2CalendarService(
             ClientId = Text(row, $"_{_o.ClientLookupLogicalName}_value"), ServiceDate = ServiceDate(row).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ClientName = Text(row, _o.ClientNameField), TechnicianId = Text(row, _o.TechnicianUserIdField),
             TechnicianName = Text(row, _o.TechnicianNameField), StartAtUtc = start!.Value, EndAtUtc = end!.Value,
-            ActivityKind = IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "movement" : "toner" : "maintenance",
-            MaintenanceType = operation is not null ? operation.Kind switch { "delivery"=>"Entrega de equipo", "withdrawal"=>"Retiro", "replacement"=>"Cambio", "internal"=>"Salida interna", _=>operation.Internal?"Recepción interna":"Recepción de equipo" } : IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "Movimiento" : "Entrega de tóner"
+            ActivityKind = IsActivity ? CopiersActivityV2Bindings.Kind(Number(row, _o.MaintenanceTypeField)) : "maintenance",
+            MaintenanceType = operation is not null ? operation.Kind switch { "delivery"=>"Entrega de equipo", "withdrawal"=>"Retiro", "replacement"=>"Cambio", "internal"=>"Salida interna", _=>operation.Internal?"Recepción interna":"Recepción de equipo" } : IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "Movimiento" : CopiersActivityV2Bindings.Label(Number(row, _o.MaintenanceTypeField))
                 : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypePreventiveValue ? "Preventivo"
                 : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Sin clasificar",
             DurationEstimated = estimated,
@@ -426,7 +436,7 @@ public sealed class CopiersMtoV2CalendarService(
         _o.EvidencePurposeField, _o.EvidenceSequenceField, _o.EvidenceOriginalFileNameField, _o.EvidenceContentTypeField,
         _o.EvidenceSizeField, _o.EvidenceSha256Field, _o.EvidenceSecurityStateField);
     private bool IsHistorical(JsonElement row) => !IsActivity && CopiersMaintenanceHistory.IsHistorical(row);
-    private bool IsVisible(JsonElement row) => (!IsActivity || Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType)
+    private bool IsVisible(JsonElement row) => (!IsActivity || Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType or CopiersActivityV2Bindings.CounterType)
         && (IsHistorical(row) || Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue
             || Number(row, _o.WorkflowStateField) == _o.FailedStateValue
                 && IsHash(Text(row, _o.SignedReportEvidenceKeyField)) && IsHash(Text(row, _o.SignedReportSha256Field)));

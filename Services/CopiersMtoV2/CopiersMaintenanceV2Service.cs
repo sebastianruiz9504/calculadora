@@ -156,6 +156,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 CopiersMaintenanceV2Validation.ParseAnswers(request.AnswersJson, _options, formVersion),
                 begin.Record);
             var compactForm = formVersion == CopiersMtoV2CompactCapture.FormVersion;
+            var counterForm = activityForm && begin.Record.MaintenanceTypeValue == CopiersActivityV2Bindings.CounterType;
             if (compactForm)
                 answers = CopiersMtoV2CompactCapture.Canonicalize(request, begin.Record, answers);
             if (activityForm)
@@ -226,7 +227,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             CopiersMtoV2CounterSaveCommand? counterCommand = null;
             var extraCounters = new List<CopiersMtoV2CounterSaveCommand>();
             var matchesPersistedCounterFingerprint = false;
-            if (compactForm && !isReadyReplay && !string.IsNullOrWhiteSpace(begin.Record.EquipmentId))
+            if ((compactForm || counterForm) && !isReadyReplay && !string.IsNullOrWhiteSpace(begin.Record.EquipmentId))
             {
                 if (_counters is null) throw new InvalidOperationException("El servicio de contadores no está disponible.");
                 counterCommand = CopiersMtoV2CompactCapture.CounterCommand(
@@ -244,7 +245,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             }
             CopiersActivityV2BusinessCommand? businessCommand = null;
             var matchesPersistedBusiness = false;
-            if (activityForm && !isReadyReplay)
+            if (activityForm && !counterForm && !isReadyReplay)
             {
                 if (_business is null) throw new InvalidOperationException("El servicio de movimientos y entregas no está disponible.");
                 businessCommand = CopiersActivityV2Capture.Command(begin.Record, answers, request.ServiceEndedAtUtc!.Value, finalizationFingerprint);

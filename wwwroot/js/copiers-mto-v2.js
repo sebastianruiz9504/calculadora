@@ -17,6 +17,7 @@
         "mtoV2ClientName",
         "mtoV2EquipmentSerial",
         "mtoV2ServiceStartedAtLocal",
+        "mtoV2ServiceEndedAtLocal",
         "mtoV2OnsiteContactName",
         "mtoV2OnsiteContactEmail",
         "mtoV2MaintenanceType",
@@ -74,6 +75,8 @@
         signatureEquipment: document.getElementById("mtoV2SignatureEquipment"),
         submittedAtUtc: document.getElementById("mtoV2SubmittedAtUtc"),
         serviceStartedAtLocal: document.getElementById("mtoV2ServiceStartedAtLocal"),
+        serviceEndedAtLocal: document.getElementById("mtoV2ServiceEndedAtLocal"),
+        visitStartLabel: document.getElementById("mtoV2VisitStartLabel"),
         latitude: document.getElementById("mtoV2Latitude"),
         longitude: document.getElementById("mtoV2Longitude"),
         accuracy: document.getElementById("mtoV2Accuracy"),
@@ -643,7 +646,7 @@
             return option;
         });
         if (state.catalog.activitiesEnabled) {
-            for (const [value, label] of [["movement", "Movimiento de equipo"], ["toner", "Entrega de tóner"]]) {
+            for (const [value, label] of [["movement", "Movimiento de equipo"], ["toner", "Entrega de tóner"], ["counter", "Toma de contador"]]) {
                 const option = document.createElement("option");
                 option.value = value;
                 option.textContent = label;
@@ -655,11 +658,11 @@
 
     function activityKind() {
         const kind = elements.activityKind?.value;
-        return kind === "movement" || kind === "toner" ? kind : "maintenance";
+        return ["movement", "toner", "counter"].includes(kind) ? kind : "maintenance";
     }
 
     function activityLabel() {
-        return activityKind() === "movement" ? "Movimiento de equipo" : activityKind() === "toner" ? "Entrega de tóner" : "Mantenimiento";
+        return activityKind() === "movement" ? "Movimiento de equipo" : activityKind() === "toner" ? "Entrega de tóner" : activityKind() === "counter" ? "Toma de contador" : "Mantenimiento";
     }
 
     function changeActivityType() {
@@ -668,15 +671,18 @@
             window.location.assign("/CopiersEquipmentOperations");
             return;
         }
-        if ((value === "movement" || value === "toner") && !state.catalog.activitiesEnabled) {
+        if (["movement", "toner", "counter"].includes(value) && !state.catalog.activitiesEnabled) {
             elements.maintenanceType.value = "";
             return;
         }
-        elements.activityKind.value = value === "movement" || value === "toner" ? value : "maintenance";
+        elements.activityKind.value = ["movement", "toner", "counter"].includes(value) ? value : "maintenance";
         elements.formVersion.value = activityKind() === "maintenance" ? "copiers-mto-v2-2026-09-10" : "copiers-activity-v2-2026-09-10";
         elements.clientLabel.textContent = activityKind() === "movement" ? "Cliente destino" : "Cliente";
+        if (elements.visitStartLabel) elements.visitStartLabel.textContent = activityKind() === "counter" ? "Fecha y hora de ingreso" : "Inicio de la visita";
+        elements.serviceStartedAtLocal.setCustomValidity("");
+        elements.serviceEndedAtLocal?.setCustomValidity("");
         elements.activityPanels.forEach(panel => {
-            const active = panel.dataset.activityPanel === activityKind();
+            const active = panel.dataset.activityPanel.split(" ").includes(activityKind());
             panel.hidden = !active;
             panel.querySelectorAll("input, select, textarea").forEach(field => { field.disabled = !active; });
         });
@@ -1162,7 +1168,7 @@
     }
 
     function syncCounterSelection() {
-        const equipment = activityKind() === "maintenance" ? state.catalog.selectedEquipment : null;
+        const equipment = ["maintenance", "counter"].includes(activityKind()) ? state.catalog.selectedEquipment : null;
         const external = isExternalEquipment();
         const scope = equipment ? `${equipment.clientId}|${equipment.id}`.toLowerCase()
             : external ? `external|${state.catalog.selectedClient?.id}|${catalogKey(elements.equipmentSerial.value)}` : "";
@@ -1188,7 +1194,7 @@
 
     async function loadCounterLatest() {
         const equipment = state.catalog.selectedEquipment;
-        if (!equipment || activityKind() !== "maintenance" || isExternalEquipment() || state.counters.loading) return;
+        if (!equipment || !["maintenance", "counter"].includes(activityKind()) || isExternalEquipment() || state.counters.loading) return;
         const requestId = ++state.counters.requestId;
         const scope = state.counters.scope;
         state.counters.loading = true;
@@ -1478,7 +1484,7 @@
 
     function validateStep(step) {
         clearCounterValidity();
-        if (step === 2 && activityKind() === "maintenance" && !validateCounters()) {
+        if (step === 2 && ["maintenance", "counter"].includes(activityKind()) && !validateCounters()) {
             return false;
         }
         if (step === 2 && activityKind() === "maintenance" && !validateAdditionalEquipment()) return false;
@@ -1491,9 +1497,16 @@
 
         if (step === 1) {
             prepareCatalogValidity();
-            const start = new Date(elements.serviceStartedAtLocal.value);
+            const start = new Date(elements.serviceStartedAtLocal.value + (activityKind() === "counter" ? "-05:00" : ""));
             elements.serviceStartedAtLocal.setCustomValidity(start.getTime() > Date.now()
                 ? "La hora de entrada no puede estar en el futuro." : "");
+            if (activityKind() === "counter") {
+                const end = new Date(elements.serviceEndedAtLocal.value + "-05:00");
+                elements.serviceEndedAtLocal.setCustomValidity(!Number.isFinite(end.getTime())
+                    ? "Selecciona la fecha y hora de retiro." : end <= start
+                    ? "El retiro debe ser posterior al ingreso." : end.getTime() > Date.now()
+                    ? "La fecha y hora de retiro no pueden estar en el futuro." : "");
+            }
         }
 
         const controls = Array.from(panel.querySelectorAll("input, select, textarea"))
@@ -1953,11 +1966,14 @@
     }
 
     function updateVisitTimes(fixEnd) {
-        const start = new Date(elements.serviceStartedAtLocal.value);
+        const start = new Date(elements.serviceStartedAtLocal.value + (activityKind() === "counter" ? "-05:00" : ""));
         elements.serviceStartedAtUtc.value = Number.isNaN(start.getTime()) ? "" : start.toISOString();
-        if (fixEnd && !elements.serviceEndedAtUtc.value) elements.serviceEndedAtUtc.value = new Date().toISOString();
+        if (activityKind() === "counter") {
+            const end = new Date(elements.serviceEndedAtLocal.value + "-05:00");
+            elements.serviceEndedAtUtc.value = Number.isNaN(end.getTime()) ? "" : end.toISOString();
+        } else if (fixEnd && !elements.serviceEndedAtUtc.value) elements.serviceEndedAtUtc.value = new Date().toISOString();
         elements.signatureStartedAt.textContent = formatLocalDateTime(elements.serviceStartedAtUtc.value) || "Pendiente";
-        elements.signatureEndedAt.textContent = formatLocalDateTime(elements.serviceEndedAtUtc.value) || "Se registra al solicitar la firma";
+        elements.signatureEndedAt.textContent = formatLocalDateTime(elements.serviceEndedAtUtc.value) || (activityKind() === "counter" ? "Selecciona la fecha y hora de retiro" : "Se registra al solicitar la firma");
     }
 
     function updateSignatureState() {
@@ -2030,6 +2046,10 @@
     }
 
     function buildActivityReviewSection() {
+        if (activityKind() === "counter") return buildReviewSection("Toma de contador", [
+            reviewItem("Contadores", buildCountersSummary(), true),
+            reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
+        ]);
         if (activityKind() === "movement") return buildReviewSection("Movimiento de equipo", [
             reviewItem("Origen", elements.originClientName.value),
             reviewItem("Cliente destino", valueOf("mtoV2ClientName")),
@@ -2158,17 +2178,19 @@
             ["supply_quantity", "Cantidad entregada", valueOf("mtoV2SupplyQuantity")],
             ["supply_stock_before", "Existencias antes de la entrega", String(state.supplies.selected?.quantity ?? "")]
         );
-        else definitions.push(
+        else if (activityKind() === "maintenance") definitions.push(
             ["maintenance_type", "Tipo de mantenimiento", selectedText("mtoV2MaintenanceType")],
             ["service_result", "Resultado del servicio", valueOf("mtoV2ServiceResult")],
+            ["recommendations", "Recomendaciones", valueOf("mtoV2Recommendations")]
+        );
+        if (["maintenance", "counter"].includes(activityKind())) definitions.push(
             ["counters", "Contadores", buildCountersSummary()],
             ["counter_record_id", "Registro de contador anterior", state.counters.recordId],
             ["counter_recorded_at", "Fecha del contador anterior", state.counters.dateValue],
             ["copies_before", "Impresiones anteriores", valueOf("mtoV2CopiesBefore")],
             ["copies_after", "Impresiones actuales", valueOf("mtoV2CopiesAfter")],
             ["scans_before", "Escaneos anteriores", valueOf("mtoV2ScansBefore")],
-            ["scans_after", "Escaneos actuales", valueOf("mtoV2ScansAfter")],
-            ["recommendations", "Recomendaciones", valueOf("mtoV2Recommendations")]
+            ["scans_after", "Escaneos actuales", valueOf("mtoV2ScansAfter")]
         );
 
         return definitions

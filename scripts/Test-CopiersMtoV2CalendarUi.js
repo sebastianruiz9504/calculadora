@@ -13,6 +13,23 @@ const calendar = require("../wwwroot/js/copiers-mto-v2-calendar.js");
 const origin = "https://example.test";
 const eventId = "11111111-2222-3333-4444-555555555555";
 
+test("counter activities appear on the calendar without entering any maintenance total", () => {
+    const counter = { id: "activity:counter", activityKind: "counter", maintenanceType: "Toma de contador", workflowState: "ReadyToSend",
+        technicianId: "tech-1", technicianName: "Técnico", clientId: "client-1", clientName: "Cliente",
+        serviceDate: "2026-11-04", startAtUtc: "2026-11-04T13:00:00Z", endAtUtc: "2026-11-04T13:30:00Z" };
+    assert.equal(calendar.typeInfo(counter.maintenanceType).label, "Toma de contador");
+    assert.equal(calendar.monthDays([counter], "2026-11-01").find(x => x.key === "2026-11-04").events.length, 1);
+    const summary = calendar.summarize([counter]);
+    assert.equal(summary.total, 0);
+    assert.deepEqual(summary.technicians, []);
+    assert.deepEqual(summary.types, []);
+    assert.deepEqual(summary.clients, []);
+    const overnight = { ...counter, serviceDate: "2026-10-31", startAtUtc: "2026-11-01T04:30:00Z", endAtUtc: "2026-11-01T06:00:00Z" };
+    const days = calendar.monthDays([overnight], "2026-11-01");
+    assert.equal(days.find(x => x.key === "2026-11-01").events.length, 1);
+    assert.equal(days.flatMap(x => x.events).length, 1);
+});
+
 test("monthly grid includes whole Monday weeks, leap days and year transitions", () => {
     const days = calendar.monthDays([], "2026-11-01");
     assert.equal(days.length, 42);

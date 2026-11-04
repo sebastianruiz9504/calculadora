@@ -64,13 +64,14 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
         public PdfCanvas BuildPage()
         {
             var activityKind = model.FormVersion == CopiersActivityV2Bindings.FormVersion ? Answer("activity_kind").ToLowerInvariant() : "maintenance";
-            if (model.FormVersion == CopiersActivityV2Bindings.FormVersion && activityKind is not ("movement" or "toner"))
+            if (model.FormVersion == CopiersActivityV2Bindings.FormVersion && activityKind is not ("movement" or "toner" or "counter"))
                 throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.");
             var title = activityKind switch
             {
                 "maintenance" => "Reporte de mantenimiento",
                 "movement" => Answer("operation_kind") switch { "delivery" or "receipt" => "Certificado de entrega", "replacement" => "Certificado de cambio", "withdrawal" => "Certificado de retiro", _ => "Movimiento de equipo" },
                 "toner" => "Entrega de tóner",
+                "counter" => "Toma de contador",
                 _ => throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.")
             };
             if (EstimateWidth(number, 11, true) + EstimateWidth(title, 15, true) + 18 > CompactContentWidth)
@@ -94,7 +95,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 "Salida", VisitInstant("service_ended_at_utc", "service_ended_at"));
             _top += 7;
 
-            if (activityKind == "maintenance") DrawCounters();
+            if (activityKind is "maintenance" or "counter") DrawCounters();
             else if (activityKind == "movement")
             {
                 if (Answer("operation_kind").Length > 0)
@@ -121,7 +122,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 FullField("Cantidad", Answer("supply_quantity"));
                 _top += 7;
             }
-            Paragraph(activityKind == "maintenance" ? "Trabajo realizado" : activityKind == "movement" ? "Motivo del movimiento" : "Detalle de la entrega",
+            Paragraph(activityKind == "maintenance" ? "Trabajo realizado" : activityKind == "movement" ? "Motivo del movimiento" : activityKind == "counter" ? "Registro de lectura" : "Detalle de la entrega",
                 model.WorkPerformed, required: true);
             Paragraph("Recomendaciones", Answer("recommendations"));
             Paragraph("Observaciones del cliente", model.CustomerObservations);
@@ -232,6 +233,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             {
                 "movement" => "Revisé los datos del movimiento del equipo, su origen y destino. Mi firma deja constancia de la atención y de la información consignada.",
                 "toner" => "Revisé el suministro y la cantidad relacionados en esta entrega. Mi firma deja constancia de la recepción y de la información consignada.",
+                "counter" => "Revisé las lecturas de impresiones y escaneos y los horarios de ingreso y retiro. Mi firma deja constancia de la toma de contador registrada.",
                 _ => "Revisé este reporte y recibí explicación del trabajo realizado. Mi firma deja constancia de la atención y de la información consignada."
             };
             if (activityKind == "movement") consent = Answer("operation_kind") switch
