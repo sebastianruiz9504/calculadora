@@ -44,6 +44,7 @@
     const detailSubtitle = document.getElementById("nominaDetailSubtitle");
     const detailWarnings = document.getElementById("nominaDetailWarnings");
     const detailMeta = document.getElementById("nominaDetailMeta");
+    const detailExclusionSection = document.getElementById("detailExclusionSection");
     const detailNoveltiesWrap = document.getElementById("detailNoveltiesWrap");
     const detailNoveltiesList = document.getElementById("detailNoveltiesList");
     const detailNoveltiesEmpty = document.getElementById("detailNoveltiesEmpty");
@@ -362,7 +363,7 @@
             } else if (!Array.isArray(row.novelties) || row.novelties.length === 0) {
                 row.novelties = [createNovelty({ days: roundMoney(getPeriodDays(row) - row[field]) })];
             }
-        } else if (field === "applyNonCommissionBonusWithholding" || field === "applyExternalWithholding") {
+        } else if (field === "excludedFromPeriod" || field === "applyNonCommissionBonusWithholding" || field === "applyExternalWithholding") {
             row[field] = input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : Boolean(input.value);
         } else if (field === "nonCommissionBonusWithholdingRate" || field === "externalWithholdingRate") {
             row[field] = parseRateInputValue(input.value);
@@ -620,8 +621,13 @@
         }
 
         if (periodChanged) {
-            state.rows.forEach((row) => markRowPendingVerification(row));
+            state.rows.forEach((row) => {
+                row.excludedFromPeriod = false;
+                markRowPendingVerification(row);
+            });
             renderRows();
+            renderSummary();
+            renderVerticals();
             updateConfirmAvailability();
             renderStatus("info", "El periodo cambio. Vuelve a preparar la liquidacion y verifica las filas antes de confirmar.");
         }
@@ -684,8 +690,8 @@
                 return;
             }
 
-            if (state.rows.length === 0) {
-                renderStatus("warning", "Primero debes preparar la preliquidacion.");
+            if (getIncludedRows().length === 0) {
+                renderStatus("warning", "No hay empleados incluidos en esta liquidacion.");
                 return;
             }
 
@@ -743,6 +749,7 @@
                 return {
                     employeeId: row.employeeId,
                     verified: Boolean(row.verified),
+                    excludedFromPeriod: Boolean(row.excludedFromPeriod),
                     manualEditEnabled: Boolean(row.manualEditEnabled),
                     manualOverrides: buildManualOverridesPayload(row),
                     workedDays: row.workedDays,
@@ -1312,6 +1319,7 @@
         normalized.employeeContractTypeOptionValue = Number.parseInt(String(normalized.employeeContractTypeOptionValue || 0), 10) || 0;
         normalized.employeeContractTypeLabel = String(normalized.employeeContractTypeLabel || "").trim();
         normalized.isServiceContract = isServiceContract(normalized);
+        normalized.excludedFromPeriod = Boolean(normalized.excludedFromPeriod);
         normalized.manualEditEnabled = Boolean(normalized.manualEditEnabled);
         normalized.manualOverrides = normalizeManualOverrides(normalized.manualOverrides);
         normalized.periodDays = Math.max(Math.round(toPositiveNumber(normalized.periodDays)) || getDaysInPeriod(normalized.periodKey), 1);
@@ -1518,7 +1526,7 @@
                 <tr data-row-id="${escapeHtml(row.employeeId)}" class="${buildRowClass(row)}" tabindex="0" role="button" aria-label="Liquidacion de ${escapeHtml(row.employeeName || "empleado")}">
                     <td class="text-center payroll-verified-cell">
                         <label class="payroll-verify-toggle" data-row-edit>
-                            <input class="form-check-input" type="checkbox" ${row.verified ? "checked" : ""} data-row-edit data-row-field="verified" aria-label="Verificado ${escapeHtml(row.employeeName || "empleado")}" />
+                            <input class="form-check-input" type="checkbox" ${row.verified ? "checked" : ""} ${row.excludedFromPeriod ? "disabled" : ""} data-row-edit data-row-field="verified" aria-label="Verificado ${escapeHtml(row.employeeName || "empleado")}" />
                             <span>Verificado</span>
                         </label>
                     </td>
@@ -1529,7 +1537,7 @@
                             <span data-role="noveltyMeta">${buildRowNoveltyMeta(row)}</span>
                         </div>
                     </td>
-                    <td class="text-end" data-role="netPayroll">${formatMoney(row.netPayroll)}</td>
+                    <td class="text-end" data-role="netPayroll">${row.excludedFromPeriod ? "No se envia" : formatMoney(row.netPayroll)}</td>
                 </tr>
             `;
         }).join("");
@@ -1542,7 +1550,11 @@
         }
 
         tr.className = buildRowClass(row);
-        setCellText(tr, "netPayroll", formatMoney(row.netPayroll));
+        setCellText(tr, "netPayroll", row.excludedFromPeriod ? "No se envia" : formatMoney(row.netPayroll));
+        const verifiedInput = tr.querySelector('[data-row-field="verified"]');
+        if (verifiedInput) {
+            verifiedInput.disabled = Boolean(row.excludedFromPeriod);
+        }
         const noveltyMeta = tr.querySelector('[data-role="noveltyMeta"]');
         if (noveltyMeta) {
             noveltyMeta.innerHTML = buildRowNoveltyMeta(row);
@@ -1682,6 +1694,9 @@
     }
 
     function renderDetailInputs(row, skipField) {
+        if (detailExclusionSection) {
+            detailExclusionSection.hidden = isClosedDetailMode();
+        }
         if (detailExternalWithholdingWrap) {
             detailExternalWithholdingWrap.hidden = toPositiveNumber(row.cuentaDeCobro) <= 0;
         }
@@ -1990,12 +2005,13 @@
     }
 
     function renderSummary() {
-        const employees = state.rows.length;
-        const totalPayroll = roundMoney(state.rows.reduce((sum, row) => sum + row.netPayroll, 0));
-        const totalCuentaCobro = roundMoney(state.rows.reduce((sum, row) => sum + row.netCuentaDeCobro, 0));
+        const includedRows = getIncludedRows();
+        const employees = includedRows.length;
+        const totalPayroll = roundMoney(includedRows.reduce((sum, row) => sum + row.netPayroll, 0));
+        const totalCuentaCobro = roundMoney(includedRows.reduce((sum, row) => sum + row.netCuentaDeCobro, 0));
         const totalDisbursement = roundMoney(totalPayroll + totalCuentaCobro);
-        const totalCopiers = roundMoney(state.rows.reduce((sum, row) => sum + row.totalCopiers, 0));
-        const totalCloud = roundMoney(state.rows.reduce((sum, row) => sum + row.totalCloud, 0));
+        const totalCopiers = roundMoney(includedRows.reduce((sum, row) => sum + row.totalCopiers, 0));
+        const totalCloud = roundMoney(includedRows.reduce((sum, row) => sum + row.totalCloud, 0));
 
         summaryEmployees.textContent = String(employees);
         summaryPayroll.textContent = formatMoney(totalPayroll);
@@ -2006,7 +2022,7 @@
     }
 
     function renderVerticals() {
-        verticalsBody.innerHTML = state.rows.map((row) => `
+        verticalsBody.innerHTML = getIncludedRows().map((row) => `
             <tr data-vertical-row-id="${escapeHtml(row.employeeId)}" class="${buildVerticalRowClass(row)}" tabindex="0" role="button" aria-label="Detalle vertical de ${escapeHtml(row.employeeName || "empleado")}">
                 <td>
                     <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
@@ -2058,7 +2074,7 @@
     }
 
     function calculateVerticalTotals() {
-        const totals = state.rows.reduce((totals, row) => {
+        const totals = getIncludedRows().reduce((totals, row) => {
             totals.verticalTotal += calculateRowVerticalTotal(row);
             totals.verticalBase += toNumber(row.verticalBase);
             totals.baseCopiers += toNumber(row.baseCopiers);
@@ -2137,6 +2153,9 @@
     }
 
     function buildRowNoveltyMeta(row) {
+        if (row.excludedFromPeriod) {
+            return '<span class="payroll-contract-pill">Excluido de este mes</span>';
+        }
         const coverage = getNoveltyCoverage(row);
         if (coverage.absenceDays <= 0) {
             return "";
@@ -2165,6 +2184,9 @@
     }
 
     function getRowWarnings(row) {
+        if (row.excludedFromPeriod) {
+            return [];
+        }
         const manualActive = Boolean(row.manualEditEnabled)
             && Object.keys(normalizeManualOverrides(row.manualOverrides)).length > 0;
         const warnings = Array.isArray(row.warnings)
@@ -2302,8 +2324,13 @@
         }
     }
 
+    function getIncludedRows() {
+        return state.rows.filter((row) => !row.excludedFromPeriod);
+    }
+
     function areAllRowsVerified() {
-        return state.rows.length > 0 && state.rows.every((row) => Boolean(row.verified));
+        const includedRows = getIncludedRows();
+        return includedRows.length > 0 && includedRows.every((row) => Boolean(row.verified));
     }
 
     function updateConfirmAvailability() {
@@ -2317,18 +2344,20 @@
             return;
         }
 
-        const hasRows = state.rows.length > 0;
+        const hasRows = getIncludedRows().length > 0;
         const hasPendingVerification = hasRows && !areAllRowsVerified();
         const blockingWarning = getFirstBlockingCoverageWarning();
         confirmBtn.disabled = state.busy || !hasRows || hasPendingVerification || Boolean(blockingWarning);
-        confirmBtn.title = blockingWarning
+        confirmBtn.title = !hasRows
+            ? "No hay empleados incluidos en esta liquidacion."
+            : blockingWarning
             ? blockingWarning
             : hasPendingVerification
             ? "Marca todas las filas como Verificado antes de confirmar."
             : "";
 
         if (saveDraftBtn) {
-            saveDraftBtn.disabled = state.busy || !hasRows;
+            saveDraftBtn.disabled = state.busy || state.rows.length === 0;
         }
     }
 
@@ -2917,7 +2946,7 @@
     }
 
     function getFirstBlockingCoverageWarning() {
-        for (const row of state.rows) {
+        for (const row of getIncludedRows()) {
             const warning = getRowWarnings(row).find((item) => isBlockingCoverageWarning(item));
             if (warning) {
                 return `${row.employeeName || "Empleado sin nombre"}: ${warning}`;
@@ -2978,6 +3007,10 @@
 
         if (isClosedDetailMode()) {
             return !closedVerticalEditableFields.has(field);
+        }
+
+        if (field === "excludedFromPeriod" && row?.existingPayrollRecordId) {
+            return true;
         }
 
         if (row && isServiceContract(row) && isServiceDeductionField(field)) {

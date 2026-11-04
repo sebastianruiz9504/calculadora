@@ -39,6 +39,15 @@ async function fixture(t, rows) {
     });
     dom.window.fetch = async (url, options = {}) => {
         requests.push({ url: String(url), ...options });
+        if (String(url) === "/preview") {
+            const request = JSON.parse(options.body);
+            return { ok: true, headers: { get: () => "application/json" }, json: async () => ({
+                ...request, rows: request.adjustments.map(adjustment => ({
+                    ...rows.find(item => item.employeeId === adjustment.employeeId), ...adjustment,
+                    periodKey: request.periodKey
+                }))
+            }) };
+        }
         return { ok: true, headers: { get: () => "application/json" }, json: async () =>
             String(url) === "/draft" ? { draft } : { hasRecords: false, rows: [] } };
     };
@@ -133,5 +142,87 @@ test("Unrelated source warnings and manual amounts survive warning refresh", asy
     assert.match(f.warnings(), /Edicion manual activa/);
     assert.doesNotMatch(f.warnings(), /exceden|Hace falta|sin novedades|pendientes de motivo/);
     assert.equal(f.document.querySelector('[data-manual-field="netPayroll"]').value, "1234567.00");
+    assert.equal(f.confirm.disabled, false);
+});
+
+test("Excluding an employee removes their warnings and amounts from the submission and persists in the draft", async t => {
+    const f = await fixture(t, [row({ employeeId: "included" }), row({ employeeId: "excluded", workedDays: 15,
+        novelties: [{ reason: "", days: 1 }] })]);
+    const includedTotal = f.document.querySelector('[data-row-id="included"] [data-role="netPayroll"]').textContent;
+    f.open("excluded");
+    f.document.getElementById("detailExcludedFromPeriod").click();
+    assert.equal(f.warnings(), "");
+    assert.equal(f.confirm.disabled, false);
+    assert.equal(f.document.getElementById("summaryEmployees").textContent, "1");
+    assert.equal(f.document.getElementById("summaryPayroll").textContent, includedTotal);
+    assert.equal(f.document.querySelectorAll('[data-vertical-row-id="excluded"]').length, 0);
+    assert.equal(f.document.querySelector('[data-row-id="excluded"] [data-role="netPayroll"]').textContent, "No se envia");
+    const draft = JSON.parse(f.dom.window.localStorage.getItem("cotizador.nomina.preliquidacion.shared"));
+    assert.equal(draft.periodKey, "2026-10");
+    assert.equal(draft.rows.find(item => item.employeeId === "excluded").excludedFromPeriod, true);
+    const reloaded = await fixture(t, draft.rows);
+    assert.equal(reloaded.confirm.disabled, false);
+    reloaded.document.getElementById("previewNominaBtn").click();
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
+    const preview = JSON.parse(reloaded.requests.find(request => request.url === "/preview").body);
+    assert.equal(preview.adjustments.find(item => item.employeeId === "excluded").excludedFromPeriod, true);
+    assert.equal(reloaded.document.getElementById("summaryEmployees").textContent, "1");
+    assert.equal(reloaded.confirm.disabled, false);
+    assert.equal(reloaded.requests.some(request => request.url === "/confirm"), false);
+});
+
+test("Reincluding an employee restores day validation and requires verification again", async t => {
+    const f = await fixture(t, [row(), row({ employeeId: "excluded", excludedFromPeriod: true, workedDays: 0,
+        novelties: [{ reason: "", days: 1 }] })]);
+    f.open("excluded");
+    f.document.getElementById("detailExcludedFromPeriod").click();
+    assert.match(f.warnings(), /Hace falta liquidar 30 dias/);
+    assert.equal(f.confirm.disabled, true);
+    const verified = f.document.querySelector('[data-row-id="excluded"] [data-row-field="verified"]');
+    assert.equal(verified.disabled, false);
+    assert.equal(verified.checked, false);
+});
+
+test("An exclusion applies only to the selected payroll month, not the payment date or the next month", async t => {
+    const f = await fixture(t, [row(), row({ employeeId: "excluded", excludedFromPeriod: true })]);
+    const payment = f.document.getElementById("paymentDateInput");
+    payment.value = "2026-11-06";
+    payment.dispatchEvent(new f.dom.window.Event("change", { bubbles: true }));
+    assert.equal(f.document.getElementById("summaryEmployees").textContent, "1");
+    const period = f.document.getElementById("periodInput");
+    period.value = "2026-11";
+    period.dispatchEvent(new f.dom.window.Event("change", { bubbles: true }));
+    assert.equal(f.document.getElementById("summaryEmployees").textContent, "2");
+    const draft = JSON.parse(f.dom.window.localStorage.getItem("cotizador.nomina.preliquidacion.shared"));
+    assert.equal(draft.rows.every(item => !item.excludedFromPeriod), true);
+    assert.equal(f.confirm.disabled, true);
+});
+
+test("All employees can be excluded in a saved draft, but an empty payroll cannot be sent", async t => {
+    const f = await fixture(t, [row({ excludedFromPeriod: true })]);
+    assert.equal(f.document.getElementById("summaryEmployees").textContent, "0");
+    assert.equal(f.confirm.disabled, true);
+    assert.match(f.confirm.title, /No hay empleados incluidos/);
+    assert.equal(f.document.getElementById("saveNominaDraftBtn").disabled, false);
+});
+
+test("A payroll already registered cannot be excluded from its detail", async t => {
+    const f = await fixture(t, [row({ existingPayrollRecordId: "payroll-record" })]);
+    f.open();
+    assert.equal(f.document.getElementById("detailExcludedFromPeriod").disabled, true);
+});
+
+test("Full-month correction clears the novelty and preserves reviewed manual amounts", async t => {
+    const f = await fixture(t, [row({ workedDays: 30, monthlySalaryBase: 2300000, monthlyAuxilio: 0,
+        isServiceContract: true, employeeContractTypeOptionValue: 645250001,
+        novelties: [{ reason: "", days: 1 }], manualEditEnabled: true,
+        manualOverrides: { salaryBase: 2300000 } })]);
+    f.open();
+    f.edit("#detailWorkedDays", "31");
+    assert.doesNotMatch(f.warnings(), /pendientes de motivo|Hace falta/);
+    assert.equal(f.document.querySelector('[data-manual-field="netPayroll"]').value, "2550000.00");
+    const draft = JSON.parse(f.dom.window.localStorage.getItem("cotizador.nomina.preliquidacion.shared"));
+    assert.deepEqual(draft.rows[0].novelties, []);
+    f.document.querySelector('[data-row-field="verified"]').click();
     assert.equal(f.confirm.disabled, false);
 });

@@ -73,18 +73,14 @@ public sealed partial class DataverseService
 
         var context = await BuildNominaPreviewAsync(request, httpContext.User, ct);
         var previewResult = BuildNominaPreviewResult(context, "");
-        var blockingWarning = previewResult.Rows
-            .SelectMany(row => row.Warnings)
-            .FirstOrDefault(IsNominaCoverageBlockingWarning);
-        if (!string.IsNullOrWhiteSpace(blockingWarning))
-            throw new InvalidOperationException(blockingWarning);
+        var submissionRows = GetNominaRowsForSubmission(previewResult.Rows).ToHashSet();
 
         var logs = context.Logs.ToList();
         var createdCount = 0;
         var updatedCount = 0;
         var errorCount = 0;
 
-        foreach (var rowContext in context.Rows)
+        foreach (var rowContext in context.Rows.Where(item => submissionRows.Contains(item.Row)))
         {
             try
             {
@@ -116,7 +112,7 @@ public sealed partial class DataverseService
         }
 
         var warningCount = logs.Count(log => string.Equals(log.Level, "warning", StringComparison.OrdinalIgnoreCase));
-        var rowWarningCount = previewResult.Rows.Sum(row => row.Warnings.Count);
+        var rowWarningCount = submissionRows.Sum(row => row.Warnings.Count);
         var hasErrors = errorCount > 0;
         var hasWarnings = warningCount > 0 || rowWarningCount > 0;
 
@@ -360,7 +356,9 @@ public sealed partial class DataverseService
             if (!ShouldIncludeNominaEmployee(employee, commissionBucket, adjustment, existingRecord))
                 continue;
 
-            var warnings = BuildNominaWarnings(employee, commissionBucket, existingMatches);
+            var warnings = adjustment.ExcludedFromPeriod
+                ? new List<string>()
+                : BuildNominaWarnings(employee, commissionBucket, existingMatches);
             foreach (var warning in warnings)
             {
                 logs.Add(BuildNominaLog(
@@ -771,6 +769,7 @@ public sealed partial class DataverseService
             {
                 EmployeeId = employeeId,
                 Verified = item.Verified,
+                ExcludedFromPeriod = item.ExcludedFromPeriod,
                 ManualEditEnabled = item.ManualEditEnabled,
                 ManualOverrides = item.ManualEditEnabled
                     ? NormalizeNominaManualOverrides(item.ManualOverrides)
@@ -945,6 +944,7 @@ public sealed partial class DataverseService
                 || adjustment.NonCommissionBonus > 0m
                 || adjustment.WorkedDays.HasValue
                 || adjustment.Verified
+                || adjustment.ExcludedFromPeriod
                 || !string.IsNullOrWhiteSpace(adjustment.AbsenceReason)
                 || adjustment.AbsencePayment > 0m
                 || adjustment.Novelties.Count > 0
@@ -1334,6 +1334,7 @@ public sealed partial class DataverseService
             EmployeeContractTypeLabel = employee.ContractTypeLabel,
             IsServiceContract = isServiceContract,
             Verified = adjustment.Verified,
+            ExcludedFromPeriod = adjustment.ExcludedFromPeriod,
             ManualEditEnabled = adjustment.ManualEditEnabled && manualOverrides.Count > 0,
             ManualOverrides = manualOverrides,
             PeriodDays = periodDays,
@@ -1508,11 +1509,12 @@ public sealed partial class DataverseService
     private NominaPreviewResultDto BuildNominaPreviewResult(NominaBuildContext context, string message)
     {
         var rows = context.Rows.Select(item => item.Row).ToList();
-        var totalPayroll = RoundCurrency(rows.Sum(item => item.NetPayroll));
-        var totalCuentaDeCobro = RoundCurrency(rows.Sum(item => item.NetCuentaDeCobro));
+        var includedRows = rows.Where(row => !row.ExcludedFromPeriod).ToList();
+        var totalPayroll = RoundCurrency(includedRows.Sum(item => item.NetPayroll));
+        var totalCuentaDeCobro = RoundCurrency(includedRows.Sum(item => item.NetCuentaDeCobro));
         var totalDisbursement = RoundCurrency(totalPayroll + totalCuentaDeCobro);
-        var totalCopiers = RoundCurrency(rows.Sum(item => item.TotalCopiers));
-        var totalCloud = RoundCurrency(rows.Sum(item => item.TotalCloud));
+        var totalCopiers = RoundCurrency(includedRows.Sum(item => item.TotalCopiers));
+        var totalCloud = RoundCurrency(includedRows.Sum(item => item.TotalCloud));
 
         return new NominaPreviewResultDto
         {
@@ -1523,9 +1525,9 @@ public sealed partial class DataverseService
             PeriodLabel = context.Period.Label,
             PaymentDateValue = context.PaymentDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             PaymentDateDisplay = context.PaymentDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
-            EmployeesCount = rows.Count,
+            EmployeesCount = includedRows.Count,
             HasWarnings = context.Logs.Any(log => string.Equals(log.Level, "warning", StringComparison.OrdinalIgnoreCase))
-                || rows.Any(row => row.Warnings.Count > 0),
+                || includedRows.Any(row => row.Warnings.Count > 0),
             TotalPayrollAmount = totalPayroll,
             TotalCuentaCobroAmount = totalCuentaDeCobro,
             TotalDisbursementAmount = totalDisbursement,
@@ -1535,6 +1537,22 @@ public sealed partial class DataverseService
             Rows = rows,
             Logs = context.Logs
         };
+    }
+
+    internal static IReadOnlyList<NominaRowDto> GetNominaRowsForSubmission(IReadOnlyList<NominaRowDto> rows)
+    {
+        if (rows.Any(row => row.ExcludedFromPeriod && !string.IsNullOrWhiteSpace(row.ExistingPayrollRecordId)))
+            throw new InvalidOperationException("No puedes excluir un empleado cuya nomina de este mes ya fue enviada.");
+
+        var includedRows = rows.Where(row => !row.ExcludedFromPeriod).ToArray();
+        if (includedRows.Length == 0)
+            throw new InvalidOperationException("No hay empleados incluidos en esta liquidacion.");
+
+        var blockingWarning = includedRows.SelectMany(row => row.Warnings).FirstOrDefault(IsNominaCoverageBlockingWarning);
+        if (!string.IsNullOrWhiteSpace(blockingWarning))
+            throw new InvalidOperationException(blockingWarning);
+
+        return includedRows;
     }
 
     private static IReadOnlyList<NominaVerticalSummaryDto> BuildNominaVerticalSummaries(decimal totalCopiers, decimal totalCloud)

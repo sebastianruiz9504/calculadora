@@ -155,6 +155,14 @@
             <div class="payroll-modal__body">
                 <div class="payroll-detail-warnings" id="nominaDetailWarnings" hidden></div>
 
+                <section class="payroll-detail-section" id="detailExclusionSection">
+                    <label class="payroll-inline-check" for="detailExcludedFromPeriod">
+                        <input class="form-check-input payroll-detail-input" id="detailExcludedFromPeriod" type="checkbox" data-detail-field="excludedFromPeriod" />
+                        <span>Excluir de esta liquidacion</span>
+                    </label>
+                    <p class="text-muted small mb-0">Se conserva en el borrador, sin generar pago para este mes.</p>
+                </section>
+
                 <section class="payroll-manual-editor">
                     <div class="payroll-manual-editor__header">
                         <label class="payroll-manual-toggle" for="detailManualEditToggle">
