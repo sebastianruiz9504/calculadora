@@ -117,6 +117,7 @@ public sealed class CopiersMtoV2CalendarTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.BootstrapAsync());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.WeekAsync(Technician, "2026-09-08"));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.WeekAsync("all", "2026-09-08"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.MonthAsync("all", "2026-09-01"));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.DetailAsync(Ticket));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.EvidenceAsync(Ticket, EvidenceKey));
         Assert.Empty(f.Transport.Requests);
@@ -216,6 +217,54 @@ public sealed class CopiersMtoV2CalendarTests
         Assert.Contains($"dtc_technicianuserkey eq '{Technician}'", request);
         Assert.DoesNotContain("latitude", request);
         Assert.DoesNotContain("internalnotes", request);
+    }
+
+    [Theory]
+    [InlineData("2026-09-15", "2026-09-01", "2026-10-01", "2026-09-30")]
+    [InlineData("2028-02-20", "2028-02-01", "2028-03-01", "2028-02-29")]
+    [InlineData("2026-12-31", "2026-12-01", "2027-01-01", "2026-12-31")]
+    public async Task MonthUsesExactServiceDateBoundsAndIncludesLastDay(string selected, string first, string until, string last)
+    {
+        var f = new Fixture();
+        f.Main[f.Options.ServiceDateField] = last + "T00:00:00Z";
+        f.Main[$"_{f.Options.ClientLookupLogicalName}_value"] = Ticket;
+        var outside = (JsonObject)f.Main.DeepClone();
+        outside[f.Options.ServiceDateField] = until + "T00:00:00Z";
+        f.AdditionalMainRows.Add(outside);
+        var result = await f.Service.MonthAsync("all", selected);
+        Assert.Equal(first, result.MonthStart);
+        var entry = Assert.Single(result.Events);
+        Assert.Equal(last, entry.ServiceDate);
+        Assert.Equal(Ticket, entry.ClientId);
+        var request = Uri.UnescapeDataString(Assert.Single(f.Transport.Requests));
+        Assert.Contains($"dtc_servicedate ge {first}T00:00:00Z", request);
+        Assert.Contains($"dtc_servicedate lt {until}T00:00:00Z", request);
+    }
+
+    [Fact]
+    public async Task MonthKeepsTechnicianAndWorkflowFiltersAndReadsActivitiesOnce()
+    {
+        var f = new Fixture(activities: true);
+        f.AddActivity(827270011);
+        var draft = (JsonObject)f.Main.DeepClone();
+        draft[f.Options.WorkflowStateField] = f.Options.DraftStateValue;
+        f.AdditionalMainRows.Add(draft);
+        var result = await f.Service.MonthAsync(Technician, "2026-09-01");
+        Assert.Equal(2, result.Events.Count);
+        Assert.Equal(2, f.Transport.Requests.Count);
+        Assert.All(f.Transport.Requests, request => Assert.Contains($"dtc_technicianuserkey eq '{Technician}'", Uri.UnescapeDataString(request)));
+        Assert.Empty((await f.Service.MonthAsync(Guid.NewGuid().ToString(), "2026-09-01")).Events);
+    }
+
+    [Theory]
+    [InlineData("bad-id", "2026-09-01")]
+    [InlineData("all", "2026-02-30")]
+    [InlineData("all", "1999-12-01")]
+    public async Task InvalidMonthNeverQueriesDataverse(string technician, string month)
+    {
+        var f = new Fixture();
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.MonthAsync(technician, month));
+        Assert.Empty(f.Transport.Requests);
     }
 
     [Theory]

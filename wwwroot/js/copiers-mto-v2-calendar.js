@@ -33,6 +33,69 @@
         return new Date(`${key}T00:00:00-05:00`).getTime();
     }
 
+    function monthOf(value) {
+        const key = datePattern.test(String(value)) ? value : dateKey(value);
+        return key ? `${key.slice(0, 7)}-01` : "";
+    }
+
+    function addMonths(key, months) {
+        const date = new Date(`${monthOf(key)}T12:00:00Z`);
+        date.setUTCMonth(date.getUTCMonth() + months);
+        return date.toISOString().slice(0, 10);
+    }
+
+    function eventDay(event) {
+        return datePattern.test(event.serviceDate || "") ? event.serviceDate : dateKey(event.startAtUtc);
+    }
+
+    function monthDays(events, monthStart) {
+        const first = monthOf(monthStart);
+        const until = addMonths(first, 1);
+        const start = mondayOf(first);
+        const end = addDays(mondayOf(addDays(until, -1)), 7);
+        const days = [];
+        for (let key = start; key < end; key = addDays(key, 1)) {
+            const inMonth = key >= first && key < until;
+            days.push({ key, inMonth, events: inMonth ? events.filter(event => event.id && eventDay(event) === key)
+                .sort((a, b) => String(a.startAtUtc).localeCompare(String(b.startAtUtc)) || String(a.id).localeCompare(String(b.id))) : [] });
+        }
+        return days;
+    }
+
+    function technicianKey(event) {
+        return String(event.technicianId || event.technicianName || "sin-tecnico").trim().toLowerCase();
+    }
+
+    function technicianHue(key) {
+        let hash = 2166136261;
+        for (const char of String(key).toLowerCase()) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+        return (hash >>> 0) % 360;
+    }
+
+    function technicianColors(technicians) {
+        const palette = [215, 28, 155, 280, 340, 185, 75, 0, 245, 110, 310, 50];
+        return new Map([...new Set(technicians.map(item => String(item.id).toLowerCase()))].sort()
+            .map((id, index) => [id, palette[index] ?? (index * 137.508) % 360]));
+    }
+
+    function summarize(events) {
+        const completed = [...new Map(events.filter(event => event.id && (event.activityKind || "maintenance") === "maintenance"
+            && ["ReadyToSend", "Historical"].includes(event.workflowState)).map(event => [event.id, event])).values()];
+        const group = (key, label) => {
+            const groups = new Map();
+            completed.forEach(event => {
+                const id = key(event);
+                if (!groups.has(id)) groups.set(id, { id, label: label(event), count: 0 });
+                groups.get(id).count++;
+            });
+            return [...groups.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "es"));
+        };
+        return { total: completed.length,
+            technicians: group(technicianKey, event => event.technicianName || "Sin técnico"),
+            types: group(event => typeInfo(event.maintenanceType).label, event => typeInfo(event.maintenanceType).label),
+            clients: group(event => String(event.clientId || event.clientName || "sin-cliente").trim().toLowerCase(), event => event.clientName || "Sin cliente") };
+    }
+
     function typeInfo(value) {
         const normalized = String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
         if (normalized.includes("prevent")) return { label: "Preventivo", css: "preventive" };
@@ -125,7 +188,7 @@
         return states[value] || String(value || "No informado");
     }
 
-    const helpers = { dateKey, addDays, mondayOf, splitEvents, layoutOverlaps, typeInfo, safeAppUrl, validLocation, mapUrl, stateLabel };
+    const helpers = { dateKey, addDays, mondayOf, monthOf, addMonths, monthDays, technicianHue, technicianColors, summarize, splitEvents, layoutOverlaps, typeInfo, safeAppUrl, validLocation, mapUrl, stateLabel };
     if (typeof module === "object" && module.exports) module.exports = helpers;
     if (!global.document) return;
 
@@ -137,12 +200,106 @@
         technician: byId("mtoCalendarTechnician"), previous: byId("mtoCalendarPrevious"), next: byId("mtoCalendarNext"),
         today: byId("mtoCalendarToday"), refresh: byId("mtoCalendarRefresh"), range: byId("mtoCalendarRange"),
         status: byId("mtoCalendarStatus"), viewport: byId("mtoCalendarViewport"), grid: byId("mtoCalendarGrid"),
+        week: byId("mtoCalendarWeek"), month: byId("mtoCalendarMonth"), summary: byId("mtoCalendarSummary"), legend: byId("mtoCalendarLegend"), slotNote: byId("mtoCalendarSlotNote"),
         dialog: byId("mtoCalendarDetail"), detail: byId("mtoCalendarDetailBody"), title: byId("mtoCalendarDetailTitle"), close: byId("mtoCalendarDetailClose")
     };
-    const state = { activated: false, activating: false, weekLoading: false, bootstrap: null, bootstrapPromise: null, weekStart: mondayOf(new Date()), generation: 0, detailGeneration: 0, weekController: null, detailController: null, focusReturn: null, positioned: false };
+    const state = { activated: false, activating: false, weekLoading: false, bootstrap: null, bootstrapPromise: null, view: "month", anchor: dateKey(new Date()), weekStart: mondayOf(new Date()), generation: 0, detailGeneration: 0, weekController: null, detailController: null, focusReturn: null, positioned: false };
     const timeFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     const dateFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, day: "numeric", month: "short", year: "numeric" });
     const dayFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, weekday: "short", day: "numeric" });
+    const monthFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, month: "long", year: "numeric" });
+    let technicianPalette = new Map();
+
+    function colorize(node, key) {
+        node.style.setProperty("--mto-tech-hue", technicianPalette.get(key) ?? technicianHue(key));
+    }
+
+    function renderSummary(events, loading = false) {
+        const summary = summarize(events);
+        const cards = [["Por técnico", summary.technicians], ["Por tipo de mto.", summary.types], ["Por cliente", summary.clients]];
+        controls.summary.replaceChildren(...cards.map(([title, groups], index) => {
+            const card = element("section", "mto-calendar__summary-card");
+            card.append(element("h4", "", title), element("strong", "mto-calendar__summary-total", loading ? "—" : summary.total), element("span", "mto-calendar__muted", " mantenimientos"));
+            const list = element("ul", "mto-calendar__summary-list");
+            groups.forEach(group => {
+                const row = element("li", "mto-calendar__summary-row");
+                const label = element("span", index === 0 ? "mto-calendar__technician-label" : "", group.label);
+                if (index === 0) colorize(label, group.id);
+                row.append(label, element("strong", "", group.count));
+                list.append(row);
+            });
+            if (!groups.length) list.append(element("li", "mto-calendar__muted", loading ? "Consultando…" : "Sin mantenimientos finalizados"));
+            card.append(list);
+            return card;
+        }));
+        const technicians = new Map();
+        events.forEach(event => technicians.set(technicianKey(event), event.technicianName || "Sin técnico"));
+        const legend = [...technicians].sort((a, b) => a[1].localeCompare(b[1], "es")).map(([key, name]) => {
+            const label = element("span", "mto-calendar__technician-label", name);
+            colorize(label, key);
+            return label;
+        });
+        controls.legend.replaceChildren(...legend, element("span", "mto-calendar__muted", "Hora de Colombia (UTC−5)"));
+    }
+
+    function renderMonth(events) {
+        const days = monthDays(events, monthOf(state.anchor));
+        const today = dateKey(new Date());
+        const header = element("div", "mto-calendar__month-headings");
+        ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"].forEach(label => header.append(element("div", "", label)));
+        const body = element("div", "mto-calendar__month-weeks");
+        for (let offset = 0; offset < days.length; offset += 7) {
+            const week = element("div", "mto-calendar__month-week");
+            week.setAttribute("aria-label", `Semana del ${dateFormatter.format(new Date(`${days[offset].key}T12:00:00Z`))}`);
+            days.slice(offset, offset + 7).forEach(day => {
+                const cell = element("section", "mto-calendar__month-day");
+                if (!day.inMonth) cell.classList.add("is-outside");
+                if (day.key === today) cell.classList.add("is-today");
+                cell.setAttribute("aria-label", dateFormatter.format(new Date(`${day.key}T12:00:00Z`)));
+                const heading = element("div", "mto-calendar__month-date");
+                heading.append(element("span", "", Number(day.key.slice(-2))));
+                if (day.events.length) heading.append(element("small", "", `${day.events.length} ${day.events.length === 1 ? "registro" : "registros"}`));
+                cell.append(heading);
+                const more = day.events.length > 3 ? element("details", "mto-calendar__more") : null;
+                if (more) more.append(element("summary", "", `Ver ${day.events.length - 3} más`));
+                day.events.forEach((event, index) => {
+                    const button = element("button", "mto-calendar__event mto-calendar__event--month");
+                    button.type = "button";
+                    button.dataset.mtoEventId = event.id;
+                    colorize(button, technicianKey(event));
+                    if (event.workflowState === "Failed") button.classList.add("is-pending");
+                    const type = typeInfo(event.maintenanceType).label;
+                    const time = event.workflowState === "Historical" ? "Histórico" : timeFormatter.format(new Date(event.startAtUtc));
+                    const description = [event.clientName || "Cliente sin nombre", type, event.technicianName, time, event.workflowState === "Failed" ? "Pendiente de finalizar" : "", event.serviceReference].filter(Boolean).join(" · ");
+                    button.title = description;
+                    button.setAttribute("aria-label", `${description}. Abrir detalle`);
+                    button.append(element("strong", "mto-calendar__event-client", event.clientName || "Cliente sin nombre"), element("span", "mto-calendar__event-type", `${type}${event.workflowState === "Failed" ? " · Pendiente" : ""}`), element("span", "mto-calendar__event-time", `${time} · ${event.technicianName || "Sin técnico"}`));
+                    button.addEventListener("click", () => openDetail(event, button));
+                    (index >= 3 && more ? more : cell).append(button);
+                });
+                if (more) cell.append(more);
+                week.append(cell);
+            });
+            body.append(week);
+        }
+        controls.grid.replaceChildren(header, body);
+        controls.range.textContent = monthFormatter.format(new Date(`${monthOf(state.anchor)}T12:00:00Z`));
+        controls.viewport.scrollTop = 0;
+    }
+
+    function renderCalendar(events, loading = false) {
+        const monthly = state.view === "month";
+        controls.week.setAttribute("aria-pressed", String(!monthly));
+        controls.month.setAttribute("aria-pressed", String(monthly));
+        controls.viewport.classList.toggle("is-month", monthly);
+        controls.grid.classList.toggle("is-month", monthly);
+        controls.slotNote.hidden = monthly;
+        controls.previous.setAttribute("aria-label", monthly ? "Mes anterior" : "Semana anterior");
+        controls.next.setAttribute("aria-label", monthly ? "Mes siguiente" : "Semana siguiente");
+        controls.viewport.setAttribute("aria-label", monthly ? "Calendario mensual por semanas. Desplaza horizontalmente para ver todos los días." : "Calendario semanal de 24 horas. Desplaza para ver todos los días y horas.");
+        if (monthly) renderMonth(events); else renderWeek(events);
+        renderSummary(events, loading);
+    }
 
     function element(tag, className, text) {
         const node = document.createElement(tag);
@@ -197,6 +354,7 @@
                 const event = segment.event;
                 const type = typeInfo(event.maintenanceType);
                 const button = element("button", `mto-calendar__event mto-calendar__event--${type.css}`);
+                colorize(button, technicianKey(event));
                 button.type = "button";
                 button.dataset.mtoEventId = event.id;
                 button.style.top = `${segment.layoutStart * minuteHeight}px`;
@@ -234,6 +392,8 @@
         controls.refresh.disabled = true;
         state.bootstrapPromise = getJson(root.dataset.bootstrapUrl).then(result => {
             const technicians = Array.isArray(result.technicians) ? result.technicians.filter(item => item.id) : [];
+            // Use the full roster, so changing month or technician never reassigns colors.
+            technicianPalette = technicianColors(technicians);
             controls.technician.replaceChildren(element("option", "", "Selecciona un técnico"));
             controls.technician.firstElementChild.value = "";
             if (technicians.length) {
@@ -261,30 +421,36 @@
         state.weekController?.abort();
         state.weekController = new AbortController();
         root.setAttribute("aria-busy", "true");
-        renderWeek([]);
+        renderCalendar([], true);
         try {
             await initialize();
             if (generation !== state.generation) return;
             const technicianId = controls.technician.value;
             if (!technicianId) {
-                setStatus(controls.technician.disabled ? "Aún no hay técnicos con mantenimientos V2 registrados." : "Selecciona un técnico para consultar su semana.");
+                renderSummary([]);
+                setStatus(controls.technician.disabled ? "Aún no hay técnicos con mantenimientos V2 registrados." : "Selecciona un técnico para consultar el calendario.");
                 return;
             }
-            setStatus("Consultando mantenimientos de la semana…");
-            const result = await getJson(root.dataset.weekUrl, { technicianId, weekStart: state.weekStart }, state.weekController.signal);
+            const monthly = state.view === "month";
+            const period = monthly ? "este mes" : "esta semana";
+            setStatus(`Consultando mantenimientos de ${period}…`);
+            const result = await getJson(monthly ? root.dataset.monthUrl : root.dataset.weekUrl,
+                monthly ? { technicianId, monthStart: monthOf(state.anchor) } : { technicianId, weekStart: state.weekStart }, state.weekController.signal);
             if (generation !== state.generation) return;
             if (datePattern.test(result.weekStart || "")) state.weekStart = result.weekStart;
             const events = Array.isArray(result.events) ? result.events : [];
             state.positioned = false;
-            renderWeek(events);
+            renderCalendar(events);
             const estimated = events.some(event => event.durationEstimated);
             const activities = state.bootstrap?.activitiesEnabled === true;
             const noun = activities ? events.length === 1 ? "actividad" : "actividades" : events.length === 1 ? "mantenimiento" : "mantenimientos";
-            setStatus(events.length ? `${events.length} ${noun} en esta semana.${estimated ? " Algunas franjas tienen duración estimada; consulta el detalle." : ""}`
-                : activities ? technicianId === "all" ? "No hay actividades en la semana seleccionada." : "Este técnico no tiene actividades en la semana seleccionada."
-                : technicianId === "all" ? "No hay mantenimientos V2 en la semana seleccionada." : "Este técnico no tiene mantenimientos V2 en la semana seleccionada.");
+            setStatus(events.length ? `${events.length} ${noun} en ${period}.${estimated ? " Algunos registros tienen duración estimada; consulta el detalle." : ""}`
+                : `${technicianId === "all" ? "No hay" : "Este técnico no tiene"} ${activities ? "actividades" : "mantenimientos V2"} en ${period}.`);
         } catch (error) {
-            if (error.name !== "AbortError" && generation === state.generation) setStatus(error.message || "No fue posible cargar el calendario.", true);
+            if (error.name !== "AbortError" && generation === state.generation) {
+                controls.summary.replaceChildren(element("p", "mto-calendar__muted", "Cantidades no disponibles. Actualiza para reintentar."));
+                setStatus(error.message || "No fue posible cargar el calendario.", true);
+            }
         } finally {
             if (generation === state.generation) {
                 state.weekLoading = false;
@@ -441,9 +607,22 @@
         if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDetail();
     });
     controls.technician.addEventListener("change", () => { state.positioned = false; loadWeek(); });
-    controls.previous.addEventListener("click", () => { state.weekStart = addDays(state.weekStart, -7); loadWeek(); });
-    controls.next.addEventListener("click", () => { state.weekStart = addDays(state.weekStart, 7); loadWeek(); });
-    controls.today.addEventListener("click", () => { state.weekStart = mondayOf(new Date()); loadWeek(); });
+    function navigate(direction) {
+        state.anchor = state.view === "month" ? addMonths(state.anchor, direction) : addDays(state.weekStart, direction * 7);
+        state.weekStart = mondayOf(state.anchor);
+        loadWeek();
+    }
+    function switchView(view) {
+        if (view === state.view) return;
+        state.view = view;
+        state.positioned = false;
+        loadWeek();
+    }
+    controls.week.addEventListener("click", () => switchView("week"));
+    controls.month.addEventListener("click", () => switchView("month"));
+    controls.previous.addEventListener("click", () => navigate(-1));
+    controls.next.addEventListener("click", () => navigate(1));
+    controls.today.addEventListener("click", () => { state.anchor = dateKey(new Date()); state.weekStart = mondayOf(state.anchor); loadWeek(); });
     controls.refresh.addEventListener("click", loadWeek);
     async function openLinkedMaintenance(id) {
         try {
@@ -452,8 +631,9 @@
             if (detail.technicianId && Array.from(controls.technician.options).some(option => option.value === detail.technicianId)) {
                 controls.technician.value = detail.technicianId;
             }
-            if (datePattern.test(String(detail.serviceDate || "").slice(0, 10))) state.weekStart = mondayOf(detail.serviceDate.slice(0, 10));
-            else if (Number.isFinite(Date.parse(detail.startAtUtc))) state.weekStart = mondayOf(detail.startAtUtc);
+            if (datePattern.test(String(detail.serviceDate || "").slice(0, 10))) state.anchor = detail.serviceDate.slice(0, 10);
+            else if (Number.isFinite(Date.parse(detail.startAtUtc))) state.anchor = dateKey(detail.startAtUtc);
+            state.weekStart = mondayOf(state.anchor);
             await loadWeek();
             controls.title.textContent = [detail.serviceReference, detail.clientName].filter(Boolean).join(" · ") || "Detalle del mantenimiento";
             renderDetail(detail);

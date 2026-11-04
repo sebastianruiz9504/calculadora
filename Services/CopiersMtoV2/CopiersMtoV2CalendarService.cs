@@ -15,6 +15,7 @@ public interface ICopiersMtoV2CalendarService
 {
     Task<CopiersMtoV2CalendarBootstrapDto> BootstrapAsync(CancellationToken ct = default);
     Task<CopiersMtoV2CalendarWeekDto> WeekAsync(string technicianId, string weekStart, CancellationToken ct = default);
+    Task<CopiersMtoV2CalendarMonthDto> MonthAsync(string technicianId, string monthStart, CancellationToken ct = default);
     Task<CopiersMtoV2CalendarDetailDto> DetailAsync(string id, CancellationToken ct = default);
     Task<CopiersMtoV2CalendarFile> EvidenceAsync(string id, string evidenceKey, CancellationToken ct = default);
 }
@@ -80,27 +81,41 @@ public sealed class CopiersMtoV2CalendarService(
     public async Task<CopiersMtoV2CalendarWeekDto> WeekAsync(string technicianId, string weekStart, CancellationToken ct = default)
     {
         await AuthorizeAsync(ct);
-        var allTechnicians = string.Equals(technicianId, AllTechnicians, StringComparison.OrdinalIgnoreCase);
-        var technician = allTechnicians ? AllTechnicians : NormalizeGuid(technicianId);
         if (!DateOnly.TryParseExact(weekStart, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             || date.Year < 2000 || date.Year > 2100)
             throw new ArgumentException("Selecciona una semana válida (AAAA-MM-DD).");
         var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
-        var until = monday.AddDays(7);
+        return new(monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), await ReadPeriodAsync(technicianId, monday, monday.AddDays(7), ct));
+    }
+
+    public async Task<CopiersMtoV2CalendarMonthDto> MonthAsync(string technicianId, string monthStart, CancellationToken ct = default)
+    {
+        await AuthorizeAsync(ct);
+        if (!DateOnly.TryParseExact(monthStart, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            || date.Year < 2000 || date.Year > 2100)
+            throw new ArgumentException("Selecciona un mes válido (AAAA-MM-DD).");
+        var first = new DateOnly(date.Year, date.Month, 1);
+        return new(first.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), await ReadPeriodAsync(technicianId, first, first.AddMonths(1), ct));
+    }
+
+    private async Task<IReadOnlyList<CopiersMtoV2CalendarEventDto>> ReadPeriodAsync(string technicianId, DateOnly from, DateOnly until, CancellationToken ct)
+    {
+        var allTechnicians = string.Equals(technicianId, AllTechnicians, StringComparison.OrdinalIgnoreCase);
+        var technician = allTechnicians ? AllTechnicians : NormalizeGuid(technicianId);
         // ServiceDate is the form's date-only value. Do not compare it to a server-local timezone.
         var historicalFilter = IsActivity ? "" : $" or {_o.WorkflowStateField} eq {CopiersMaintenanceHistory.HistoricalState}";
         var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null){historicalFilter})"
             + (allTechnicians ? "" : $" and {_o.TechnicianUserIdField} eq '{technician}'")
-            + $" and {_o.ServiceDateField} ge {monday:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z";
+            + $" and {_o.ServiceDateField} ge {from:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z";
         var rows = await QueryAsync($"{_o.MainEntitySetName}?$select={EventFields()}&$filter={Uri.EscapeDataString(filter)}"
             + $"&$orderby={_o.ServiceDateField} asc,{_o.MainIdField} asc", ct);
         var events = rows.Where(x => IsVisible(x)
                 && (allTechnicians || string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase))
-                && ServiceDate(x) >= monday && ServiceDate(x) < until)
+                && ServiceDate(x) >= from && ServiceDate(x) < until)
             .Select(MapEvent).ToList();
         if (!IsActivity && ActivitiesEnabled)
-            events.AddRange((await ActivityReader().WeekAsync(technician, monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), ct)).Events);
-        return new(monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), events.OrderBy(x => x.StartAtUtc).ThenBy(x => x.Id).ToArray());
+            events.AddRange(await ActivityReader().ReadPeriodAsync(technician, from, until, ct));
+        return events.OrderBy(x => x.StartAtUtc).ThenBy(x => x.Id).ToArray();
     }
 
     public async Task<CopiersMtoV2CalendarDetailDto> DetailAsync(string id, CancellationToken ct = default)
@@ -136,6 +151,7 @@ public sealed class CopiersMtoV2CalendarService(
         return new()
         {
             Id = summary.Id, ServiceReference = summary.ServiceReference, ClientName = summary.ClientName,
+            ClientId = summary.ClientId,
             MaintenanceType = summary.MaintenanceType, TechnicianId = summary.TechnicianId,
             TechnicianName = summary.TechnicianName, StartAtUtc = summary.StartAtUtc, EndAtUtc = summary.EndAtUtc,
             DurationEstimated = summary.DurationEstimated, TimingNote = summary.TimingNote,
@@ -287,6 +303,7 @@ public sealed class CopiersMtoV2CalendarService(
         return new()
         {
             Id = PublicRecordId(Text(row, _o.MainIdField)), ServiceReference = Text(row, _o.ServiceReferenceField),
+            ClientId = Text(row, $"_{_o.ClientLookupLogicalName}_value"), ServiceDate = ServiceDate(row).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ClientName = Text(row, _o.ClientNameField), TechnicianId = Text(row, _o.TechnicianUserIdField),
             TechnicianName = Text(row, _o.TechnicianNameField), StartAtUtc = start!.Value, EndAtUtc = end!.Value,
             ActivityKind = IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "movement" : "toner" : "maintenance",
@@ -396,7 +413,7 @@ public sealed class CopiersMtoV2CalendarService(
             $"/CopiersMtoV2Calendar/Evidence?id={Uri.EscapeDataString(PublicRecordId(id))}&evidenceKey={key}");
     }
 
-    private string EventFields() => Join(_o.MainIdField, _o.ServiceReferenceField, _o.ClientNameField,
+    private string EventFields() => Join(_o.MainIdField, _o.ServiceReferenceField, _o.ClientNameField, $"_{_o.ClientLookupLogicalName}_value",
         _o.TechnicianUserIdField, _o.TechnicianNameField, _o.MaintenanceTypeField, _o.WorkflowStateField,
         _o.EmailStateField, _o.ServiceDateField, _o.AnswersJsonField, _o.DeviceSignedAtUtcField, _o.ServerFinalizedAtUtcField,
         _o.SignedReportEvidenceKeyField, _o.SignedReportSha256Field, IsActivity ? "" : "dtc_formversion,dtc_legacysourcekey,dtc_businessstatus");

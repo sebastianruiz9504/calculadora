@@ -22,6 +22,10 @@ public sealed class CopiersMtoV2CalendarController(
         async () => Ok(await service.WeekAsync(technicianId, weekStart, ct)));
 
     [HttpGet]
+    public Task<IActionResult> Month(string technicianId, string monthStart, CancellationToken ct) => ReadAsync(
+        async () => Ok(await service.MonthAsync(technicianId, monthStart, ct)));
+
+    [HttpGet]
     public Task<IActionResult> Detail(string id, CancellationToken ct) => ReadAsync(
         async () => Ok(await service.DetailAsync(id, ct)));
 

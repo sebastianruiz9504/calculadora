@@ -13,13 +13,80 @@ const calendar = require("../wwwroot/js/copiers-mto-v2-calendar.js");
 const origin = "https://example.test";
 const eventId = "11111111-2222-3333-4444-555555555555";
 
+test("monthly grid includes whole Monday weeks, leap days and year transitions", () => {
+    const days = calendar.monthDays([], "2026-11-01");
+    assert.equal(days.length, 42);
+    assert.equal(days[0].key, "2026-10-26");
+    assert.equal(days.at(-1).key, "2026-12-06");
+    assert.equal(days.filter(day => day.inMonth).length, 30);
+    assert.equal(calendar.monthDays([], "2028-02-01").filter(day => day.inMonth).length, 29);
+    assert.equal(calendar.addMonths("2026-12-31", 1), "2027-01-01");
+});
+
+test("technicians receive distinct colors independent of roster ordering", () => {
+    const roster = Array.from({ length: 12 }, (_, index) => ({ id: `tech-${index}` }));
+    const colors = calendar.technicianColors(roster);
+    assert.equal(new Set(colors.values()).size, roster.length);
+    assert.deepEqual([...colors], [...calendar.technicianColors(roster.reverse())]);
+});
+
+test("monthly placement follows service date and counts a visit only once", () => {
+    const overnight = { id: "overnight", serviceDate: "2026-11-30", startAtUtc: "2026-12-01T04:30:00Z", endAtUtc: "2026-12-01T06:00:00Z" };
+    const days = calendar.monthDays([overnight, { ...overnight, id: "outside", serviceDate: "2026-12-01" }], "2026-11-01");
+    assert.equal(days.flatMap(day => day.events).length, 1);
+    assert.equal(days.find(day => day.events.length).key, "2026-11-30");
+});
+
+test("summary counts completed maintenance by stable IDs and excludes other activities and failed reports", () => {
+    const row = { id: "one", activityKind: "maintenance", workflowState: "ReadyToSend", technicianId: "tech-a", technicianName: "Ana", clientId: "client-a", clientName: "Cliente", maintenanceType: "Preventivo" };
+    const result = calendar.summarize([row, row, { ...row, id: "two", technicianId: "tech-b", technicianName: "Luis", clientId: "client-b", workflowState: "Historical", maintenanceType: "Correctivo" }, { ...row, id: "three", workflowState: "Failed" }, { ...row, id: "four", activityKind: "toner" }]);
+    assert.equal(result.total, 2);
+    assert.equal(result.technicians.length, 2);
+    assert.equal(result.clients.length, 2);
+    for (const groups of [result.technicians, result.types, result.clients]) assert.equal(groups.reduce((n, group) => n + group.count, 0), 2);
+});
+
+test("monthly default, month navigation, switch and summary share the same period", async () => {
+    const app = harness(); await app.activate();
+    assert.equal(app.calls.at(-1).url.pathname, "/CopiersMtoV2Calendar/Month");
+    const month = app.calls.at(-1).url.searchParams.get("monthStart");
+    assert.equal(app.ids.get("mtoCalendarMonth").attributes["aria-pressed"], "true");
+    assert.equal(app.ids.get("mtoCalendarSummary").children.length, 3);
+    assert.ok(app.ids.get("mtoCalendarSummary").children.every(card => /1 mantenimientos/.test(card.textContent)));
+    const color = app.events()[0].style["--mto-tech-hue"];
+    app.ids.get("mtoCalendarNext").click(); await settle();
+    assert.equal(app.calls.at(-1).url.searchParams.get("monthStart"), calendar.addMonths(month, 1));
+    app.ids.get("mtoCalendarWeek").click(); await settle();
+    assert.equal(app.calls.at(-1).url.searchParams.get("weekStart"), calendar.mondayOf(calendar.addMonths(month, 1)));
+    assert.equal(app.events()[0].style["--mto-tech-hue"], color);
+    app.ids.get("mtoCalendarMonth").click(); await settle();
+    assert.equal(app.calls.at(-1).url.searchParams.get("monthStart"), calendar.addMonths(month, 1));
+});
+
+test("slow month response cannot replace a newer weekly selection", async () => {
+    let release;
+    const app = harness({ fetch: async url => {
+        let result;
+        if (url.pathname.endsWith("/Bootstrap")) result = { technicians: [{ id: "tech-1", name: "Técnico" }], defaultTechnicianId: "all" };
+        else if (url.pathname.endsWith("/Month")) result = await new Promise(resolve => { release = resolve; });
+        else result = { weekStart: url.searchParams.get("weekStart"), events: [] };
+        return { status: 200, ok: true, headers: { get: () => "application/json" }, json: async () => result };
+    } });
+    app.window.CopiersMtoV2Calendar.activate(); await settle();
+    app.ids.get("mtoCalendarWeek").click(); await settle();
+    release({ monthStart: "2026-01-01", events: [] }); await settle();
+    assert.equal(app.ids.get("mtoCalendarWeek").attributes["aria-pressed"], "true");
+    assert.match(app.ids.get("mtoCalendarStatus").textContent, /esta semana/);
+    assert.equal(app.root.attributes["aria-busy"], "false");
+});
+
 function event(id, start, end) {
     return { id, startAtUtc: `2026-09-08T${start}:00-05:00`, endAtUtc: `2026-09-08T${end}:00-05:00` };
 }
 
 class FakeElement {
     constructor(tag = "div") {
-        this.tagName = tag.toUpperCase(); this.children = []; this.attributes = {}; this.dataset = {}; this.style = {};
+        this.tagName = tag.toUpperCase(); this.children = []; this.attributes = {}; this.dataset = {}; this.style = { setProperty(key, value) { this[key] = value; } };
         this.listeners = {}; this.text = ""; this.value = ""; this.open = false; this.isConnected = true;
         const classes = new Set();
         this.classList = { add: value => classes.add(value), contains: value => classes.has(value), toggle: (value, active) => active ? classes.add(value) : classes.delete(value) };
@@ -47,7 +114,7 @@ function harness(options = {}) {
     const ids = new Map();
     for (const match of view.matchAll(/id="(copiersMtoV2Calendar|mtoCalendar[^"]+)"/g)) ids.set(match[1], new FakeElement(match[1] === "mtoCalendarTechnician" ? "select" : "div"));
     const root = ids.get("copiersMtoV2Calendar");
-    root.dataset = { bootstrapUrl: "/CopiersMtoV2Calendar/Bootstrap", weekUrl: "/CopiersMtoV2Calendar/Week", detailUrl: "/CopiersMtoV2Calendar/Detail" };
+    root.dataset = { bootstrapUrl: "/CopiersMtoV2Calendar/Bootstrap", weekUrl: "/CopiersMtoV2Calendar/Week", monthUrl: "/CopiersMtoV2Calendar/Month", detailUrl: "/CopiersMtoV2Calendar/Detail" };
     const calls = [];
     const fixtureDetail = {
         id: eventId, serviceReference: "MTO-001234", clientName: "Cliente de prueba", technicianId: "tech-1", technicianName: "Técnico de prueba", technicianEmail: "tech@example.test",
@@ -67,7 +134,7 @@ function harness(options = {}) {
             let result;
             if (url.pathname.endsWith("/Bootstrap")) result = { technicians: options.noTechnicians ? [] : [{ id: "tech-1", name: "Técnico de prueba" }], defaultTechnicianId: options.allTechnicians ? "all" : "tech-1", activitiesEnabled: options.activitiesEnabled === true };
             else if (url.pathname.endsWith("/Detail")) result = fixtureDetail;
-            else result = { weekStart: url.searchParams.get("weekStart"), events: options.noEvents ? [] : [{ id: eventId, clientName: "Cliente de prueba", technicianName: "Técnico de prueba", maintenanceType: "Preventivo", serviceReference: "MTO-001234", startAtUtc: `${url.searchParams.get("weekStart")}T${options.startTime || "13:00"}:00Z`, endAtUtc: `${url.searchParams.get("weekStart")}T${options.endTime || "14:00"}:00Z`, workflowState: options.failed ? "Failed" : "ReadyToSend" }] };
+            else result = { weekStart: url.searchParams.get("weekStart"), events: options.noEvents ? [] : [{ id: eventId, clientName: "Cliente de prueba", technicianName: "Técnico de prueba", maintenanceType: "Preventivo", serviceReference: "MTO-001234", startAtUtc: `${url.searchParams.get("monthStart") || url.searchParams.get("weekStart")}T${options.startTime || "13:00"}:00Z`, endAtUtc: `${url.searchParams.get("monthStart") || url.searchParams.get("weekStart")}T${options.endTime || "14:00"}:00Z`, workflowState: options.failed ? "Failed" : "ReadyToSend" }] };
             return { status: 200, ok: true, redirected: false, headers: { get: () => "application/json" }, json: async () => result };
         }
     };
@@ -160,8 +227,7 @@ test("movement and toner have distinct labels and calendar colors without preten
     assert.deepEqual(calendar.typeInfo("Movimiento"), { label: "Movimiento", css: "movement" });
     assert.deepEqual(calendar.typeInfo("Entrega de tóner"), { label: "Entrega de tóner", css: "toner" });
     assert.deepEqual(calendar.typeInfo("movement"), { label: "Movimiento", css: "movement" });
-    assert.match(view, /mto-calendar__legend-item--movement">Movimiento/);
-    assert.match(view, /mto-calendar__legend-item--toner">Entrega de tóner/);
+    assert.match(view, /Colores por técnico/);
 });
 
 test("module makes zero calls before activation and refreshes its week when reopened", async () => {
@@ -202,7 +268,7 @@ test("reopening the calendar exposes a newly completed maintenance without reloa
     const app = harness({ fetch: async url => {
         const result = url.pathname.endsWith("/Bootstrap")
             ? { technicians: [{ id: "tech-1", name: "Técnico" }], defaultTechnicianId: "tech-1" }
-            : { weekStart: url.searchParams.get("weekStart"), events: published ? [{ id: eventId, clientName: "Cliente recién atendido", maintenanceType: "Correctivo", startAtUtc: `${url.searchParams.get("weekStart")}T16:00:00Z`, endAtUtc: `${url.searchParams.get("weekStart")}T17:00:00Z`, workflowState: "ReadyToSend", emailState: "Sent" }] : [] };
+            : { weekStart: url.searchParams.get("weekStart"), events: published ? [{ id: eventId, clientName: "Cliente recién atendido", maintenanceType: "Correctivo", startAtUtc: `${url.searchParams.get("monthStart") || url.searchParams.get("weekStart")}T16:00:00Z`, endAtUtc: `${url.searchParams.get("monthStart") || url.searchParams.get("weekStart")}T17:00:00Z`, workflowState: "ReadyToSend", emailState: "Sent" }] : [] };
         return { status: 200, ok: true, headers: { get: () => "application/json" }, json: async () => result };
     } });
     await app.activate();
@@ -227,7 +293,7 @@ test("calendar reactivation does not close an open signed report or restart its 
 });
 
 test("weekly calendar shows seven days, 24 hours, client and maintenance type", async () => {
-    const app = harness(); await app.activate();
+    const app = harness(); await app.activate(); app.ids.get("mtoCalendarWeek").click(); await settle();
     const nodes = descendants(app.ids.get("mtoCalendarGrid"));
     assert.equal(nodes.filter(node => node.className === "mto-calendar__day").length, 7);
     assert.equal(nodes.filter(node => node.className === "mto-calendar__hour").length, 24);
@@ -237,15 +303,16 @@ test("weekly calendar shows seven days, 24 hours, client and maintenance type", 
 });
 
 test("late-afternoon maintenance scrolls into view instead of staying at seven AM", async () => {
-    const app = harness({ startTime: "23:48", endTime: "23:59" }); await app.activate();
+    const app = harness({ startTime: "23:48", endTime: "23:59" }); await app.activate(); app.ids.get("mtoCalendarWeek").click(); await settle();
     assert.equal(app.ids.get("mtoCalendarViewport").scrollTop, (18 * 60 + 48) * .8 - 24);
-    const empty = harness({ noEvents: true }); await empty.activate();
+    const empty = harness({ noEvents: true }); await empty.activate(); empty.ids.get("mtoCalendarWeek").click(); await settle();
     assert.equal(empty.ids.get("mtoCalendarViewport").scrollTop, 7 * 60 * .8 - 24);
 });
 
 test("week arrows and today query the selected technician", async () => {
     const app = harness(); await app.activate();
-    const firstWeek = app.calls[1].url.searchParams.get("weekStart");
+    app.ids.get("mtoCalendarWeek").click(); await settle();
+    const firstWeek = app.calls.at(-1).url.searchParams.get("weekStart");
     app.ids.get("mtoCalendarNext").click(); await settle();
     assert.equal(app.calls.at(-1).url.searchParams.get("weekStart"), calendar.addDays(firstWeek, 7));
     assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "tech-1");
@@ -265,7 +332,7 @@ test("all technicians is selectable and defaults to the reporting scope returned
     selector.value = "tech-1";
     selector.listeners.change[0](); await settle();
     assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "tech-1");
-    assert.doesNotMatch(app.events()[0].textContent, /Técnico de prueba/);
+    assert.match(app.events()[0].textContent, /Técnico de prueba/);
 });
 
 test("all-technician empty week is not mislabeled as one technician", async () => {
@@ -356,14 +423,14 @@ test("untrusted server strings render as text and unsafe attachment URLs are rej
 test("deep link opens the exact persisted report and selects its service week", async () => {
     const app = harness({ search: `?tab=copiers&copiersTab=maintenance-v2&maintenanceId=${eventId}` }); await app.activate();
     assert.equal(app.calls.find(call => call.url.pathname.endsWith("/Detail")).url.searchParams.get("id"), eventId);
-    assert.equal(app.calls.find(call => call.url.pathname.endsWith("/Week")).url.searchParams.get("weekStart"), "2026-09-07");
+    assert.equal(app.calls.find(call => call.url.pathname.endsWith("/Month")).url.searchParams.get("monthStart"), "2026-09-01");
     assert.equal(app.ids.get("mtoCalendarDetail").open, true);
     assert.match(app.ids.get("mtoCalendarDetailTitle").textContent, /MTO-001234/);
 });
 
 test("enabled mixed calendar counts activities instead of calling every record a maintenance", async () => {
     const app = harness({ activitiesEnabled: true }); await app.activate();
-    assert.match(app.ids.get("mtoCalendarStatus").textContent, /1 actividad en esta semana/);
+    assert.match(app.ids.get("mtoCalendarStatus").textContent, /1 actividad en este mes/);
     const empty = harness({ activitiesEnabled: true, noEvents: true, allTechnicians: true }); await empty.activate();
     assert.match(empty.ids.get("mtoCalendarStatus").textContent, /No hay actividades/);
 });

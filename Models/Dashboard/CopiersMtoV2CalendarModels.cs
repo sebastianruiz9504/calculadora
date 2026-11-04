@@ -10,12 +10,18 @@ public sealed record CopiersMtoV2CalendarWeekDto(
     string WeekStart,
     IReadOnlyList<CopiersMtoV2CalendarEventDto> Events,
     string TimeZone = "America/Bogota");
+public sealed record CopiersMtoV2CalendarMonthDto(
+    string MonthStart,
+    IReadOnlyList<CopiersMtoV2CalendarEventDto> Events,
+    string TimeZone = "America/Bogota");
 
 public class CopiersMtoV2CalendarEventDto
 {
     public string Id { get; set; } = "";
     public string ServiceReference { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ServiceDate { get; set; } = "";
     public string MaintenanceType { get; set; } = "";
     public string ActivityKind { get; set; } = "maintenance";
     public string TechnicianId { get; set; } = "";
@@ -35,7 +41,6 @@ public sealed class CopiersMtoV2CalendarDetailDto : CopiersMtoV2CalendarEventDto
     public string EquipmentSerial { get; set; } = "";
     public string Title { get; set; } = "";
     public string TechnicianEmail { get; set; } = "";
-    public string ServiceDate { get; set; } = "";
     public string FormVersion { get; set; } = "";
     public DateTimeOffset? DeviceSignedAtUtc { get; set; }
     public DateTimeOffset? ServerFinalizedAtUtc { get; set; }

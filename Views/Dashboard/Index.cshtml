@@ -1679,6 +1679,7 @@
             <section class="mto-calendar dashboard-panel" id="copiersMtoV2Calendar"
                      data-bootstrap-url="@Url.Action("Bootstrap", "CopiersMtoV2Calendar")"
                      data-week-url="@Url.Action("Week", "CopiersMtoV2Calendar")"
+                     data-month-url="@Url.Action("Month", "CopiersMtoV2Calendar")"
                      data-detail-url="@Url.Action("Detail", "CopiersMtoV2Calendar")"
                      aria-labelledby="mtoCalendarHeading">
                 <header class="mto-calendar__header">
@@ -1695,23 +1696,25 @@
                     </label>
                 </header>
                 <div class="mto-calendar__toolbar">
-                    <div class="mto-calendar__navigation" aria-label="Navegar por semanas">
+                    <div class="mto-calendar__navigation" aria-label="Navegar por el calendario">
                         <button type="button" class="btn btn-outline-secondary" id="mtoCalendarToday">Hoy</button>
                         <button type="button" class="btn btn-outline-secondary" id="mtoCalendarPrevious" aria-label="Semana anterior">&#8249;</button>
                         <button type="button" class="btn btn-outline-secondary" id="mtoCalendarNext" aria-label="Semana siguiente">&#8250;</button>
                         <h3 id="mtoCalendarRange" aria-live="polite"></h3>
                     </div>
-                    <button type="button" class="btn btn-outline-secondary" id="mtoCalendarRefresh">Actualizar</button>
+                    <div class="mto-calendar__actions">
+                        <div class="mto-calendar__switch" role="group" aria-label="Vista del calendario">
+                            <button type="button" id="mtoCalendarWeek" aria-pressed="false">Semana</button>
+                            <button type="button" id="mtoCalendarMonth" aria-pressed="true">Mes</button>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary" id="mtoCalendarRefresh">Actualizar</button>
+                    </div>
                 </div>
-                <div class="mto-calendar__legend" aria-label="Tipos de actividad">
-                    <span class="mto-calendar__legend-item mto-calendar__legend-item--preventive">Preventivo</span>
-                    <span class="mto-calendar__legend-item mto-calendar__legend-item--corrective">Correctivo</span>
-                    <span class="mto-calendar__legend-item mto-calendar__legend-item--movement">Movimiento</span>
-                    <span class="mto-calendar__legend-item mto-calendar__legend-item--toner">Entrega de tóner</span>
-                    <span class="mto-calendar__muted">Hora de Colombia (UTC−5)</span>
-                </div>
+                <div id="mtoCalendarSummary" class="mto-calendar__summary" aria-label="Cantidades de mantenimientos realizados"></div>
+                <p class="mto-calendar__summary-note">Cantidades de mantenimientos finalizados e históricos del período y técnico seleccionados. Movimientos, entregas de tóner y pendientes se muestran en el calendario, sin sumarse a estas tarjetas.</p>
+                <div id="mtoCalendarLegend" class="mto-calendar__legend" aria-label="Colores por técnico"></div>
                 <p id="mtoCalendarStatus" class="mto-calendar__status" role="status" aria-live="polite">Selecciona esta pestaña para consultar los mantenimientos.</p>
-                <p class="mto-calendar__slot-note">Las franjas breves se amplían para facilitar la lectura; el detalle conserva las horas registradas.</p>
+                <p id="mtoCalendarSlotNote" class="mto-calendar__slot-note" hidden>Las franjas breves se amplían para facilitar la lectura; el detalle conserva las horas registradas.</p>
                 <div id="mtoCalendarViewport" class="mto-calendar__viewport" tabindex="0" aria-label="Calendario semanal. Desplaza horizontalmente para ver todos los días y verticalmente para ver las 24 horas.">
                     <div id="mtoCalendarGrid" class="mto-calendar__grid"></div>
                 </div>

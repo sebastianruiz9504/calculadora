@@ -86,7 +86,46 @@
 [data-bs-theme="dark"] .mto-calendar__status.is-error { color: #ffadb8; }
 [data-bs-theme="dark"] .mto-calendar__event--movement { background: #352649; border-color: #b88bea; color: #e5ceff; }
 [data-bs-theme="dark"] .mto-calendar__event--toner { background: #173d30; border-color: #5abb90; color: #c4f2de; }
+.mto-calendar__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.mto-calendar__switch { display: inline-flex; padding: 3px; gap: 3px; border: 1px solid var(--mto-line); border-radius: 9px; background: var(--mto-soft); }
+.mto-calendar__switch button { border: 0; border-radius: 6px; padding: 7px 15px; background: transparent; color: var(--mto-muted); font-size: 13px; font-weight: 650; }
+.mto-calendar__switch button[aria-pressed="true"] { background: var(--mto-bg); color: var(--mto-ink); box-shadow: 0 1px 4px rgb(15 23 42 / 12%); }
+.mto-calendar__switch button:focus-visible { outline: 2px solid var(--mto-preventive-border); outline-offset: 2px; }
+.mto-calendar__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.mto-calendar__summary-card { padding: 16px; border: 1px solid var(--mto-line); border-radius: 12px; background: var(--mto-soft); min-width: 0; }
+.mto-calendar__summary-card h4 { margin: 0 0 8px; color: var(--mto-muted); font-size: 13px; font-weight: 650; }
+.mto-calendar__summary-total { font-size: 26px; line-height: 1.2; letter-spacing: -.5px; }
+.mto-calendar__summary-list { list-style: none; margin: 12px 0 0; padding: 0; max-height: 132px; overflow: auto; scrollbar-gutter: stable; }
+.mto-calendar__summary-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 3px 5px 0; font-size: 12px; }
+.mto-calendar__summary-row > span { min-width: 0; overflow-wrap: anywhere; }
+.mto-calendar__summary-row > strong { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.mto-calendar__summary-note { margin: 8px 0 0; font-size: 11px; color: var(--mto-muted); }
+.mto-calendar__technician-label { display: inline-flex; align-items: center; gap: 7px; }
+.mto-calendar__technician-label::before { content: ""; flex: 0 0 9px; width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--mto-tech-hue, 210) 60% 45%); }
+.mto-calendar__event { border-color: hsl(var(--mto-tech-hue, 210) 54% 45%); background: hsl(var(--mto-tech-hue, 210) 65% 95%); color: hsl(var(--mto-tech-hue, 210) 60% 23%); }
+[data-bs-theme="dark"] .mto-calendar__event { border-color: hsl(var(--mto-tech-hue, 210) 65% 65%); background: hsl(var(--mto-tech-hue, 210) 35% 22%); color: hsl(var(--mto-tech-hue, 210) 75% 90%); }
+[data-bs-theme="dark"] .mto-calendar__technician-label::before { background: hsl(var(--mto-tech-hue, 210) 65% 65%); }
+.mto-calendar__viewport.is-month { height: auto; min-height: 0; max-height: 900px; }
+.mto-calendar__grid.is-month { min-width: 910px; }
+.mto-calendar__month-headings, .mto-calendar__month-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.mto-calendar__month-headings { position: sticky; top: 0; z-index: 5; background: var(--mto-bg); border-bottom: 1px solid var(--mto-line); }
+.mto-calendar__month-headings > div { padding: 12px 8px; font-size: 12px; font-weight: 650; text-align: center; }
+.mto-calendar__month-week + .mto-calendar__month-week { border-top: 1px solid var(--mto-line); }
+.mto-calendar__month-day { min-width: 0; min-height: 135px; padding: 7px; }
+.mto-calendar__month-day + .mto-calendar__month-day { border-left: 1px solid var(--mto-line); }
+.mto-calendar__month-day.is-outside { background: var(--mto-soft); color: var(--mto-muted); }
+.mto-calendar__month-day.is-today { background: color-mix(in srgb, var(--mto-preventive-bg) 30%, var(--mto-bg)); }
+.mto-calendar__month-date { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 7px; font-size: 12px; font-weight: 650; }
+.mto-calendar__month-date > span { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; }
+.mto-calendar__month-date small { font-size: 9px; color: var(--mto-muted); font-weight: 400; }
+.mto-calendar__month-day.is-today .mto-calendar__month-date > span { color: var(--mto-preventive-ink); background: var(--mto-preventive-bg); box-shadow: inset 0 0 0 1px var(--mto-preventive-border); }
+.mto-calendar__event--month { position: relative; width: 100%; padding: 7px; gap: 4px; margin: 0 0 5px; min-height: 64px; }
+.mto-calendar__event--month .mto-calendar__event-client { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.mto-calendar__event--month .mto-calendar__event-type, .mto-calendar__event--month .mto-calendar__event-time { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.mto-calendar__more > summary { padding: 6px 2px; color: var(--mto-preventive-ink); font-size: 11px; font-weight: 650; cursor: pointer; }
 @media (max-width: 700px) {
+    .mto-calendar__summary { grid-template-columns: minmax(0, 1fr); }
+    .mto-calendar__summary-list { max-height: 100px; }
     .mto-calendar { padding: 16px; }
     .mto-calendar__technician { width: 100%; }
     .mto-calendar__technician select { max-width: none; }
