@@ -29,6 +29,7 @@
      data-recalculate-url="@Url.Action("Recalculate", "Puntajes")"
      data-preview-close-month-url="@Url.Action("PreviewCloseMonth", "Puntajes")"
      data-close-month-url="@Url.Action("CloseMonth", "Puntajes")"
+     data-export-close-month-url="@Url.Action("ExportCloseMonth", "Puntajes")"
      data-undo-close-month-url="@Url.Action("UndoCloseMonth", "Puntajes")"
      data-move-to-renewal-url="@Url.Action("MoveToRenewal", "Puntajes")"
      data-offer-url="@Url.Action("Offer", "Puntajes")"
@@ -119,10 +120,12 @@
                 <p class="scores-close-card__subtitle" id="closeMonthSummaryText"></p>
             </div>
             <div class="scores-close-card__actions">
+                <button type="button" class="btn btn-outline-success" id="exportCloseMonthBtn" disabled>Exportar Excel</button>
                 <button type="button" class="btn btn-outline-secondary" id="undoCloseMonthBtn">Deshacer cierre</button>
                 <button type="button" class="btn btn-success" id="closeMonthBtn">Cerrar mes</button>
             </div>
         </div>
+        <p id="closeMonthReportCaption" class="scores-close-card__subtitle mb-3" hidden></p>
         <div id="closeMonthLogEmpty" class="scores-close-log__empty">Todavía no se ha ejecutado ningún cierre en esta sesión.</div>
         <div id="closeMonthLogList" class="scores-close-log"></div>
     </section>

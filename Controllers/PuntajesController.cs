@@ -3,6 +3,7 @@ using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Services;
+using CotizadorInterno.Web.Services.Puntajes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 
@@ -213,6 +214,25 @@ public sealed class PuntajesController : Controller
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cerrar el mes.", ex));
         }
+    }
+
+    [HttpPost]
+    [RequestSizeLimit(10_000_000)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public IActionResult ExportCloseMonth([FromBody] ScoreMonthCloseExportRequest? request)
+    {
+        if (!ModelState.IsValid || request is null
+            || request.Operation is not ("close" or "undo")
+            || !System.Text.RegularExpressions.Regex.IsMatch(request.PeriodKey ?? "", @"^\d{4}-(0[1-9]|1[0-2])$")
+            || request.Logs is null || request.Logs.Count is < 1 or > 10_000
+            || request.Logs.Any(entry => entry is null))
+        {
+            return BadRequest(new { message = "No hay un reporte de cierre válido para exportar." });
+        }
+
+        var content = ScoreMonthCloseExcelBuilder.Build(request);
+        var prefix = request.Operation == "undo" ? "reversion-cierre-puntajes" : "cierre-puntajes";
+        return File(content, ScoreMonthCloseExcelBuilder.ContentType, $"{prefix}-{request.PeriodKey}.xlsx");
     }
 
     [HttpPost]

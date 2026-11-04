@@ -398,6 +398,22 @@ public sealed class ScoreMonthCloseLogEntryDto
     public string Message { get; set; } = "";
     public string FinalState { get; set; } = "";
     public string Detail { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ProductId { get; set; } = "";
+    public string SalesPerformanceRecordId { get; set; } = "";
+    public int? PreviousQuantity { get; set; }
+    public int? AppliedQuantity { get; set; }
+    public int? FinalQuantity { get; set; }
+}
+
+public sealed class ScoreMonthCloseExportRequest
+{
+    public string Operation { get; set; } = "close";
+    public string PeriodKey { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public string BatchId { get; set; } = "";
+    public string Message { get; set; } = "";
+    public IReadOnlyList<ScoreMonthCloseLogEntryDto> Logs { get; set; } = Array.Empty<ScoreMonthCloseLogEntryDto>();
 }
 
 public sealed class ScoreMonthCloseResultDto

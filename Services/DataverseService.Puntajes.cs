@@ -554,7 +554,10 @@ public sealed partial class DataverseService
                         linePlan.Record.ClientName,
                         linePlan.Line.ProductName,
                         $"La linea ya estaba consolidada en {plan.MonthInfo.PeriodLabel}.",
-                        BuildPreviewLineState(linePlan)));
+                        BuildPreviewLineState(linePlan),
+                        clientId: linePlan.Record.ClientId,
+                        productId: linePlan.Line.ProductId,
+                        appliedQuantity: 0));
                     continue;
                 }
 
@@ -583,7 +586,10 @@ public sealed partial class DataverseService
                         string.IsNullOrWhiteSpace(linePlan.Reason)
                             ? "La linea se excluyo del cierre por decision del usuario."
                             : linePlan.Reason,
-                        BuildPreviewLineState(linePlan)));
+                        BuildPreviewLineState(linePlan),
+                        clientId: linePlan.Record.ClientId,
+                        productId: linePlan.Line.ProductId,
+                        appliedQuantity: 0));
                     _logger.LogInformation(
                         "Cierre puntajes excluyo linea por decision/regla. Periodo={PeriodKey}, LineKey={LineKey}, Cliente={ClientName}, Producto={ProductName}, Motivo={Reason}.",
                         plan.MonthInfo.PeriodKey,
@@ -641,7 +647,13 @@ public sealed partial class DataverseService
                             linePlan.Record.ClientName,
                             linePlan.Line.ProductName,
                             $"Cantidad incrementada: {previousQuantity} + {appliedQuantity} = {newQuantity}.",
-                            BuildUpdatedLineState(linePlan, previousQuantity, appliedQuantity, newQuantity)));
+                            BuildUpdatedLineState(linePlan, previousQuantity, appliedQuantity, newQuantity),
+                            clientId: linePlan.Record.ClientId,
+                            productId: linePlan.Line.ProductId,
+                            salesPerformanceRecordId: currentMatch.RecordId,
+                            previousQuantity: previousQuantity,
+                            appliedQuantity: appliedQuantity,
+                            finalQuantity: newQuantity));
                         appliedSnapshots.Add(BuildClosureLineSnapshot(
                             linePlan,
                             status: "updated",
@@ -683,7 +695,13 @@ public sealed partial class DataverseService
                         createResult.Warnings.Count > 0
                             ? $"Se creo la linea, pero queda revision manual pendiente: {string.Join(" ", createResult.Warnings)}"
                             : "Se creo una nueva linea en cr07a_salesperformancerecord.",
-                        createResult.FinalState));
+                        createResult.FinalState,
+                        clientId: linePlan.Record.ClientId,
+                        productId: linePlan.Line.ProductId,
+                        salesPerformanceRecordId: createdRecordId,
+                        previousQuantity: 0,
+                        appliedQuantity: linePlan.Line.Quantity,
+                        finalQuantity: linePlan.Line.Quantity));
                     appliedSnapshots.Add(BuildClosureLineSnapshot(
                         linePlan,
                         status: "created",
@@ -713,7 +731,9 @@ public sealed partial class DataverseService
                         linePlan.Line.ProductName,
                         CompactMonthCloseError(errorDetail),
                         "",
-                        errorDetail));
+                        errorDetail,
+                        clientId: linePlan.Record.ClientId,
+                        productId: linePlan.Line.ProductId));
                 }
             }
 
@@ -808,7 +828,11 @@ public sealed partial class DataverseService
                                 recordPlan.Record.ClientName,
                                 lineSnapshot.ProductName,
                                 "Se elimino la linea creada por el ultimo cierre.",
-                                ""));
+                                "",
+                                clientId: recordPlan.Record.ClientId,
+                                productId: lineSnapshot.ProductId,
+                                salesPerformanceRecordId: lineSnapshot.SalesPerformanceRecordId,
+                                finalQuantity: 0));
                             break;
 
                         case "updated":
@@ -831,7 +855,11 @@ public sealed partial class DataverseService
                                 recordPlan.Record.ClientName,
                                 lineSnapshot.ProductName,
                                 $"Se restauro la cantidad anterior a {Math.Max(lineSnapshot.PreviousQuantity, 0)}.",
-                                ""));
+                                "",
+                                clientId: recordPlan.Record.ClientId,
+                                productId: lineSnapshot.ProductId,
+                                salesPerformanceRecordId: lineSnapshot.SalesPerformanceRecordId,
+                                finalQuantity: Math.Max(lineSnapshot.PreviousQuantity, 0)));
                             break;
 
                         case "excluded":
@@ -845,7 +873,10 @@ public sealed partial class DataverseService
                                 recordPlan.Record.ClientName,
                                 lineSnapshot.ProductName,
                                 "La linea vuelve a quedar disponible para un nuevo cierre.",
-                                ""));
+                                "",
+                                clientId: recordPlan.Record.ClientId,
+                                productId: lineSnapshot.ProductId,
+                                appliedQuantity: 0));
                             break;
                     }
                 }
@@ -862,7 +893,10 @@ public sealed partial class DataverseService
                         lineSnapshot.ProductName,
                         CompactMonthCloseError(errorDetail),
                         "",
-                        errorDetail));
+                        errorDetail,
+                        clientId: recordPlan.Record.ClientId,
+                        productId: lineSnapshot.ProductId,
+                        salesPerformanceRecordId: lineSnapshot.SalesPerformanceRecordId));
                 }
             }
 
@@ -2708,7 +2742,13 @@ public sealed partial class DataverseService
         string productName,
         string message,
         string finalState,
-        string detail = "") =>
+        string detail = "",
+        string clientId = "",
+        string productId = "",
+        string salesPerformanceRecordId = "",
+        int? previousQuantity = null,
+        int? appliedQuantity = null,
+        int? finalQuantity = null) =>
         new()
         {
             Level = level,
@@ -2719,7 +2759,13 @@ public sealed partial class DataverseService
             ProductName = productName,
             Message = message,
             FinalState = finalState,
-            Detail = detail
+            Detail = detail,
+            ClientId = clientId,
+            ProductId = productId,
+            SalesPerformanceRecordId = salesPerformanceRecordId,
+            PreviousQuantity = previousQuantity,
+            AppliedQuantity = appliedQuantity,
+            FinalQuantity = finalQuantity
         };
 
     private static ScoreMonthCloseLogEntryDto BuildMonthCloseLog(

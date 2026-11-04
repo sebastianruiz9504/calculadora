@@ -19,6 +19,8 @@
     const summaryAnnualValue = document.getElementById("summaryAnnualValue");
     const closeMonthButton = document.getElementById("closeMonthBtn");
     const undoCloseMonthButton = document.getElementById("undoCloseMonthBtn");
+    const exportCloseMonthButton = document.getElementById("exportCloseMonthBtn");
+    const closeMonthReportCaption = document.getElementById("closeMonthReportCaption");
     const closeMonthSummaryText = document.getElementById("closeMonthSummaryText");
     const closeMonthLogEmpty = document.getElementById("closeMonthLogEmpty");
     const closeMonthLogList = document.getElementById("closeMonthLogList");
@@ -116,7 +118,9 @@
         isSaving: false,
         isRecalculating: false,
         isClosingMonth: false,
+        isExportingCloseMonth: false,
         lastCloseResult: null,
+        lastCloseOperation: "close",
         closeMonthPreview: null
     };
 
@@ -1289,11 +1293,21 @@
     }
 
     function renderCloseMonthLogs() {
+        const logs = Array.isArray(state.lastCloseResult?.logs) ? state.lastCloseResult.logs : [];
+        if (exportCloseMonthButton) {
+            exportCloseMonthButton.disabled = !logs.length || state.isClosingMonth || state.isExportingCloseMonth;
+            exportCloseMonthButton.textContent = state.isExportingCloseMonth ? "Generando Excel..." : "Exportar Excel";
+        }
+        if (closeMonthReportCaption) {
+            closeMonthReportCaption.hidden = !logs.length;
+            closeMonthReportCaption.textContent = logs.length
+                ? `Reporte de ${state.lastCloseOperation === "undo" ? "reversión del cierre" : "cierre"}: ${state.lastCloseResult.periodLabel || state.lastCloseResult.periodKey}. El Excel incluye el detalle y los colores de este reporte.`
+                : "";
+        }
         if (!closeMonthLogList || !closeMonthLogEmpty) {
             return;
         }
 
-        const logs = Array.isArray(state.lastCloseResult?.logs) ? state.lastCloseResult.logs : [];
         if (!logs.length) {
             closeMonthLogEmpty.style.display = "";
             closeMonthLogList.innerHTML = "";
@@ -2231,6 +2245,7 @@
             });
 
             state.lastCloseResult = result;
+            state.lastCloseOperation = "close";
             state.closeMonthPreview = null;
             closeMonthReviewModal?.hide();
             await loadBoard();
@@ -2266,6 +2281,7 @@
             });
 
             state.lastCloseResult = result;
+            state.lastCloseOperation = "undo";
             state.closeMonthPreview = null;
             closeMonthReviewModal?.hide();
             await loadBoard();
@@ -2275,6 +2291,49 @@
             setStatus("error", formatErrorMessage(error, "No fue posible deshacer el cierre del mes."));
         } finally {
             setClosingMonth(false);
+            renderCloseMonthLogs();
+        }
+    }
+
+    async function exportCloseMonth() {
+        if (!state.lastCloseResult?.logs?.length || state.isClosingMonth || state.isExportingCloseMonth) {
+            return;
+        }
+
+        // Capture the displayed result; exporting never invokes the close/undo endpoints.
+        const report = { ...state.lastCloseResult, operation: state.lastCloseOperation };
+        state.isExportingCloseMonth = true;
+        renderCloseMonthLogs();
+        try {
+            const response = await fetch(app.dataset.exportCloseMonthUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+                body: JSON.stringify(report)
+            });
+            const contentType = response.headers.get("content-type") || "";
+            if (!response.ok) {
+                const errorPayload = await extractErrorPayload(response, contentType);
+                throw new Error(errorPayload.message || "No fue posible exportar el reporte.");
+            }
+            if (!contentType.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) {
+                throw new Error("No se recibió un archivo Excel válido. Revisa tu sesión e intenta nuevamente.");
+            }
+
+            const objectUrl = URL.createObjectURL(await response.blob());
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            const prefix = report.operation === "undo" ? "reversion-cierre-puntajes" : "cierre-puntajes";
+            link.download = `${prefix}-${report.periodKey}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            setStatus("success", "Se descargó el Excel con el detalle del reporte.");
+        } catch (error) {
+            console.error(error);
+            setStatus("error", formatErrorMessage(error, "No fue posible exportar el reporte."));
+        } finally {
+            state.isExportingCloseMonth = false;
             renderCloseMonthLogs();
         }
     }
@@ -2372,6 +2431,7 @@
     submitVerifyScoreBtn?.addEventListener("click", submitVerification);
     closeMonthButton?.addEventListener("click", closeMonth);
     undoCloseMonthButton?.addEventListener("click", undoCloseMonth);
+    exportCloseMonthButton?.addEventListener("click", exportCloseMonth);
     submitCloseMonthReviewBtn?.addEventListener("click", submitCloseMonthReview);
     closeMonthReviewConfirmCheck?.addEventListener("change", updateCloseMonthReviewSubmitState);
 
