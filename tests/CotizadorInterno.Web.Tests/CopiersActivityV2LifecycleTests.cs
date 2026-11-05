@@ -284,7 +284,7 @@ public sealed class CopiersActivityV2LifecycleTests
     [Theory]
     [InlineData("movement", "copiers-mto-v2-2026-09-10")]
     [InlineData("maintenance", CopiersActivityV2Bindings.FormVersion)]
-    [InlineData("other", CopiersActivityV2Bindings.FormVersion)]
+    [InlineData("unknown", CopiersActivityV2Bindings.FormVersion)]
     public async Task ControllerRejectsInvalidActivityFormBeforeAnyPersistenceOrApplicationRead(string kind, string version)
     {
         var f = new ControllerFixture();
@@ -312,6 +312,7 @@ public sealed class CopiersActivityV2LifecycleTests
     [InlineData("toner", 827270002, 2)]
     [InlineData("movement", 827270003, 3)]
     [InlineData("toner", 827270004, 4)]
+    [InlineData("other", 827270001, 1)]
     public async Task StatusDistinguishesNotReadyPendingProcessingSentFailedAndUsesCorrectDataset(string kind, int email, int expected)
     {
         var f = new ControllerFixture();
@@ -360,7 +361,7 @@ public sealed class CopiersActivityV2LifecycleTests
 
     [Theory]
     [InlineData(true, "movement", RecordId)]
-    [InlineData(false, "other", RecordId)]
+    [InlineData(false, "unknown", RecordId)]
     [InlineData(false, "toner", "bad-id")]
     public async Task StatusRejectsDisabledInvalidKindsAndIdsBeforeApplicationReads(bool disabled, string kind, string id)
     {
@@ -505,6 +506,77 @@ public sealed class CopiersActivityV2LifecycleTests
         Assert.Equal(0, f.Repository.PublishCalls);
         Assert.Empty(f.Business.Commits);
     }
+    private static Lifecycle OtherLifecycle()
+    {
+        var f = new Lifecycle("other");
+        f.Repository.Record.MaintenanceTypeValue = CopiersActivityV2Bindings.OtherType;
+        f.Repository.Record.EquipmentId = "";
+        f.Repository.Record.EquipmentSerial = "";
+        return f;
+    }
+
+    private static CopiersMaintenanceV2FinalizeMultipartRequestDto OtherRequest()
+    {
+        var request = Request("other");
+        request.WorkPerformed = "Trasteo y organización de la bodega. Se clasificaron cajas y herramientas.";
+        var answers = JsonSerializer.Deserialize<List<CopiersMaintenanceV2FormAnswerInputDto>>(request.AnswersJson)!;
+        answers.RemoveAll(x => x.Key.StartsWith("supply_") || x.Key.StartsWith("movement_") || x.Key.StartsWith("origin_") || x.Key.StartsWith("destination_"));
+        answers.Add(new() { Key = "activity_notes", Value = request.WorkPerformed });
+        request.AnswersJson = JsonSerializer.Serialize(answers);
+        return request;
+    }
+
+    [Fact]
+    public async Task OtherActivityNeedsNoEquipmentAndPublishesSignedNotesWithoutCountersOrInventory()
+    {
+        var f = OtherLifecycle();
+        await f.Service().CreateOrGetDraftAsync(DraftRequest(f.Repository.Record), Actor());
+        var result = await f.Service().FinalizeMultipartAsync(OtherRequest(), Actor());
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, result.State);
+        Assert.Equal(new[] { "begin", "pdf", "complete" }, f.Operations);
+        var completed = Assert.Single(f.Repository.Completed);
+        Assert.Equal(OtherRequest().WorkPerformed, completed.WorkPerformed);
+        Assert.Equal(completed.WorkPerformed, completed.Answers.Single(x => x.Key == "activity_notes").Value);
+        Assert.Equal("", Assert.Single(f.Pdf.Models).EquipmentSerial);
+        Assert.Equal(ClientId, f.Repository.Record.ClientId);
+        Assert.Equal(0, f.Counters.Created);
+        Assert.Equal(0, f.Business.ValidateCalls);
+        Assert.Empty(f.Business.Commits);
+        var replay = await f.Service(Now.AddDays(2)).FinalizeMultipartAsync(OtherRequest(), Actor());
+        Assert.True(replay.IdempotentReplay);
+        Assert.Equal(1, f.Repository.PublishCalls);
+        var changed = OtherRequest();
+        changed.WorkPerformed = "Otro trabajo";
+        ChangeAnswer(changed, "activity_notes", changed.WorkPerformed);
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => f.Service().FinalizeMultipartAsync(changed, Actor()));
+    }
+
+    [Theory]
+    [InlineData("empty_notes")]
+    [InlineData("long_notes")]
+    [InlineData("changed_notes")]
+    [InlineData("missing_end")]
+    [InlineData("equal_times")]
+    [InlineData("changed_time")]
+    [InlineData("equipment")]
+    public async Task OtherActivityRejectsInvalidOrChangedSignedFactsBeforePublication(string problem)
+    {
+        var f = OtherLifecycle();
+        var request = OtherRequest();
+        if (problem == "empty_notes") request.WorkPerformed = "  ";
+        if (problem == "long_notes") request.WorkPerformed = new string('a', 1001);
+        if (problem == "changed_notes") request.WorkPerformed = "Notas alteradas";
+        if (problem == "missing_end") request.ServiceEndedAtUtc = null;
+        if (problem == "equal_times") request.ServiceEndedAtUtc = request.ServiceStartedAtUtc;
+        if (problem == "changed_time") request.ServiceEndedAtUtc = request.ServiceEndedAtUtc!.Value.AddMinutes(-1);
+        if (problem == "equipment") f.Repository.Record.EquipmentId = EquipmentId;
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ValidationException>(() => f.Service().FinalizeMultipartAsync(request, Actor()));
+        Assert.Empty(f.Pdf.Models);
+        Assert.Equal(0, f.Repository.PublishCalls);
+        Assert.Equal(0, f.Counters.Created);
+        Assert.Empty(f.Business.Commits);
+    }
+
     private sealed class Clock(DateTimeOffset now) : TimeProvider { public override DateTimeOffset GetUtcNow() => now; }
     private sealed class PdfSpy(List<string> operations) : ICopiersMtoV2PdfBuilder
     {

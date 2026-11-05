@@ -69,7 +69,8 @@ internal static class CopiersMaintenanceV2Validation
         ["supplyid"] = new("supply_id", "Identificador del suministro", 28, false),
         ["supplyname"] = new("supply_name", "Suministro entregado", 29, false),
         ["supplyquantity"] = new("supply_quantity", "Cantidad entregada", 30, false),
-        ["supplystockbefore"] = new("supply_stock_before", "Saldo previo del suministro", 31, false)
+        ["supplystockbefore"] = new("supply_stock_before", "Saldo previo del suministro", 31, false),
+        ["activitynotes"] = new("activity_notes", "Notas de la actividad", 32, false)
     };
 
     private readonly record struct PublicAnswerDefinition(
@@ -162,7 +163,7 @@ internal static class CopiersMaintenanceV2Validation
     public static int MaintenanceType(int? value, CopiersMaintenanceV2DataverseOptions bindings)
     {
         if (value == bindings.MaintenanceTypeCorrectiveValue || value == bindings.MaintenanceTypePreventiveValue
-            || bindings.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet && value == CopiersActivityV2Bindings.CounterType)
+            || bindings.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet && value is CopiersActivityV2Bindings.CounterType or CopiersActivityV2Bindings.OtherType)
             return value.Value;
         throw new CopiersMaintenanceV2ValidationException("maintenance_type_invalid", "El tipo de mantenimiento seleccionado no es válido.");
     }

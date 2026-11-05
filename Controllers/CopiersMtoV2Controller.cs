@@ -273,7 +273,8 @@ public sealed class CopiersMtoV2Controller : Controller
             var currentUser = await _dataverse.GetCurrentUserAsync(ct)
                 ?? throw new InvalidOperationException("No fue posible identificar al técnico autenticado.");
             EnsureTechnicianPilotAccess(currentUser);
-            var dashboard = await _dataverse.GetCopiersEquipmentDashboardAsync(ct);
+            var dashboard = request.ActivityKind == "other" ? new CopiersEquipmentDashboardDto()
+                : await _dataverse.GetCopiersEquipmentDashboardAsync(ct);
             var clients = await _dataverse.GetCopiersMtoV2ClientsAsync(ct);
             var clientId = FormValue("ClientId");
             var allowExternal = request.ActivityKind == "maintenance" && string.IsNullOrWhiteSpace(FormValue("EquipmentId"))
@@ -390,7 +391,14 @@ public sealed class CopiersMtoV2Controller : Controller
         var submittedSerial = FormValue("EquipmentSerial");
         string equipmentId;
         string equipmentSerial;
-        if (Guid.TryParse(submittedEquipmentId, out var parsedEquipmentId) && parsedEquipmentId != Guid.Empty)
+        if (request.ActivityKind == "other")
+        {
+            if (!string.IsNullOrWhiteSpace(submittedEquipmentId) || !string.IsNullOrWhiteSpace(submittedSerial))
+                throw new CopiersMaintenanceV2ValidationException("equipment_not_applicable", "Otras actividades no requiere un equipo. Revisa el tipo de atención.");
+            equipmentId = "";
+            equipmentSerial = "";
+        }
+        else if (Guid.TryParse(submittedEquipmentId, out var parsedEquipmentId) && parsedEquipmentId != Guid.Empty)
         {
             var equipment = dashboard.EquipmentRows.FirstOrDefault(item => SameGuid(item.RecordId, parsedEquipmentId.ToString("D")))
                 ?? throw new CopiersMaintenanceV2ValidationException("equipment_not_found", "El equipo ya no está disponible en Copiers.");
@@ -424,6 +432,7 @@ public sealed class CopiersMtoV2Controller : Controller
             "movement" => CopiersActivityV2Bindings.MovementType,
             "toner" => CopiersActivityV2Bindings.TonerType,
             "counter" => CopiersActivityV2Bindings.CounterType,
+            "other" => CopiersActivityV2Bindings.OtherType,
             _ => throw new CopiersMaintenanceV2ValidationException("activity_invalid", "Selecciona un tipo de atención válido.")
         };
         var kindLabel = request.ActivityKind == "maintenance" ? "Mantenimiento" : CopiersActivityV2Bindings.Label(maintenanceType!.Value);
@@ -437,7 +446,8 @@ public sealed class CopiersMtoV2Controller : Controller
             CustomerEmail = client.Email.Trim(),
             EquipmentId = equipmentId,
             EquipmentSerial = equipmentSerial,
-            Title = $"{kindLabel} {serviceDate:yyyy-MM-dd} · {equipmentSerial}",
+            Title = request.ActivityKind == "other" ? $"{kindLabel} {serviceDate:yyyy-MM-dd}"
+                : $"{kindLabel} {serviceDate:yyyy-MM-dd} · {equipmentSerial}",
             ServiceDate = serviceDate,
             MaintenanceTypeValue = maintenanceType
         };
@@ -453,7 +463,7 @@ public sealed class CopiersMtoV2Controller : Controller
     private string NormalizeActivityKind(string? value)
     {
         var kind = string.IsNullOrWhiteSpace(value) ? "maintenance" : value.Trim();
-        if (kind is not ("maintenance" or "movement" or "toner" or "counter"))
+        if (kind is not ("maintenance" or "movement" or "toner" or "counter" or "other"))
             throw new CopiersMaintenanceV2ValidationException("activity_invalid", "Selecciona un tipo de atención válido.");
         if (kind != "maintenance" && !_options.ActivitiesEnabled)
             throw new CopiersMaintenanceV2ValidationException("activities_disabled", "Las nuevas actas todavía no están habilitadas.");

@@ -46,7 +46,7 @@ public sealed class CopiersActivityV2Runtime(
     {
         var id = CopiersMaintenanceV2Validation.RequiredGuid(recordId, "record_invalid", "El registro");
         var o = activityKind == "maintenance" ? bindings.Value : CopiersActivityV2Bindings.Create(bindings.Value);
-        if (activityKind is not ("maintenance" or "movement" or "toner" or "counter")
+        if (activityKind is not ("maintenance" or "movement" or "toner" or "counter" or "other")
             || (activityKind != "maintenance" && !options.Value.ActivitiesEnabled))
             throw new CopiersMaintenanceV2ValidationException("activity_invalid", "El tipo de atención no es válido.");
         using var response = await client.SendAsync($"/api/data/v9.2/{o.MainEntitySetName}({id})?$select={o.TechnicianUserIdField},{o.WorkflowStateField},{o.EmailStateField},{o.ServiceReferenceField},{o.LastErrorCodeField}",

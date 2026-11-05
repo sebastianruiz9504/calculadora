@@ -151,7 +151,7 @@
                     <small id="mtoV2CatalogFeedback" role="status" aria-live="polite">Cargando clientes de Copiers…</small>
                 </div>
 
-                <div class="mto-v2-field">
+                <div class="mto-v2-field" data-activity-panel="maintenance movement toner counter">
                     <label for="mtoV2EquipmentSerial">Serial del equipo <b aria-hidden="true">*</b></label>
                     <div class="mto-v2-picker">
                     <input class="form-control"
@@ -196,11 +196,11 @@
                 <label class="mto-v2-field">
                     <span><span id="mtoV2VisitStartLabel">Inicio de la visita</span> <b aria-hidden="true">*</b></span>
                     <input class="form-control" type="datetime-local" name="ServiceStartedAtLocal" id="mtoV2ServiceStartedAtLocal" required />
-                    <small data-activity-panel="counter" hidden>Hora de Colombia.</small>
+                    <small data-activity-panel="counter other" hidden>Hora de Colombia.</small>
                 </label>
 
-                <label class="mto-v2-field" data-activity-panel="counter" hidden>
-                    <span>Fecha y hora de retiro <b aria-hidden="true">*</b></span>
+                <label class="mto-v2-field" data-activity-panel="counter other" hidden>
+                    <span><span id="mtoV2VisitEndLabel">Fecha y hora de retiro</span> <b aria-hidden="true">*</b></span>
                     <input class="form-control" type="datetime-local" name="ServiceEndedAtLocal" id="mtoV2ServiceEndedAtLocal" required disabled />
                     <small>Hora de Colombia. Debe ser posterior al ingreso.</small>
                 </label>
@@ -233,7 +233,7 @@
         <fieldset class="mto-v2-step" data-step-panel="2" hidden>
             <legend>
                 <span>Paso 2</span>
-                Trabajo técnico
+                <span id="mtoV2WorkStepTitle">Trabajo técnico</span>
             </legend>
             <p class="mto-v2-step__intro">Resume el trabajo realizado con información que el cliente pueda entender.</p>
 
@@ -250,10 +250,11 @@
                     </select>
                 </label>
 
-                <label class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance">
-                    <span>Trabajo realizado <b aria-hidden="true">*</b> <strong id="mtoV2PrimaryEquipmentLabel"></strong></span>
+                <label class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance other">
+                    <span><span id="mtoV2WorkLabel">Trabajo realizado</span> <b aria-hidden="true">*</b> <strong id="mtoV2PrimaryEquipmentLabel" data-activity-panel="maintenance"></strong></span>
                     <textarea class="form-control" name="WorkPerformed" id="mtoV2WorkPerformed" rows="4" required maxlength="1000" aria-describedby="mtoV2WorkPerformedCount"></textarea>
                     <small id="mtoV2WorkPerformedCount" data-character-count-for="mtoV2WorkPerformed">0 / 1000 caracteres · Resume el servicio para el reporte de una página.</small>
+                    <small data-activity-panel="other" hidden>Detalla la actividad realizada, por ejemplo: trasteo, arreglo de bodega u otras labores.</small>
                 </label>
 
             </div>

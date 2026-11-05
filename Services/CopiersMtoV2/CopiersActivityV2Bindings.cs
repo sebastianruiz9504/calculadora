@@ -9,15 +9,16 @@ public static class CopiersActivityV2Bindings
     public const int MovementType = 827270010;
     public const int TonerType = 827270011;
     public const int CounterType = 827270012;
+    public const int OtherType = 827270013;
     public const string MainEntitySet = "dtc_copiersactivityv2s";
     public static string Kind(long? value) => value switch
     {
-        MovementType => "movement", TonerType => "toner", CounterType => "counter",
+        MovementType => "movement", TonerType => "toner", CounterType => "counter", OtherType => "other",
         _ => throw new CopiersMaintenanceV2ValidationException("activity_invalid", "El tipo de atención no es válido.")
     };
     public static string Label(long value) => value switch
     {
-        MovementType => "Movimiento de equipo", TonerType => "Entrega de tóner", CounterType => "Toma de contador",
+        MovementType => "Movimiento de equipo", TonerType => "Entrega de tóner", CounterType => "Toma de contador", OtherType => "Otras actividades",
         _ => throw new CopiersMaintenanceV2ValidationException("activity_invalid", "El tipo de atención no es válido.")
     };
     public static CopiersMaintenanceV2DataverseOptions Create(CopiersMaintenanceV2DataverseOptions source)

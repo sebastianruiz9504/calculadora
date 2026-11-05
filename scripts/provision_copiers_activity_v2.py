@@ -75,10 +75,11 @@ def columns(logical):
                 for option, value, name in zip(p["OptionSet"]["Options"], (827270010,827270011), ("Movimiento de equipo", "Entrega de toner")):
                     option["Value"] = value
                     option["Label"] = base.label(name)
-                counter = copy.deepcopy(p["OptionSet"]["Options"][-1])
-                counter["Value"] = 827270012
-                counter["Label"] = base.label("Toma de contador")
-                p["OptionSet"]["Options"].append(counter)
+                for value, name in ((827270012, "Toma de contador"), (827270013, "Otras actividades")):
+                    activity = copy.deepcopy(p["OptionSet"]["Options"][-1])
+                    activity["Value"] = value
+                    activity["Label"] = base.label(name)
+                    p["OptionSet"]["Options"].append(activity)
                 p["DisplayName"] = base.label("Tipo de atencion")
         result.append(p)
     if logical == "dtc_copiersactivityv2":

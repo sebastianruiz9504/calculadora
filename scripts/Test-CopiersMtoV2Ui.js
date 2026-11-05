@@ -84,9 +84,11 @@ function activityHarness(reader = async () => ({ items: [] })) {
     const root = nodes.copiersMtoV2App, form = nodes.mtoV2Form;
     const panels = [1, 2, 3, 4].map(step => { const panel = new Element(); panel.dataset.stepPanel = String(step); return panel; });
     const activityPanels = [
-        ["maintenance", ["mtoV2ServiceResult", "mtoV2WorkPerformed", "mtoV2Recommendations"]],
+        ["maintenance", ["mtoV2ServiceResult", "mtoV2Recommendations"]],
+        ["maintenance other", ["mtoV2WorkPerformed"]],
+        ["maintenance movement toner counter", ["mtoV2EquipmentSerial", "mtoV2EquipmentId"]],
         ["maintenance counter", ["mtoV2CopiesBefore", "mtoV2CopiesAfter", "mtoV2ScansBefore", "mtoV2ScansAfter"]],
-        ["counter", ["mtoV2ServiceEndedAtLocal"]],
+        ["counter other", ["mtoV2ServiceEndedAtLocal"]],
         ["movement", ["mtoV2OriginClientName", "mtoV2MovementReason"]],
         ["toner", ["mtoV2SupplyId", "mtoV2SupplyQuantity"]]
     ].map(([kind, ids]) => { const panel = new Element(); panel.dataset.activityPanel = kind; panel.controls = ids.map(id => nodes[id]); return panel; });
@@ -250,7 +252,7 @@ for (const kind of ["movement", "toner"]) test(`${kind} uses its own fields, for
     assert.equal(h.elements.activityKind.value, kind);
     assert.equal(h.elements.formVersion.value, "copiers-activity-v2-2026-09-10");
     for (const panel of h.activityPanels) {
-        assert.equal(panel.hidden, panel.dataset.activityPanel !== kind);
+        assert.equal(panel.hidden, !panel.dataset.activityPanel.split(" ").includes(kind));
         assert.ok(panel.controls.every(field => field.disabled === panel.hidden));
     }
     h.elements.originClientId.value = "C-ORIGIN";
@@ -1266,10 +1268,10 @@ function visitTimesHarness() {
     return { elements, update, setNow(value) { now = value; } };
 }
 
-test("counter capture preserves the selected Colombia entry and exit when signing or clearing a signature", () => {
+for (const kind of ["counter", "other"]) test(`${kind} preserves the selected Colombia entry and exit when signing or clearing a signature`, () => {
     const elements = { serviceStartedAtLocal: control("2026-11-03T08:10"), serviceEndedAtLocal: control("2026-11-03T08:35"),
         serviceStartedAtUtc: control(), serviceEndedAtUtc: control(), signatureStartedAt: {}, signatureEndedAt: {} };
-    const update = bind("updateVisitTimes", { elements, activityKind: () => "counter", formatLocalDateTime: bind("formatLocalDateTime") });
+    const update = bind("updateVisitTimes", { elements, activityKind: () => kind, formatLocalDateTime: bind("formatLocalDateTime") });
     update(true);
     assert.equal(elements.serviceStartedAtUtc.value, "2026-11-03T13:10:00.000Z");
     assert.equal(elements.serviceEndedAtUtc.value, "2026-11-03T13:35:00.000Z");
@@ -1279,6 +1281,37 @@ test("counter capture preserves the selected Colombia entry and exit when signin
     elements.serviceEndedAtLocal.value = "";
     update(true);
     assert.equal(elements.serviceEndedAtUtc.value, "");
+});
+
+test("other activities retain the client and signed notes without equipment, counter or supply requests", async () => {
+    const h = activityHarness();
+    h.state.signatureStrokes = [[{ x: 1, y: 2 }, { x: 3, y: 4 }]];
+    h.elements.maintenanceType.value = "other";
+    h.changeActivityType();
+    await settleActivities();
+    assert.equal(h.elements.activityKind.value, "other");
+    assert.equal(h.elements.clientId.value, "C-1");
+    assert.equal(h.elements.equipmentId.value, "");
+    assert.equal(h.elements.equipmentSerial.value, "");
+    assert.equal(h.nodes.mtoV2WorkPerformed.disabled, false);
+    assert.equal(h.elements.serviceEndedAtLocal.disabled, false);
+    assert.equal(h.elements.workLabel.textContent, "Notas de la actividad");
+    for (const id of ["mtoV2EquipmentSerial", "mtoV2EquipmentId", "mtoV2CopiesAfter", "mtoV2ScansAfter", "mtoV2ServiceResult", "mtoV2SupplyQuantity", "mtoV2MovementReason"])
+        assert.equal(h.nodes[id].disabled, true);
+    assert.deepEqual(h.requests, []);
+    h.prepareCatalogValidity();
+    assert.equal(h.elements.clientName.validityMessage, "");
+    assert.equal(h.elements.equipmentSerial.validityMessage, "");
+    h.nodes.mtoV2WorkPerformed.value = "Trasteo y organización de bodega";
+    const answers = Object.fromEntries(h.buildStructuredAnswers().map(x => [x.key, x.value]));
+    assert.equal(answers.activity_kind, "other");
+    assert.equal(answers.activity_notes, "Trasteo y organización de bodega");
+    for (const key of ["equipment_reference", "copies_after", "scans_after", "maintenance_type", "service_result", "supply_id", "movement_reason"])
+        assert.equal(answers[key], undefined);
+    h.state.catalog.selectedClient = null;
+    h.elements.clientId.value = "";
+    h.prepareCatalogValidity();
+    assert.match(h.elements.clientName.validityMessage, /cliente válido/);
 });
 
 test("counter is an independent activity with current readings and no maintenance or stock fields", () => {

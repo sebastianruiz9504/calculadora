@@ -245,7 +245,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             }
             CopiersActivityV2BusinessCommand? businessCommand = null;
             var matchesPersistedBusiness = false;
-            if (activityForm && !counterForm && !isReadyReplay)
+            if (activityForm && begin.Record.MaintenanceTypeValue is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType && !isReadyReplay)
             {
                 if (_business is null) throw new InvalidOperationException("El servicio de movimientos y entregas no está disponible.");
                 businessCommand = CopiersActivityV2Capture.Command(begin.Record, answers, request.ServiceEndedAtUtc!.Value, finalizationFingerprint);
@@ -387,7 +387,11 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         CopiersMaintenanceV2Validation.ValidateCustomerEmail(request.CustomerEmail);
         var equipmentId = CopiersMaintenanceV2Validation.OptionalGuid(request.EquipmentId, "equipment_id_invalid", "El equipo");
         var equipmentSerial = CopiersMaintenanceV2Validation.Optional(request.EquipmentSerial, "equipment_serial_too_long", "El serial del equipo", 200);
-        if (string.IsNullOrWhiteSpace(equipmentId) && string.IsNullOrWhiteSpace(equipmentSerial))
+        var otherActivity = _dataverseOptions.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet
+            && request.MaintenanceTypeValue == CopiersActivityV2Bindings.OtherType;
+        if (otherActivity && (equipmentId.Length > 0 || equipmentSerial.Length > 0))
+            throw new CopiersMaintenanceV2ValidationException("equipment_not_applicable", "Otras actividades no requiere un equipo.");
+        if (!otherActivity && string.IsNullOrWhiteSpace(equipmentId) && string.IsNullOrWhiteSpace(equipmentSerial))
             throw new CopiersMaintenanceV2ValidationException("equipment_required", "Debes indicar el equipo o el serial externo.");
 
         return new CopiersMaintenanceV2CreateDraftCommand

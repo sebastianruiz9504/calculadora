@@ -64,7 +64,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
         public PdfCanvas BuildPage()
         {
             var activityKind = model.FormVersion == CopiersActivityV2Bindings.FormVersion ? Answer("activity_kind").ToLowerInvariant() : "maintenance";
-            if (model.FormVersion == CopiersActivityV2Bindings.FormVersion && activityKind is not ("movement" or "toner" or "counter"))
+            if (model.FormVersion == CopiersActivityV2Bindings.FormVersion && activityKind is not ("movement" or "toner" or "counter" or "other"))
                 throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.");
             var title = activityKind switch
             {
@@ -72,6 +72,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 "movement" => Answer("operation_kind") switch { "delivery" or "receipt" => "Certificado de entrega", "replacement" => "Certificado de cambio", "withdrawal" => "Certificado de retiro", _ => "Movimiento de equipo" },
                 "toner" => "Entrega de tóner",
                 "counter" => "Toma de contador",
+                "other" => "Otras actividades",
                 _ => throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.")
             };
             if (EstimateWidth(number, 11, true) + EstimateWidth(title, 15, true) + 18 > CompactContentWidth)
@@ -86,7 +87,8 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             _top += 24;
 
             FullField("Cliente", model.ClientName);
-            PairFields(Answer("operation_kind") is "withdrawal" or "replacement" ? "Retirado" : equipmentCount > 1 ? $"Serial {pageNumber}/{equipmentCount}" : "Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
+            if (activityKind != "other")
+                PairFields(Answer("operation_kind") is "withdrawal" or "replacement" ? "Retirado" : equipmentCount > 1 ? $"Serial {pageNumber}/{equipmentCount}" : "Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
             PairFields("Técnico", model.TechnicianName, "Atendió", model.CustomerContactName);
             FullField("Correo", Answer("onsite_email"));
             if (activityKind == "maintenance")
@@ -116,13 +118,13 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 }
                 _top += 7;
             }
-            else
+            else if (activityKind == "toner")
             {
                 FullField("Suministro", Answer("supply_name"));
                 FullField("Cantidad", Answer("supply_quantity"));
                 _top += 7;
             }
-            Paragraph(activityKind == "maintenance" ? "Trabajo realizado" : activityKind == "movement" ? "Motivo del movimiento" : activityKind == "counter" ? "Registro de lectura" : "Detalle de la entrega",
+            Paragraph(activityKind == "other" ? "Notas de la actividad" : activityKind == "maintenance" ? "Trabajo realizado" : activityKind == "movement" ? "Motivo del movimiento" : activityKind == "counter" ? "Registro de lectura" : "Detalle de la entrega",
                 model.WorkPerformed, required: true);
             Paragraph("Recomendaciones", Answer("recommendations"));
             Paragraph("Observaciones del cliente", model.CustomerObservations);

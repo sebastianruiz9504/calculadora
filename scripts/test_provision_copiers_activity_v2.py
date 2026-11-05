@@ -92,7 +92,7 @@ class ActivityMetadataTests(unittest.TestCase):
     def test_choices_are_distinct_and_copy_does_not_modify_maintenance_template(self):
         originals = copy.deepcopy(provision.base.MAIN_COLUMNS)
         choices = {p["SchemaName"].lower(): p for p in provision.columns("dtc_copiersactivityv2")}
-        self.assertEqual([827270010, 827270011, 827270012], [o["Value"] for o in choices["dtc_maintenancetype"]["OptionSet"]["Options"]])
+        self.assertEqual([827270010, 827270011, 827270012, 827270013], [o["Value"] for o in choices["dtc_maintenancetype"]["OptionSet"]["Options"]])
         self.assertEqual([827270000, 827270001, 827270002, 827270003], [o["Value"] for o in choices["dtc_workflowstate"]["OptionSet"]["Options"]])
         self.assertEqual(originals, provision.base.MAIN_COLUMNS)
 

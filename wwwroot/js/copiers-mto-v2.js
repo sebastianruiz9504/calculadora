@@ -77,6 +77,9 @@
         serviceStartedAtLocal: document.getElementById("mtoV2ServiceStartedAtLocal"),
         serviceEndedAtLocal: document.getElementById("mtoV2ServiceEndedAtLocal"),
         visitStartLabel: document.getElementById("mtoV2VisitStartLabel"),
+        visitEndLabel: document.getElementById("mtoV2VisitEndLabel"),
+        workLabel: document.getElementById("mtoV2WorkLabel"),
+        workStepTitle: document.getElementById("mtoV2WorkStepTitle"),
         latitude: document.getElementById("mtoV2Latitude"),
         longitude: document.getElementById("mtoV2Longitude"),
         accuracy: document.getElementById("mtoV2Accuracy"),
@@ -264,7 +267,7 @@
             if (!isCurrent()) return;
             state.catalog.clients = (result.clients || result.Clients || []).map(normalizeClient).filter(Boolean);
             renderClientOptions();
-            if (clientId) {
+            if (clientId && kind !== "other") {
                 const response = await fetchActivityJson(`${root.dataset.equipmentUrl || "/CopiersMtoV2/Equipment"}?clientId=${encodeURIComponent(clientId)}&activityKind=${encodeURIComponent(kind)}`, "los equipos");
                 if (!isCurrent()) return;
                 applyEquipmentCatalog(response, kind);
@@ -646,7 +649,7 @@
             return option;
         });
         if (state.catalog.activitiesEnabled) {
-            for (const [value, label] of [["movement", "Movimiento de equipo"], ["toner", "Entrega de tóner"], ["counter", "Toma de contador"]]) {
+            for (const [value, label] of [["movement", "Movimiento de equipo"], ["toner", "Entrega de tóner"], ["counter", "Toma de contador"], ["other", "Otras actividades"]]) {
                 const option = document.createElement("option");
                 option.value = value;
                 option.textContent = label;
@@ -658,11 +661,11 @@
 
     function activityKind() {
         const kind = elements.activityKind?.value;
-        return ["movement", "toner", "counter"].includes(kind) ? kind : "maintenance";
+        return ["movement", "toner", "counter", "other"].includes(kind) ? kind : "maintenance";
     }
 
     function activityLabel() {
-        return activityKind() === "movement" ? "Movimiento de equipo" : activityKind() === "toner" ? "Entrega de tóner" : activityKind() === "counter" ? "Toma de contador" : "Mantenimiento";
+        return activityKind() === "movement" ? "Movimiento de equipo" : activityKind() === "toner" ? "Entrega de tóner" : activityKind() === "counter" ? "Toma de contador" : activityKind() === "other" ? "Otras actividades" : "Mantenimiento";
     }
 
     function changeActivityType() {
@@ -671,14 +674,17 @@
             window.location.assign("/CopiersEquipmentOperations");
             return;
         }
-        if (["movement", "toner", "counter"].includes(value) && !state.catalog.activitiesEnabled) {
+        if (["movement", "toner", "counter", "other"].includes(value) && !state.catalog.activitiesEnabled) {
             elements.maintenanceType.value = "";
             return;
         }
-        elements.activityKind.value = ["movement", "toner", "counter"].includes(value) ? value : "maintenance";
+        elements.activityKind.value = ["movement", "toner", "counter", "other"].includes(value) ? value : "maintenance";
         elements.formVersion.value = activityKind() === "maintenance" ? "copiers-mto-v2-2026-09-10" : "copiers-activity-v2-2026-09-10";
         elements.clientLabel.textContent = activityKind() === "movement" ? "Cliente destino" : "Cliente";
-        if (elements.visitStartLabel) elements.visitStartLabel.textContent = activityKind() === "counter" ? "Fecha y hora de ingreso" : "Inicio de la visita";
+        if (elements.visitStartLabel) elements.visitStartLabel.textContent = ["counter", "other"].includes(activityKind()) ? "Fecha y hora de ingreso" : "Inicio de la visita";
+        if (elements.visitEndLabel) elements.visitEndLabel.textContent = activityKind() === "other" ? "Fecha y hora de salida" : "Fecha y hora de retiro";
+        if (elements.workLabel) elements.workLabel.textContent = activityKind() === "other" ? "Notas de la actividad" : "Trabajo realizado";
+        if (elements.workStepTitle) elements.workStepTitle.textContent = activityKind() === "other" ? "Otras actividades" : activityKind() === "counter" ? "Toma de contador" : "Trabajo técnico";
         elements.serviceStartedAtLocal.setCustomValidity("");
         elements.serviceEndedAtLocal?.setCustomValidity("");
         elements.activityPanels.forEach(panel => {
@@ -723,12 +729,12 @@
         elements.retryEquipment.hidden = true;
         renderEquipmentOptions();
         syncCounterSelection();
-        if (clientId) void loadEquipmentCatalog();
+        if (clientId && activityKind() !== "other") void loadEquipmentCatalog();
     }
 
     async function loadEquipmentCatalog() {
         const client = state.catalog.selectedClient;
-        if (!client || state.equipmentCatalog.loading) return;
+        if (!client || activityKind() === "other" || state.equipmentCatalog.loading) return;
         const requestId = ++state.equipmentCatalog.requestId;
         const scope = state.equipmentCatalog.scope;
         const kind = activityKind();
@@ -1497,15 +1503,15 @@
 
         if (step === 1) {
             prepareCatalogValidity();
-            const start = new Date(elements.serviceStartedAtLocal.value + (activityKind() === "counter" ? "-05:00" : ""));
+            const start = new Date(elements.serviceStartedAtLocal.value + (["counter", "other"].includes(activityKind()) ? "-05:00" : ""));
             elements.serviceStartedAtLocal.setCustomValidity(start.getTime() > Date.now()
                 ? "La hora de entrada no puede estar en el futuro." : "");
-            if (activityKind() === "counter") {
+            if (["counter", "other"].includes(activityKind())) {
                 const end = new Date(elements.serviceEndedAtLocal.value + "-05:00");
                 elements.serviceEndedAtLocal.setCustomValidity(!Number.isFinite(end.getTime())
-                    ? "Selecciona la fecha y hora de retiro." : end <= start
-                    ? "El retiro debe ser posterior al ingreso." : end.getTime() > Date.now()
-                    ? "La fecha y hora de retiro no pueden estar en el futuro." : "");
+                    ? "Selecciona la fecha y hora de salida." : end <= start
+                    ? "La salida debe ser posterior al ingreso." : end.getTime() > Date.now()
+                    ? "La fecha y hora de salida no pueden estar en el futuro." : "");
             }
         }
 
@@ -1551,7 +1557,9 @@
         const serial = catalogKey(elements.equipmentSerial?.value);
         const catalogMatches = state.catalog.equipment.filter(item => catalogKey(item.serial) === serial);
         const belongsToSelectedClient = catalogMatches.some(item => sameCatalogId(item.clientId, elements.clientId?.value));
-        if (!state.equipmentCatalog.loaded) {
+        if (activityKind() === "other") {
+            elements.equipmentSerial?.setCustomValidity("");
+        } else if (!state.equipmentCatalog.loaded) {
             elements.equipmentSerial?.setCustomValidity("Espera a que termine la consulta de equipos o pulsa Reintentar equipos.");
         } else if (isExternalEquipment()) {
             elements.equipmentSerial?.setCustomValidity(serial ? "" : "Escribe el serial del equipo atendido.");
@@ -1966,14 +1974,14 @@
     }
 
     function updateVisitTimes(fixEnd) {
-        const start = new Date(elements.serviceStartedAtLocal.value + (activityKind() === "counter" ? "-05:00" : ""));
+        const start = new Date(elements.serviceStartedAtLocal.value + (["counter", "other"].includes(activityKind()) ? "-05:00" : ""));
         elements.serviceStartedAtUtc.value = Number.isNaN(start.getTime()) ? "" : start.toISOString();
-        if (activityKind() === "counter") {
+        if (["counter", "other"].includes(activityKind())) {
             const end = new Date(elements.serviceEndedAtLocal.value + "-05:00");
             elements.serviceEndedAtUtc.value = Number.isNaN(end.getTime()) ? "" : end.toISOString();
         } else if (fixEnd && !elements.serviceEndedAtUtc.value) elements.serviceEndedAtUtc.value = new Date().toISOString();
         elements.signatureStartedAt.textContent = formatLocalDateTime(elements.serviceStartedAtUtc.value) || "Pendiente";
-        elements.signatureEndedAt.textContent = formatLocalDateTime(elements.serviceEndedAtUtc.value) || (activityKind() === "counter" ? "Selecciona la fecha y hora de retiro" : "Se registra al solicitar la firma");
+        elements.signatureEndedAt.textContent = formatLocalDateTime(elements.serviceEndedAtUtc.value) || (["counter", "other"].includes(activityKind()) ? "Selecciona la fecha y hora de salida" : "Se registra al solicitar la firma");
     }
 
     function updateSignatureState() {
@@ -2031,8 +2039,9 @@
         replaceContents(elements.review,
             buildReviewSection("Servicio", [
                 reviewItem("Cliente", valueOf("mtoV2ClientName")),
-                reviewItem("Equipo", [valueOf("mtoV2EquipmentSerial"), ...state.additionalEquipment.map(item => item.serial)].join(" · ")),
-                reviewItem("Referencia del equipo", state.catalog.selectedEquipment?.reference || ""),
+                ...(activityKind() === "other" ? [] : [
+                    reviewItem("Equipo", [valueOf("mtoV2EquipmentSerial"), ...state.additionalEquipment.map(item => item.serial)].join(" · ")),
+                    reviewItem("Referencia del equipo", state.catalog.selectedEquipment?.reference || "")]),
                 reviewItem("Orden o referencia", valueOf("mtoV2ServiceReference") || "Se asigna al enviar"),
                 reviewItem("Hora de entrada", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtUtc"))),
                 reviewItem("Hora de salida", formatLocalDateTime(valueOf("mtoV2ServiceEndedAtUtc"))),
@@ -2046,6 +2055,10 @@
     }
 
     function buildActivityReviewSection() {
+        if (activityKind() === "other") return buildReviewSection("Otras actividades", [
+            reviewItem("Notas de la actividad", valueOf("mtoV2WorkPerformed"), true),
+            reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
+        ]);
         if (activityKind() === "counter") return buildReviewSection("Toma de contador", [
             reviewItem("Contadores", buildCountersSummary(), true),
             reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
@@ -2177,6 +2190,9 @@
             ["supply_name", "Nombre del suministro", state.supplies.selected?.name || ""],
             ["supply_quantity", "Cantidad entregada", valueOf("mtoV2SupplyQuantity")],
             ["supply_stock_before", "Existencias antes de la entrega", String(state.supplies.selected?.quantity ?? "")]
+        );
+        else if (activityKind() === "other") definitions.push(
+            ["activity_notes", "Notas de la actividad", valueOf("mtoV2WorkPerformed")]
         );
         else if (activityKind() === "maintenance") definitions.push(
             ["maintenance_type", "Tipo de mantenimiento", selectedText("mtoV2MaintenanceType")],

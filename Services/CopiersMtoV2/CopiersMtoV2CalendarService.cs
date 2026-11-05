@@ -108,7 +108,7 @@ public sealed class CopiersMtoV2CalendarService(
         var periodFilter = $"({_o.ServiceDateField} ge {from:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z)";
         // Signing happens after the selected exit. This bounds the overlap query
         // without requiring another timestamp column or scanning all old visits.
-        if (IsActivity) periodFilter += $" or ({_o.MaintenanceTypeField} eq {CopiersActivityV2Bindings.CounterType}"
+        if (IsActivity) periodFilter += $" or (({_o.MaintenanceTypeField} eq {CopiersActivityV2Bindings.CounterType} or {_o.MaintenanceTypeField} eq {CopiersActivityV2Bindings.OtherType})"
             + $" and {_o.ServiceDateField} lt {from:yyyy-MM-dd}T00:00:00Z and {_o.DeviceSignedAtUtcField} ge {fromUtc:yyyy-MM-ddTHH:mm:ssZ})";
         var historicalFilter = IsActivity ? "" : $" or {_o.WorkflowStateField} eq {CopiersMaintenanceHistory.HistoricalState}";
         var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null){historicalFilter})"
@@ -118,7 +118,7 @@ public sealed class CopiersMtoV2CalendarService(
             + $"&$orderby={_o.ServiceDateField} asc,{_o.MainIdField} asc", ct);
         var events = rows.Where(x => IsVisible(x)
                 && (allTechnicians || string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase)))
-            .Select(MapEvent).Where(x => x.ActivityKind == "counter"
+            .Select(MapEvent).Where(x => x.ActivityKind is "counter" or "other"
                 ? x.StartAtUtc < untilUtc && x.EndAtUtc > fromUtc
                 : string.CompareOrdinal(x.ServiceDate, from.ToString("yyyy-MM-dd")) >= 0
                     && string.CompareOrdinal(x.ServiceDate, until.ToString("yyyy-MM-dd")) < 0).ToList();
@@ -303,8 +303,8 @@ public sealed class CopiersMtoV2CalendarService(
         var end = recordedEnd ?? Instant(row, _o.DeviceSignedAtUtcField) ?? Instant(row, _o.ServerFinalizedAtUtcField);
         var start = ParseRecordedInstant(answers.FirstOrDefault(x => x.Key == "service_started_at_utc")?.Value)
             ?? ParseVisitStart(answers.FirstOrDefault(x => x.Key == "service_started_at")?.Value);
-        var isCounter = IsActivity && Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.CounterType;
-        var estimated = !start.HasValue || !end.HasValue || end <= start || !isCounter && end - start > TimeSpan.FromDays(1);
+        var selectedInterval = IsActivity && Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.CounterType or CopiersActivityV2Bindings.OtherType;
+        var estimated = !start.HasValue || !end.HasValue || end <= start || !selectedInterval && end - start > TimeSpan.FromDays(1);
         if (estimated)
         {
             end ??= new DateTimeOffset(ServiceDate(row).ToDateTime(new TimeOnly(12, 0)), BogotaOffset).ToUniversalTime();
@@ -436,7 +436,7 @@ public sealed class CopiersMtoV2CalendarService(
         _o.EvidencePurposeField, _o.EvidenceSequenceField, _o.EvidenceOriginalFileNameField, _o.EvidenceContentTypeField,
         _o.EvidenceSizeField, _o.EvidenceSha256Field, _o.EvidenceSecurityStateField);
     private bool IsHistorical(JsonElement row) => !IsActivity && CopiersMaintenanceHistory.IsHistorical(row);
-    private bool IsVisible(JsonElement row) => (!IsActivity || Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType or CopiersActivityV2Bindings.CounterType)
+    private bool IsVisible(JsonElement row) => (!IsActivity || Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType or CopiersActivityV2Bindings.CounterType or CopiersActivityV2Bindings.OtherType)
         && (IsHistorical(row) || Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue
             || Number(row, _o.WorkflowStateField) == _o.FailedStateValue
                 && IsHash(Text(row, _o.SignedReportEvidenceKeyField)) && IsHash(Text(row, _o.SignedReportSha256Field)));

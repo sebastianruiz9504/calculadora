@@ -495,6 +495,71 @@ public sealed class CopiersMtoV2ControllerTests
         AssertNoPersistence(fixture);
     }
 
+    [Fact]
+    public async Task OtherActivityQueuesAuthoritativeClientAndNoEquipmentWithoutQueryingEquipment()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CopiersOtherTests", Guid.NewGuid().ToString("N"));
+        var store = new CopiersSubmissionStore(root, new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+        try
+        {
+            var fixture = new Fixture(submissions: store);
+            fixture.Options.ActivitiesEnabled = true;
+            fixture.Controller.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim("tid", Guid.NewGuid().ToString()), new Claim("oid", Guid.NewGuid().ToString())], "test"));
+            fixture.Dataverse.DashboardException = new InvalidOperationException("Equipment is irrelevant to this activity");
+            fixture.SetForm("EquipmentId", "");
+            fixture.SetForm("EquipmentSerial", "");
+            fixture.SetForm("ClientName", "Untrusted client");
+            fixture.SetForm("CustomerEmail", "forged@example.test");
+            var now = DateTimeOffset.UtcNow;
+            var request = Request();
+            request.ActivityKind = "other";
+            request.FormVersion = CopiersActivityV2Bindings.FormVersion;
+            request.WorkPerformed = "Trasteo y organización de bodega";
+            request.DeviceSignedAtUtc = now;
+            request.LocationCapturedAtUtc = now;
+            request.Latitude = 4.71;
+            request.Longitude = -74.07;
+            request.AccuracyMeters = 10;
+            request.LocationSource = "navigator.geolocation";
+            var signature = CopiersMtoV2CompactPdfTests.Model().SignatureContent;
+            request.Signature = new FormFile(new MemoryStream(signature), 0, signature.Length, "Signature", "firma.jpg")
+                { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
+            var response = await fixture.Controller.Finalize(request, default);
+            Assert.True(response is AcceptedResult, JsonSerializer.Serialize((response as ObjectResult)?.Value));
+            var receipt = await store.FindAsync(CopiersSubmissionStore.Owner(fixture.Controller.User), SubmissionKey, default);
+            Assert.NotNull(receipt?.Payload);
+            var draft = receipt.Payload.Draft;
+            Assert.Equal(ClientId, draft.ClientId);
+            Assert.Equal("Cliente de catálogo", draft.ClientName);
+            Assert.Equal("copiers@example.com", draft.CustomerEmail);
+            Assert.Equal(CopiersActivityV2Bindings.OtherType, draft.MaintenanceTypeValue);
+            Assert.Equal("", draft.EquipmentId);
+            Assert.Equal("", draft.EquipmentSerial);
+            Assert.Equal(0, fixture.Dataverse.EquipmentDashboardReadCount);
+            AssertNoPersistence(fixture);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData("client", "client_not_found")]
+    [InlineData("equipment", "equipment_not_applicable")]
+    public async Task OtherActivityRejectsInvalidClientOrPostedEquipmentBeforePersistence(string field, string code)
+    {
+        var fixture = new Fixture();
+        fixture.Options.ActivitiesEnabled = true;
+        fixture.SetForm("EquipmentId", field == "equipment" ? EquipmentId : "");
+        if (field == "client") fixture.SetForm("ClientId", OtherClientId);
+        var request = Request();
+        request.ActivityKind = "other";
+        request.FormVersion = CopiersActivityV2Bindings.FormVersion;
+        var result = Assert.IsType<BadRequestObjectResult>(await fixture.Controller.Finalize(request, default));
+        Assert.Equal(code, Property(result.Value, "code"));
+        Assert.Equal(0, fixture.Dataverse.EquipmentDashboardReadCount);
+        AssertNoPersistence(fixture);
+    }
+
     private static void AssertNoPersistence(Fixture fixture)
     {
         Assert.Equal(0, fixture.Service.CreateCount);

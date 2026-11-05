@@ -13,11 +13,11 @@ const calendar = require("../wwwroot/js/copiers-mto-v2-calendar.js");
 const origin = "https://example.test";
 const eventId = "11111111-2222-3333-4444-555555555555";
 
-test("counter activities appear on the calendar without entering any maintenance total", () => {
-    const counter = { id: "activity:counter", activityKind: "counter", maintenanceType: "Toma de contador", workflowState: "ReadyToSend",
+for (const [kind, label] of [["counter", "Toma de contador"], ["other", "Otras actividades"]]) test(`${kind} activities appear on the calendar without entering any maintenance total`, () => {
+    const counter = { id: `activity:${kind}`, activityKind: kind, maintenanceType: label, workflowState: "ReadyToSend",
         technicianId: "tech-1", technicianName: "Técnico", clientId: "client-1", clientName: "Cliente",
         serviceDate: "2026-11-04", startAtUtc: "2026-11-04T13:00:00Z", endAtUtc: "2026-11-04T13:30:00Z" };
-    assert.equal(calendar.typeInfo(counter.maintenanceType).label, "Toma de contador");
+    assert.equal(calendar.typeInfo(counter.maintenanceType).label, label);
     assert.equal(calendar.monthDays([counter], "2026-11-01").find(x => x.key === "2026-11-04").events.length, 1);
     const summary = calendar.summarize([counter]);
     assert.equal(summary.total, 0);

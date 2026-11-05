@@ -57,7 +57,7 @@
         for (let key = start; key < end; key = addDays(key, 1)) {
             const inMonth = key >= first && key < until;
             days.push({ key, inMonth, events: inMonth ? events.filter(event => event.id && (eventDay(event) === key
-                || event.activityKind === "counter" && key === first && eventDay(event) < first && Date.parse(event.endAtUtc) > localDayStart(first)))
+                || ["counter", "other"].includes(event.activityKind) && key === first && eventDay(event) < first && Date.parse(event.endAtUtc) > localDayStart(first)))
                 .sort((a, b) => String(a.startAtUtc).localeCompare(String(b.startAtUtc)) || String(a.id).localeCompare(String(b.id))) : [] });
         }
         return days;
@@ -104,6 +104,7 @@
         if (normalized.includes("movimiento") || normalized === "movement") return { label: "Movimiento", css: "movement" };
         if (normalized.includes("toner")) return { label: "Entrega de tóner", css: "toner" };
         if (normalized === "toma de contador" || normalized === "counter") return { label: "Toma de contador", css: "counter" };
+        if (normalized === "otras actividades" || normalized === "other") return { label: "Otras actividades", css: "other" };
         if (["entrega de equipo", "retiro", "cambio", "salida interna", "recepcion interna", "recepcion de equipo"].includes(normalized)) return { label: value, css: "movement" };
         return { label: String(value || "Mantenimiento"), css: "other" };
     }
@@ -531,9 +532,9 @@
             fragment.append(movement);
         }
         const work = detailSection("Formulario y trabajo realizado");
-        detailFields(work, [["Trabajo realizado", detail.workPerformed], ["Observaciones del cliente", detail.customerObservations], ["Notas internas", detail.internalNotes]]);
+        detailFields(work, [[detail.activityKind === "other" ? "Notas de la actividad" : "Trabajo realizado", detail.workPerformed], ["Observaciones del cliente", detail.customerObservations], ["Notas internas", detail.internalNotes]]);
         const answers = Array.isArray(detail.answers) ? detail.answers : [];
-        detailFields(work, answers.filter(answer => !String(answer.key).startsWith("equipment_item_") && !["service_started_at_utc", "service_ended_at_utc"].includes(answer.key) && answer.value !== undefined && answer.value !== null && answer.value !== "").map(answer => [answer.label || answer.key, answer.value]));
+        detailFields(work, answers.filter(answer => !String(answer.key).startsWith("equipment_item_") && !["service_started_at_utc", "service_ended_at_utc", "activity_notes", "activity_kind"].includes(answer.key) && answer.value !== undefined && answer.value !== null && answer.value !== "").map(answer => [answer.label || answer.key, answer.value]));
         fragment.append(work);
         const signature = detailSection("Conformidad del cliente");
         detailFields(signature, [["Nombre del firmante", detail.signerName], ["Cargo o relación", detail.signerRole], ["Aceptó el reporte", detail.customerAccepted]]);

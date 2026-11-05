@@ -17,7 +17,7 @@ internal static class CopiersActivityV2Capture
         Match(request.ActivityKind, kind);
         var started = request.ServiceStartedAtUtc ?? throw Invalid("Falta la hora de entrada.");
         var ended = request.ServiceEndedAtUtc ?? throw Invalid("Falta la hora de salida.");
-        if (started > ended || kind == "counter" && started == ended || request.DeviceSignedAtUtc is null || ended > request.DeviceSignedAtUtc
+        if (started > ended || (kind is "counter" or "other") && started == ended || request.DeviceSignedAtUtc is null || ended > request.DeviceSignedAtUtc
             || DateOnly.FromDateTime(started.ToOffset(TimeSpan.FromHours(-5)).DateTime) != row.ServiceDate)
             throw Invalid("Revisa la entrada y salida de la visita antes de firmar.");
         foreach (var (key, value) in new[] { ("service_started_at_utc", started), ("service_ended_at_utc", ended) })
@@ -37,6 +37,14 @@ internal static class CopiersActivityV2Capture
             _ = CopiersMaintenanceV2Validation.RequiredGuid(row.EquipmentId, "equipment_invalid", "El equipo");
             answers = CopiersMtoV2CompactCapture.CanonicalizeCounters(answers);
             request.WorkPerformed = "Toma de contadores de impresiones y escaneos del equipo.";
+        }
+        else if (kind == "other")
+        {
+            if (!string.IsNullOrWhiteSpace(row.EquipmentId) || !string.IsNullOrWhiteSpace(row.EquipmentSerial))
+                throw Invalid("Otras actividades no corresponde a un equipo.");
+            var notes = CopiersMaintenanceV2Validation.Required(request.WorkPerformed, "activity_notes_required", "las notas de la actividad", CopiersMtoV2CompactCapture.WorkMaxLength);
+            Match(Value(answers, "activity_notes"), notes);
+            request.WorkPerformed = notes;
         }
         else
         {

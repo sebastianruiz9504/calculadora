@@ -437,6 +437,7 @@ public sealed class CopiersMtoV2CalendarTests
     [InlineData(827270010, "movement", "Movimiento")]
     [InlineData(827270011, "toner", "Entrega de tóner")]
     [InlineData(827270012, "counter", "Toma de contador")]
+    [InlineData(827270013, "other", "Otras actividades")]
     public async Task CalendarAggregatesRealActivityHeaderWithoutChangingMaintenanceIdentity(int type, string kind, string label)
     {
         var f = new Fixture(activities: true);
@@ -528,18 +529,20 @@ public sealed class CopiersMtoV2CalendarTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.DetailAsync("activity:" + Ticket));
     }
 
-    [Fact]
-    public async Task CounterVisitSpanningMonthsPreservesSelectedIntervalAndAppearsInBothPeriods()
+    [Theory]
+    [InlineData(CopiersActivityV2Bindings.CounterType, "counter")]
+    [InlineData(CopiersActivityV2Bindings.OtherType, "other")]
+    public async Task SelectedVisitSpanningMonthsPreservesIntervalAndAppearsInBothPeriods(int type, string kind)
     {
         var f = new Fixture(activities: true);
-        f.AddActivity(CopiersActivityV2Bindings.CounterType);
+        f.AddActivity(type);
         var row = f.ActivityRows.Single();
         row[f.Options.ServiceDateField] = "2026-09-30T00:00:00Z";
         row[f.Options.DeviceSignedAtUtcField] = "2026-10-02T15:01:00Z";
         row[f.Options.AnswersJsonField] = "[{\"key\":\"service_started_at_utc\",\"value\":\"2026-09-30T14:00:00Z\"},{\"key\":\"service_ended_at_utc\",\"value\":\"2026-10-02T15:00:00Z\"}]";
         foreach (var month in new[] { "2026-09-01", "2026-10-01" })
         {
-            var activity = Assert.Single((await f.Service.MonthAsync("all", month)).Events, x => x.ActivityKind == "counter");
+            var activity = Assert.Single((await f.Service.MonthAsync("all", month)).Events, x => x.ActivityKind == kind);
             Assert.False(activity.DurationEstimated);
             Assert.Equal(DateTimeOffset.Parse("2026-09-30T14:00:00Z"), activity.StartAtUtc);
             Assert.Equal(DateTimeOffset.Parse("2026-10-02T15:00:00Z"), activity.EndAtUtc);

@@ -12,6 +12,7 @@ public sealed class CopiersActivityV2PdfTests
     [InlineData("movement", "Movimiento de equipo")]
     [InlineData("toner", "Entrega de tóner")]
     [InlineData("counter", "Toma de contador")]
+    [InlineData("other", "Otras actividades")]
     public async Task ActivityReportIsOneCorporateLetterPageWithTypedFactsAndClientSignature(string kind, string title)
     {
         var model = Model(kind);
@@ -21,9 +22,10 @@ public sealed class CopiersActivityV2PdfTests
         Assert.Equal(612, page.Width, 2);
         Assert.Equal(792, page.Height, 2);
         var text = ContentOrderTextExtractor.GetText(page);
-        foreach (var expected in new[] { title, "ACT-000123", "Cliente destino de muestra SAS", "SERIAL-DEMO-001", "Ana Cliente",
+        foreach (var expected in new[] { title, "ACT-000123", "Cliente destino de muestra SAS", "Ana Cliente",
             "ana@example.test", "10/09/2026 08:00 COT", "10/09/2026 09:00 COT", "Conformidad del cliente", "evidencia-rodillos.jpg" })
             Assert.Contains(expected, text);
+        if (kind != "other") Assert.Contains("SERIAL-DEMO-001", text);
         Assert.Equal(3, page.GetImages().Count());
         Assert.Equal(2, page.GetImages().Count(x => x.WidthInSamples == 2637 && x.HeightInSamples == 502));
         foreach (var secret in new[] { "Preventivo", "Correctivo", "SECRET-ID", "STOCK-PRIVATE", "UBICACION-INTERNA-DEC0Y", "REGISTRO-INTERNO-DEC0Y" })
@@ -42,6 +44,13 @@ public sealed class CopiersActivityV2PdfTests
             Assert.Contains("Escaneos", text);
             Assert.DoesNotContain("Suministro", text);
             Assert.DoesNotContain("Trabajo realizado", text);
+        }
+        else if (kind == "other")
+        {
+            Assert.Contains("Notas de la actividad", text);
+            Assert.Contains("Trasteo y arreglo de bodega", text);
+            foreach (var excluded in new[] { "Serial", "Referencia", "Suministro", "Contadores", "Impresiones", "Escaneos", "Trabajo realizado" })
+                Assert.DoesNotContain(excluded, text);
         }
         else
         {
@@ -77,7 +86,7 @@ public sealed class CopiersActivityV2PdfTests
     [Theory]
     [InlineData("")]
     [InlineData("maintenance")]
-    [InlineData("other")]
+    [InlineData("unknown")]
     public async Task UnknownActivityKindCannotGenerateAMisleadingMaintenanceReport(string kind)
     {
         var exception = await Assert.ThrowsAsync<CopiersMaintenanceV2ValidationException>(() => new CopiersMtoV2ProfessionalPdfBuilder().BuildAsync(Model(kind)));
@@ -92,8 +101,10 @@ public sealed class CopiersActivityV2PdfTests
         model.ClientName = "Cliente destino de muestra SAS";
         model.WorkPerformed = kind == "movement" ? "Reubicación por reorganización de la oficina. Se entrega el equipo en el destino indicado."
             : kind == "counter" ? "Toma de contadores de impresiones y escaneos del equipo."
+            : kind == "other" ? "Trasteo y arreglo de bodega. Se organizaron cajas, estantes y herramientas."
             : "Entrega de dos unidades de tóner negro Ricoh MP 501. El cliente confirma la recepción del suministro.";
         model.CustomerObservations = "Entrega recibida y verificada por el cliente.";
+        if (kind == "other") model.EquipmentSerial = "";
         model.Answers = model.Answers.Where(x => x.Key != "recommendations").Concat(new[] {
             Answer("activity_kind", kind), Answer("origin_client_id", "SECRET-ID"), Answer("origin_client_name", "Cliente origen de muestra SAS"),
             Answer("destination_client_name", model.ClientName), Answer("movement_reason", "Reubicación por reorganización de la oficina"),
