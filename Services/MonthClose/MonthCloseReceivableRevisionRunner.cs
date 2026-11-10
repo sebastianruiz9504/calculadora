@@ -13,6 +13,8 @@ public static class MonthCloseReceivableRevisionRunner
         var root = Path.GetFullPath(outputPath);
         var planPath = Path.Combine(root, "plan.json");
         var existing = await repository.ListAsync(2025, ct);
+        if(existing.Any(s=>s.Reports.Any(r=>r.Key=="profit-cloud")))
+            throw new InvalidOperationException("El cierre está congelado y no admite revisiones administrativas.");
         if (!apply)
         {
             if (File.Exists(planPath)) throw new InvalidOperationException("Ya existe un plan; aplica el plan revisado o elige otra carpeta.");

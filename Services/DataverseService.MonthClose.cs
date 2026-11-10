@@ -26,6 +26,13 @@ public sealed partial class DataverseService : IMonthCloseRepository
     async Task<bool> IMonthCloseRepository.CreateAsync(MonthCloseSnapshot snapshot,CancellationToken ct)
     {
         var s=snapshot.Summary;s.Id=MonthCloseCodec.IdFor(s.Period,s.Revision);
+        if(s.Mode=="live")throw new InvalidOperationException("La observación abierta se guarda por su ruta independiente.");
+        if(s.Revision>1)
+        {
+            var versions=(await ((IMonthCloseRepository)this).ListAsync(MonthCloseEngine.ParsePeriod(s.Period).Year,ct)).Where(v=>v.Period==s.Period).ToList();
+            if(versions.All(v=>v.Id!=s.Id)&&versions.Any(v=>v.Reports.Any(r=>r.Key=="profit-cloud")))
+                throw new InvalidOperationException("El cierre está congelado; tampoco admite revisiones administrativas.");
+        }
         var (body,hash)=MonthCloseCodec.Encode(snapshot);s.Hash=hash;
         var payload=new Dictionary<string,object?>{
             ["cr07a_name"]=$"Cierre {s.Period} · v{s.Revision}",["cr07a_periodo"]=s.Period,["cr07a_anio"]=MonthCloseEngine.ParsePeriod(s.Period).Year,

@@ -15,7 +15,7 @@ La ampliación inicial del histórico agrega una nueva versión con utilidad y Y
 
 ## Validación y operación
 
-Se verificaron 1.099 pruebas .NET, seis pruebas de interacción y los popups, filtros YTD, detalle de solo lectura, mes cerrado y tamaño móvil en navegador. `scripts/verify_month_close_upgrade.py` verifica con el SDK oficial que los originales conservan su hash y sus reportes.
+Se verificaron 1.100 pruebas .NET, seis pruebas de interacción y los popups, filtros YTD, detalle de solo lectura, mes cerrado y tamaño móvil en navegador. También se bloquea la ruta administrativa antigua para cierres congelados. `scripts/verify_month_close_upgrade.py` verifica con el SDK oficial que los originales conservan su hash y sus reportes.
 
 1. Compilar Release y ejecutar `scripts/Run-MonthClose.ps1 -Mode DashboardPreview`.
 2. Ejecutar `scripts/verify_month_close_upgrade.py` para comprobar que los reportes financieros se conservan.

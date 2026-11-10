@@ -7,6 +7,14 @@ namespace CotizadorInterno.Web.Tests;
 
 public sealed class MonthCloseRevisionRunnerTests
 {
+    [Fact] public async Task FrozenDashboardRejectsTheLegacyAdministrativeRevisionBeforeAnyWrite()
+    {
+        using var files=new Files();var repo=new Repository();
+        repo.Stored.Values.First().Summary.Reports.Add(new("profit-cloud","Utilidad","captured","","","COP",0,0,0));
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>MonthCloseReceivableRevisionRunner.RunAsync(repo,files.Source,files.Root,false,default));
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>MonthCloseReceivableRevisionRunner.RunAsync(repo,null,files.Root,true,default));
+        Assert.Equal(0,repo.Writes);Assert.False(File.Exists(Path.Combine(files.Root,"plan.json")));
+    }
     [Fact] public async Task ApplyUsesFrozenPlanAndRetryDoesNotCreateMoreVersions()
     {
         using var files = new Files(); var repo = new Repository();
