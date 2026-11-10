@@ -8,7 +8,7 @@ namespace CotizadorInterno.Web.Services.MonthClose;
 public static partial class MonthCloseEngine
 {
     public const int FirstYear = 2025;
-    public static readonly string[] ReportKeys = ["receivables", "payables", "billing", "forecast", "inventory", "assets", "vacations", "banks"];
+    public static readonly string[] ReportKeys = ["receivables", "payables", "billing", "forecast", "inventory", "assets", "vacations", "banks", "business", "profit-cloud", "profit-copiers", "profit-detail", "account-audit"];
     public static DateOnly BogotaToday(DateTimeOffset utc) => DateOnly.FromDateTime(utc.ToOffset(TimeSpan.FromHours(-5)).DateTime);
     public static DateOnly ParsePeriod(string period)
     {
@@ -19,18 +19,25 @@ public static partial class MonthCloseEngine
     }
 
     public static MonthCloseSnapshot Build(string period, int revision, MonthCloseInput input)
+        => BuildCore(period, revision, input, false);
+
+    public static MonthCloseSnapshot BuildLive(MonthCloseInput input)
+        => BuildCore(BogotaToday(input.RetrievedAt).ToString("yyyy-MM"), 1, input, true);
+
+    private static MonthCloseSnapshot BuildCore(string period, int revision, MonthCloseInput input, bool live)
     {
         var start = ParsePeriod(period);
         var end = start.AddMonths(1);
         var today = BogotaToday(input.RetrievedAt);
-        if (end > today) throw new ArgumentException("El mes está abierto. No se puede guardar como cierre.");
+        if (!live && end > today) throw new ArgumentException("El mes está abierto. No se puede guardar como cierre.");
+        if (live) end = today.AddDays(1);
         // Mutable operational fields cannot be projected backwards. Even on the first
         // day they are labeled with their observation time, not asserted to be midnight.
-        var captureOperational = today == end && input.RetrievedAt.ToOffset(TimeSpan.FromHours(-5)).Hour == 0;
+        var captureOperational = live || today == end && input.RetrievedAt.ToOffset(TimeSpan.FromHours(-5)).Hour == 0;
         var result = new MonthCloseSnapshot
         {
             Summary = new() { Period = period, Revision = revision, CapturedAt = input.RetrievedAt,
-                Cutoff = end.AddDays(-1).ToString("yyyy-MM-dd"), Mode = captureOperational ? "captured" : "reconstructed" },
+                Cutoff = end.AddDays(-1).ToString("yyyy-MM-dd"), Mode = live ? "live" : captureOperational ? "captured" : "reconstructed" },
             SourceCounts = input.Tables.Concat(input.Siigo).ToDictionary(x => x.Key, x => x.Value.Count)
         };
         var dvInvoices = input.Source("billing").Where(x => !IsDemoInvoice(x)).ToList();
@@ -115,6 +122,7 @@ public static partial class MonthCloseEngine
         result.Summary.BillingLines=billing.Rows.Where(x=>x["base"] is not null).GroupBy(x=>Convert.ToString(x["line"])??"Sin asignar").Select(g=>new MonthCloseSlice(g.Key,g.Sum(x=>Convert.ToDecimal(x["base"])))).ToList();
         AddOperational(result,input,captureOperational);
         AddBanks(result,input,period);
+        if (input.Tables.ContainsKey("accounts")) AddProfitability(result, input, start, end, captureOperational);
         result.Summary.Warnings.Add("Los cierres reconstruidos no equivalen a una captura tomada en el pasado. Los saldos pendientes de soporte se identifican y no se presentan como cero.");
         if(ar.Unresolved>0)result.Summary.Warnings.Add($"Cartera: {ar.Unresolved} documentos sin saldo histórico determinable, excluidos del total identificable.");
         result.Summary.Warnings.Add($"Proveedores: saldo parcial identificable de compras Siigo. {ap.Unresolved} documentos sin saldo verificable quedan excluidos del total; faltan auxiliares de documentos soporte y obligaciones fuera de compras.");
@@ -193,7 +201,7 @@ public static partial class MonthCloseEngine
 
     private static MonthCloseReport FinancialReport(string key,string title)=>new(){Key=key,Title=title,Columns=[
         new("document","Documento"),new("party","Tercero"),new("taxId","NIT"),new("line","Línea"),new("date","Emisión","date"),new("due","Vence","date"),
-        new("base","Servicio / base","money"),new("tax","Impuestos","money"),new("retentions","Retenciones de factura","money"),new("total","Total neto documento","money"),
+        new("base","Valor antes de IVA","money"),new("tax","IVA / impuestos","money"),new("retentions","Retenciones de factura","money"),new("total","Total neto documento","money"),
         new("applications","Aplicaciones al corte","money"),new("notes","Notas crédito al corte","money"),new("balance","Saldo al corte","money"),new("quality","Calidad / alcance"),new("support","Comprobantes"),new("source","ID fuente")]};
     internal static (decimal Base,decimal Tax,decimal Retentions) Amounts(JsonElement doc)
     {

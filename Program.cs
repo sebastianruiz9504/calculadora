@@ -168,6 +168,14 @@ builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));
 builder.Services.Configure<HardwareOptions>(builder.Configuration.GetSection("Hardware"));
 
+if (args.Contains("--month-close-dashboard-preview") || args.Contains("--month-close-dashboard-apply"))
+{
+    using var commandApp=builder.Build();using var scope=commandApp.Services.CreateScope();
+    var service=scope.ServiceProvider.GetRequiredService<MonthCloseService>();
+    Console.WriteLine($"Cierres preparados: {await service.UpgradeDashboardAsync(args.Contains("--month-close-dashboard-apply"),builder.Configuration["MonthClose:OutputPath"]??"tmp/month-close-dashboard",default)}");
+    return;
+}
+
 if (args.Contains("--month-close-review-receivables") || args.Contains("--month-close-apply-receivables"))
 {
     using var commandApp = builder.Build();

@@ -1,32 +1,36 @@
 <div class="dashboard-tab-panel" data-dashboard-panel="month-close" hidden>
-    <section class="mc" id="monthCloseApp" data-index-url="@Url.Action("Index","MonthClose")" data-report-url="@Url.Action("Report","MonthClose")" data-export-url="@Url.Action("Export","MonthClose")">
+    <section class="mc" id="monthCloseApp" data-index-url="@Url.Action("Index","MonthClose")" data-report-url="@Url.Action("Report","MonthClose")" data-export-url="@Url.Action("Export","MonthClose")" data-ytd-url="@Url.Action("Ytd","MonthClose")">
         <header class="mc-heading">
-            <div><span class="mc-eyebrow">HISTORIA FINANCIERA · DIGITAL TECH</span><h2>Cierre de mes</h2><p>Reportes y soportes de cada mes. La misma cifra cuando vuelvas.</p></div>
-            <div class="mc-controls"><label>Año<select id="mcYear" aria-label="Año del cierre"></select></label><button type="button" id="mcRefresh" class="mc-button">↻ Consultar cierres</button></div>
+            <div><span class="mc-eyebrow">FINANZAS · DIGITAL TECH</span><h2>Cierre de mes</h2><p>El mes en movimiento. Cada cierre, conservado.</p></div>
+            <div class="mc-controls"><label>Año<select id="mcYear" aria-label="Año del cierre"></select></label><button type="button" id="mcRefresh" class="mc-button">↻ Consultar última captura</button></div>
         </header>
-        <div id="mcStatus" role="status" aria-live="polite" class="mc-status">Selecciona esta pestaña para consultar los cierres.</div>
+        <div id="mcStatus" role="status" aria-live="polite" class="mc-status">Selecciona esta pestaña para consultar el panel.</div>
         <nav id="mcMonths" class="mc-months" aria-label="Mes del cierre"></nav>
         <div id="mcEmpty" class="mc-empty" hidden></div>
         <div id="mcContent" hidden>
-            <div class="mc-seal"><div><strong id="mcPeriodTitle"></strong><span id="mcMode" class="mc-badge"></span><p id="mcCapture"></p></div><label>Versión guardada<select id="mcVersion" aria-label="Versión del cierre"></select></label></div>
+            <div class="mc-seal"><div><strong id="mcPeriodTitle"></strong><span id="mcMode" class="mc-badge"></span><p id="mcCapture"></p></div><label id="mcVersionLabel">Versión guardada<select id="mcVersion" aria-label="Versión del cierre"></select></label></div>
             <div id="mcMetrics" class="mc-metrics"></div>
             <div class="mc-charts">
-                <article class="mc-panel"><div class="mc-panel-title"><div><h3>Cartera por vencimiento</h3><p>Saldo identificable al corte · COP</p></div><span class="mc-chart-icon">◷</span></div><div id="mcAging" class="mc-bars"></div></article>
-                <article class="mc-panel"><div class="mc-panel-title"><div><h3>Facturación por negocio</h3><p>Base identificable · COP</p></div><span class="mc-chart-icon">▥</span></div><div id="mcLines" class="mc-bars"></div></article>
+                <article class="mc-panel"><div class="mc-panel-title"><div><h3>Cartera por vencimiento</h3><p>Selecciona un rango para consultar sus documentos · COP</p></div><span class="mc-chart-icon" aria-hidden="true">◷</span></div><div id="mcAging" class="mc-bars"></div></article>
+                <article class="mc-panel"><div class="mc-panel-title"><div><h3>Facturación por negocio</h3><p>Base neta y participación sobre la facturación total</p></div><span class="mc-chart-icon" aria-hidden="true">▥</span></div><div id="mcLines" class="mc-bars"></div></article>
             </div>
-            <article class="mc-panel"><div class="mc-panel-title"><div><h3>El año, mes a mes</h3><p>Base disponible, descontando notas crédito identificadas. Cada mes muestra su cobertura.</p></div><span class="mc-badge">Datos guardados</span></div><div id="mcTrend" class="mc-trend" aria-label="Facturación mensual"></div></article>
-            <div class="mc-section-title"><h3>Reportes del cierre</h3><span>Abre un reporte para ver su detalle y cobertura</span></div>
-            <div id="mcReports" class="mc-reports"></div>
-            <section class="mc-panel" id="mcDetail" hidden aria-labelledby="mcDetailTitle">
-                <div class="mc-panel-title"><div><h3 id="mcDetailTitle"></h3><p id="mcDetailSubtitle"></p></div><a id="mcExport" class="mc-button" href="#">↓ Descargar Excel</a></div>
-                <div id="mcBankAccounts" class="mc-bank-accounts" hidden></div>
-                <p id="mcNeeded" class="mc-needed"></p>
-                <div class="mc-detail-tools"><input id="mcSearch" type="search" placeholder="Buscar documento, cliente o comprobante…" aria-label="Buscar en el reporte"><span id="mcCount"></span></div>
-                <div class="mc-table-wrap" role="region" aria-label="Tabla del reporte; desplazamiento horizontal disponible" tabindex="0"><table><caption class="visually-hidden" id="mcTableCaption">Detalle del reporte de cierre mensual</caption><thead id="mcTableHead"></thead><tbody id="mcTableBody"></tbody></table></div>
-                <div class="mc-pagination"><button type="button" id="mcPrevious" class="mc-button">← Anterior</button><span id="mcPage"></span><button type="button" id="mcNext" class="mc-button">Siguiente →</button></div>
+            <article class="mc-panel" id="mcYtdPanel"><div class="mc-panel-title"><div><h3>El año, mes a mes</h3><p>Ingresos, gastos y utilidad con los filtros del YTD. Abre cada segmento para consultar su detalle.</p></div><span class="mc-badge">Solo consulta</span></div><div id="mcYtdStatus" role="status">El gráfico se carga al llegar a esta sección.</div><div id="mcYtdMount"></div></article>
+            <section class="mc-panel" aria-labelledby="mcProfitTitle">
+                <div class="mc-panel-title"><div><h3 id="mcProfitTitle">Utilidad por cliente</h3><p>Facturación sin IVA menos costos asociados del mes. Selecciona un cliente para ver el cruce.</p></div><div class="mc-segmented" role="group" aria-label="Vertical de utilidad"><button type="button" class="mc-button" data-mc-vertical="cloud" aria-pressed="true">Cloud</button><button type="button" class="mc-button" data-mc-vertical="copiers" aria-pressed="false">Copiers</button></div></div>
+                <div class="mc-detail-tools"><input id="mcProfitSearch" type="search" placeholder="Buscar cliente, grupo o Account ID…" aria-label="Buscar cliente en utilidad" maxlength="150"><button id="mcAccountAudit" type="button" class="mc-button">Revisar Account ID</button></div>
+                <p id="mcProfitNote" class="mc-profit-note"></p><div id="mcProfitStatus" role="status" aria-live="polite"></div>
+                <div class="mc-table-wrap" tabindex="0" role="region" aria-label="Utilidad por cliente"><table><caption class="visually-hidden">Utilidad y costos por cliente</caption><thead id="mcProfitHead"></thead><tbody id="mcProfitBody"></tbody><tfoot id="mcProfitFoot"></tfoot></table></div>
+                <div class="mc-pagination"><span id="mcProfitCount"></span><button id="mcProfitPrevious" type="button" class="mc-button">← Anterior</button><span id="mcProfitPage"></span><button id="mcProfitNext" type="button" class="mc-button">Siguiente →</button></div>
             </section>
-            <details class="mc-panel mc-evidence"><summary>Alcance, calidad e integridad del cierre</summary><ul id="mcWarnings"></ul><p>Los pagos posteriores no alteran este corte. Las correcciones se conservan como otra versión, sin reemplazar la anterior.</p><p>Los reportes operativos solo se capturan cuando existe información temporal suficiente. “Pendiente” no significa saldo cero.</p><code id="mcHash"></code></details>
+            <details class="mc-panel mc-evidence"><summary>Alcance e integridad del cierre</summary><ul id="mcWarnings"></ul><p>Las cifras sin soporte se muestran como pendientes. El cierre conserva la última captura completa del mes, incluidas sus reglas de costo y sus detalles.</p><code id="mcHash"></code></details>
         </div>
-        <footer class="mc-footer">Corte en hora de Colombia · Captura automática al iniciar cada mes · Datos consultados solo al abrir el detalle</footer>
+        <footer class="mc-footer">Hora de Colombia · Mes abierto con captura automática cada 5 minutos, más el tiempo de lectura de las fuentes · Cierres en solo consulta</footer>
     </section>
 </div>
+<dialog id="mcModal" class="mc mc-dialog" aria-labelledby="mcDetailTitle">
+    <header class="mc-panel-title mc-dialog-header"><div><span class="mc-eyebrow" id="mcDetailPeriod"></span><h3 id="mcDetailTitle">Detalle del mes</h3><p id="mcDetailSubtitle"></p></div><div class="mc-controls"><a id="mcExport" class="mc-button" href="#" hidden>↓ Excel</a><button id="mcClose" type="button" class="mc-button" autofocus>Cerrar ✕</button></div></header>
+    <p id="mcNeeded" class="mc-needed" hidden></p>
+    <div class="mc-detail-tools"><input id="mcSearch" type="search" placeholder="Buscar documento, cliente o concepto…" aria-label="Buscar en el detalle" maxlength="150"><span id="mcCount" role="status" aria-live="polite"></span></div>
+    <div class="mc-table-wrap mc-dialog-table" role="region" aria-label="Detalle; desplazamiento horizontal disponible" tabindex="0"><table><caption class="visually-hidden" id="mcTableCaption">Detalle del cierre</caption><thead id="mcTableHead"></thead><tbody id="mcTableBody"></tbody><tfoot id="mcTableFoot"></tfoot></table></div>
+    <div class="mc-pagination"><button type="button" id="mcPrevious" class="mc-button">← Anterior</button><span id="mcPage"></span><button type="button" id="mcNext" class="mc-button">Siguiente →</button></div>
+</dialog>

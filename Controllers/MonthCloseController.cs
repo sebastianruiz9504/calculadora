@@ -24,7 +24,11 @@ public sealed class MonthCloseController(MonthCloseService service,IDataverseSer
         if(year is <MonthCloseEngine.FirstYear or >2100)return BadRequest(new{message="Año inválido."});
         try
         {
-            var data=await service.ListAsync(year,ct);var access=await ReadPermissions(ct);var canReadVacation=access.Vacations;var canReadBanks=access.Banks;
+            var listTask=service.ListAsync(year,ct);var permissionTask=ReadPermissions(ct);
+            var currentTask=year==MonthCloseEngine.BogotaToday(DateTimeOffset.UtcNow).Year?service.CurrentAsync(ct):Task.FromResult<MonthCloseSummary?>(null);
+            await Task.WhenAll(listTask,permissionTask,currentTask);
+            var data=(await listTask).ToList();if(await currentTask is {} current)data.Add(current);
+            var access=await permissionTask;var canReadVacation=access.Vacations;var canReadBanks=access.Banks;
             // Never mutate cached summaries, and never leak payroll totals to dashboard-only users.
             var sanitized=data.Select(s=>new{
                 s.Id,s.Period,s.Revision,s.Mode,s.Cutoff,s.CapturedAt,s.Hash,s.Aging,s.BillingLines,s.Warnings,
@@ -35,7 +39,7 @@ public sealed class MonthCloseController(MonthCloseService service,IDataverseSer
         catch(Exception ex)when(ex is not OperationCanceledException){logger.LogError(ex,"No se pudo leer el índice de cierres.");return StatusCode(503,new{message="No fue posible consultar los cierres guardados. Intenta nuevamente."});}
     }
     [HttpGet]
-    public async Task<IActionResult> Report(Guid id,string key,int page=1,int pageSize=50,string? search=null,CancellationToken ct=default)
+    public async Task<IActionResult> Report(Guid id,string key,int page=1,int pageSize=50,string? search=null,CancellationToken ct=default,string? line=null,int? aging=null,string? clientKey=null)
     {
         if(!MonthCloseEngine.ReportKeys.Contains(key)||id==Guid.Empty)return BadRequest();
         if(key is "vacations" or "banks"){var access=await ReadPermissions(ct);if(key=="vacations"?!access.Vacations:!access.Banks)return Forbid();}
@@ -43,18 +47,44 @@ public sealed class MonthCloseController(MonthCloseService service,IDataverseSer
         var report=snapshot.Reports.SingleOrDefault(x=>x.Key==key);if(report is null)return NotFound();
         pageSize=Math.Clamp(pageSize,10,100);page=Math.Max(page,1);search=(search??"").Trim();
         if(search.Length>150)return BadRequest(new{message="La búsqueda admite hasta 150 caracteres."});
-        var filtered=report.Rows.Where(r=>search==""||r.Values.Any(v=>(Convert.ToString(v,CultureInfo.InvariantCulture)??"").Contains(search,StringComparison.OrdinalIgnoreCase))).ToList();
+        if(line?.Length>50||clientKey?.Length>200||aging is <0 or >3)return BadRequest();
+        var filtered=FilterRows(snapshot,report,line,aging,clientKey).Where(r=>search==""||r.Values.Any(v=>(Convert.ToString(v,CultureInfo.InvariantCulture)??"").Contains(search,StringComparison.OrdinalIgnoreCase))).ToList();
         var pages=Math.Max(1,(int)Math.Ceiling(filtered.Count/(decimal)pageSize));page=Math.Min(page,pages);
         return Json(new{report.Key,report.Title,report.State,report.Message,report.Needed,report.Unit,report.Total,report.Unresolved,report.Columns,report.BankAccounts,
-            rows=filtered.Skip((page-1)*pageSize).Take(pageSize),page,pages,count=filtered.Count,totalCount=report.Rows.Count,snapshot.Summary.Hash});
+            rows=filtered.Skip((page-1)*pageSize).Take(pageSize),page,pages,count=filtered.Count,totalCount=report.Rows.Count,snapshot.Summary.Hash,snapshot.Summary.CapturedAt,
+            totals=report.Columns.Where(c=>c.Type=="money").ToDictionary(c=>c.Key,c=>filtered.Any(r=>MonthCloseEngine.Text(r,c.Key)!="")?(decimal?)filtered.Sum(r=>MonthCloseEngine.Value(r,c.Key)):null)});
     }
     [HttpGet]
-    public async Task<IActionResult> Export(Guid id,string key,CancellationToken ct=default)
+    public async Task<IActionResult> Ytd(Guid id,CancellationToken ct=default)
+    {
+        if(id==Guid.Empty)return BadRequest();
+        var data=await service.YtdAsync(id,ct);return data is null?NotFound():Json(data);
+    }
+    private static IEnumerable<Dictionary<string,object?>> FilterRows(MonthCloseSnapshot snapshot,MonthCloseReport report,string? line,int? aging,string? clientKey)
+    {
+        var rows=report.Rows.AsEnumerable();
+        if(!string.IsNullOrEmpty(line))rows=rows.Where(r=>MonthCloseEngine.Text(r,"line")==line);
+        if(!string.IsNullOrEmpty(clientKey))rows=rows.Where(r=>MonthCloseEngine.Text(r,"key")==clientKey);
+        if(aging.HasValue)
+        {
+            var cutoff=DateOnly.ParseExact(snapshot.Summary.Cutoff,"yyyy-MM-dd",CultureInfo.InvariantCulture);
+            rows=rows.Where(r=>MonthCloseEngine.Text(r,"balance")!=""&&DateOnly.TryParse(MonthCloseEngine.Text(r,"due"),out var due)
+                && AgingBucket(Math.Max(0,cutoff.DayNumber-due.DayNumber))==aging.Value);
+        }
+        return rows;
+    }
+    private static int AgingBucket(int days)=>days==0?0:days<=30?1:days<=60?2:3;
+    [HttpGet]
+    public async Task<IActionResult> Export(Guid id,string key,CancellationToken ct=default,string? line=null,int? aging=null,string? clientKey=null)
     {
         if(!MonthCloseEngine.ReportKeys.Contains(key)||id==Guid.Empty)return BadRequest();
         if(key is "vacations" or "banks"){var access=await ReadPermissions(ct);if(key=="vacations"?!access.Vacations:!access.Banks)return Forbid();}
         var snapshot=await service.ReadAsync(id,ct);if(snapshot is null)return NotFound();
         var report=snapshot.Reports.SingleOrDefault(x=>x.Key==key);if(report is null)return NotFound();
+        if(line?.Length>50||clientKey?.Length>200||aging is <0 or >3)return BadRequest();
+        // A filtered export works on a detached copy; never mutate a cached snapshot.
+        report=System.Text.Json.JsonSerializer.Deserialize<MonthCloseReport>(System.Text.Json.JsonSerializer.Serialize(report,MonthCloseCodec.Json),MonthCloseCodec.Json)!;
+        report.Rows=FilterRows(snapshot,report,line,aging,clientKey).ToList();
         using var workbook=new XLWorkbook();var sheet=workbook.AddWorksheet("Cierre mensual");
         sheet.Cell(1,1).Value=report.Title+" · "+snapshot.Summary.Period+" · v"+snapshot.Summary.Revision;
         sheet.Cell(2,1).Value=report.Message;sheet.Cell(3,1).Value="Pendiente: "+report.Needed;

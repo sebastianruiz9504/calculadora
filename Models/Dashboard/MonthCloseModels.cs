@@ -44,6 +44,8 @@ public sealed class MonthCloseSnapshot
     public Dictionary<string, int> SourceCounts { get; set; } = [];
     public Dictionary<string, string> SourceHashes { get; set; } = [];
     public List<MonthCloseReport> Reports { get; set; } = [];
+    public YtdDashboardDto? Ytd { get; set; }
+    public MonthCloseCostPolicy? CostPolicy { get; set; }
 }
 public sealed class MonthCloseInput
 {
@@ -51,7 +53,17 @@ public sealed class MonthCloseInput
     public Dictionary<string, List<JsonElement>> Tables { get; set; } = [];
     public Dictionary<string, List<JsonElement>> Siigo { get; set; } = [];
     public MonthCloseBankEvidence? BankEvidence { get; set; }
+    public MonthCloseCostPolicy CostPolicy { get; set; } = new();
     public List<JsonElement> Source(string key) => Tables.GetValueOrDefault(key) ?? Siigo.GetValueOrDefault(key) ?? [];
+}
+
+public sealed class MonthCloseCostPolicy
+{
+    public decimal Maintenance { get; set; } = 100000m;
+    public decimal BogotaFreight { get; set; } = 40000m;
+    public decimal RegionalFreight { get; set; } = 100000m;
+    public decimal OtherFreight { get; set; } = 500000m;
+    public string[] RegionalCities { get; set; } = ["Chía", "Cajicá", "Cota", "Funza", "Mosquera", "Madrid", "Soacha", "Sibaté", "La Calera", "Sopó", "Tocancipá", "Gachancipá", "Tabio", "Tenjo", "Zipaquirá", "Facatativá", "Cartagena", "Santa Marta", "Barranquilla"];
 }
 
 public sealed record MonthCloseBankAccount(string Account, decimal Opening, decimal Credits, decimal Debits, decimal Closing);

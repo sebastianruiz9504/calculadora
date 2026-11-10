@@ -8182,6 +8182,44 @@
         renderYtdReconciliation(dashboard);
     }
 
+    // The closing panel reuses the complete YTD renderer and its filters. It owns
+    // a saved dataset, with every edit capability removed at the source.
+    let monthCloseYtdMounted = false;
+    let regularYtdDashboard = null;
+    const regularYtdPanel = document.querySelector('[data-dashboard-panel="ytd"]');
+    const sharedYtdSection = regularYtdPanel?.querySelector('.ytd-dashboard');
+    window.MonthCloseYtd = {
+        mount(dashboard, host, preserveFilters = false) {
+            if (!sharedYtdSection || !host || state.activeTab !== "month-close") return;
+            const retained = {};
+            if (preserveFilters && monthCloseYtdMounted) {
+                for (const [side, group] of [["Revenue", "revenueFilters"], ["Expense", "expenseFilters"]]) {
+                    for (const [dimension, options] of [["Category", "categories"], ["Client", "clients"], ["Vertical", "verticals"], ["ContractType", "contractTypes"]]) {
+                        const key = `ytd${side}${dimension}Keys`;
+                        const previous = state.ytdDashboard?.[group]?.[options] || [];
+                        if (previous.some(o => o.key && !state[key].has(o.key))) retained[key] = state[key];
+                    }
+                    retained[`ytd${side}Breakdown`] = state[`ytd${side}Breakdown`];
+                }
+            }
+            if (!monthCloseYtdMounted) regularYtdDashboard = state.ytdDashboard;
+            monthCloseYtdMounted = true;
+            host.append(sharedYtdSection);
+            updateYtdContext(dashboard);
+            Object.assign(state, retained);
+            syncYtdBreakdownControls();
+            renderYtdDashboard(dashboard);
+        },
+        release() {
+            if (!monthCloseYtdMounted) return;
+            closeYtdDetailModal();
+            regularYtdPanel?.append(sharedYtdSection);
+            monthCloseYtdMounted = false;
+            state.ytdDashboard = regularYtdDashboard;
+            if (regularYtdDashboard) { updateYtdContext(regularYtdDashboard); renderYtdDashboard(regularYtdDashboard); }
+        }
+    };
+
     function renderYtdFilters(dashboard) {
         renderYtdDropdownFilter(
             ytdRevenueCategoryFilters,
@@ -8998,7 +9036,7 @@
     }
 
     function canEditYtdRecord(record) {
-        return Boolean(record?.canEditCategory
+        return !monthCloseYtdMounted && Boolean(record?.canEditCategory
             || record?.canEditVertical
             || record?.canEditAllocation
             || record?.canEditContractType);
@@ -9297,6 +9335,8 @@
         ytdDetailModal.hidden = false;
         document.body.classList.add("dashboard-modal-open");
         updateYtdDetailToolbarState();
+        const toolbar = document.getElementById("ytdDetailToolbar");
+        if (toolbar) toolbar.hidden = monthCloseYtdMounted;
     }
 
     function readYtdNumericSelect(row, fieldKey) {
@@ -13360,6 +13400,7 @@
     }
 
     function setActiveTab(tabKey) {
+        if (tabKey !== "month-close") window.MonthCloseYtd?.release();
         state.activeTab = tabKey;
         syncPeriodScopeVisibility();
 
@@ -14486,6 +14527,7 @@
 
         try {
             const dashboard = await fetchJson(buildYtdUrl());
+            if (monthCloseYtdMounted) { regularYtdDashboard = dashboard; return; }
             updateYtdContext(dashboard);
             renderYtdDashboard(dashboard);
             setStatus(
