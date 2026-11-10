@@ -41,6 +41,7 @@
         nextButtons: Array.from(root.querySelectorAll("[data-next-step]")),
         previousButtons: Array.from(root.querySelectorAll("[data-previous-step]")),
         status: document.getElementById("mtoV2Status"),
+        discardDraft: document.getElementById("mtoV2DiscardDraft"),
         submitStatus: document.getElementById("mtoV2SubmitStatus"),
         previousAttempt: document.getElementById("mtoV2PreviousAttempt"),
         technicianName: document.getElementById("mtoV2TechnicianName"),
@@ -178,6 +179,7 @@
         updateNarrativeCounts();
         initializeCatalogPickers();
         wireEvents();
+        elements.discardDraft?.addEventListener("click", () => { void discardDraft(); });
         void initializeRecovery();
         initializeSignaturePad();
         renderFiles();
@@ -237,6 +239,7 @@
             recoveryMessage("No está disponible el guardado local. No cierres ni recargues esta pestaña antes de confirmar el envío.", true);
         } finally {
             form.inert = false; state.recoveryReady = true;
+            if (elements.discardDraft) elements.discardDraft.disabled = false;
         }
         form.addEventListener("input", scheduleRecovery);
         form.addEventListener("change", scheduleRecovery);
@@ -377,7 +380,7 @@
     }
 
     async function resumeSubmission() {
-        if (state.recovering || state.successConfirmed) return;
+        if (state.recovering || state.successConfirmed || state.resetting) return;
         state.recovering = true; state.submitting = true; setSubmitState("pending");
         try {
             if (navigator.onLine === false) throw new Error("Pendiente de conexión. El envío está guardado en este dispositivo y se reintentará al volver a estar en línea.");
@@ -411,19 +414,30 @@
                 return;
             }
             setStatus(elements.submitStatus, receipt.status === "needs_review" ? "error" : "info", receipt.message);
-            recoveryMessage("Recibido en el servidor. Puedes cerrar esta pestaña; el registro queda protegido.");
-            if (receipt.status !== "needs_review") window.setTimeout(() => { void resumeSubmission(); }, 10000);
+            recoveryMessage(receipt.status === "needs_review"
+                ? "El envío requiere revisión. Puedes usar Borrar borrador y empezar de cero; antes comprobaremos que no exista un reporte en proceso."
+                : receipt.status === "discarded"
+                    ? "Este borrador fue descartado. Pulsa Borrar borrador y empezar de cero para limpiar este dispositivo."
+                    : "Recibido en el servidor. Puedes cerrar esta pestaña; el registro queda protegido.");
+            if (!["needs_review", "discarded"].includes(receipt.status))
+                state.resumeTimer = window.setTimeout(() => { void resumeSubmission(); }, 10000);
         } catch (error) {
             if (error.correctable) {
                 state.pendingUpload = null;
+                state.receiptKey = "";
+                state.submitting = false;
+                setSubmitState("idle");
+                clearSignature();
+                showStep(1);
                 await saveRecovery().catch(() => {});
                 setStatus(elements.submitStatus, "error", error.message);
+                setStatus(elements.status, "error", `${error.message} Conservamos los datos y las evidencias para que puedas corregirlos y volver a firmar.`);
                 return;
             }
             setStatus(elements.submitStatus, "error", error.message || "El envío queda pendiente. No cierres si el guardado local no está disponible.");
             recoveryMessage("Pendiente de conexión o confirmación. No crees otro registro para reemplazar este envío.", true);
             // Bounded retry interval; the receipt is queried before every upload.
-            window.setTimeout(() => { if (navigator.onLine !== false) void resumeSubmission(); }, 30000);
+            state.resumeTimer = window.setTimeout(() => { if (navigator.onLine !== false) void resumeSubmission(); }, 30000);
         } finally {
             state.recovering = false;
             if (!root.classList.contains("is-submitted")) {
@@ -2336,6 +2350,10 @@
     function setSubmitState(mode) {
         const pending = mode === "pending";
         const completed = mode === "sent" || mode === "created";
+        if (elements.discardDraft) {
+            elements.discardDraft.disabled = pending || state.resetting || !state.recoveryReady;
+            elements.discardDraft.hidden = completed;
+        }
         root.setAttribute("aria-busy", pending ? "true" : "false");
         elements.submitButton.disabled = pending || completed;
         elements.submitButton.classList.toggle("is-pending", pending);
@@ -2392,6 +2410,44 @@
         } else {
             window.alert(`${title.textContent}\n${message.textContent}`);
             void startNewRequest();
+        }
+    }
+
+    async function discardDraft() {
+        if (!state.recoveryReady || state.submitting || state.recovering || state.resetting || state.recordCreated) return;
+        if (!window.confirm("¿Borrar este borrador y empezar de cero? Se eliminarán de este dispositivo los datos, la firma y las fotos del formulario. Los reportes ya creados se conservan.")) return;
+        state.resetting = true;
+        state.recoveryReady = false;
+        if (elements.discardDraft) elements.discardDraft.disabled = true;
+        form.inert = true;
+        window.clearTimeout(state.recoveryTimer);
+        window.clearTimeout(state.resumeTimer);
+        try {
+            if (state.submissionAttempted || state.pendingUpload || state.receiptKey) {
+                const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+                const payload = new FormData();
+                payload.set("submissionKey", state.receiptKey || elements.submissionKey.value);
+                payload.set("__RequestVerificationToken", token);
+                const response = await recoveryFetch("/CopiersMtoV2/DiscardDraft", {
+                    method: "POST", body: payload, credentials: "same-origin",
+                    headers: { Accept: "application/json", RequestVerificationToken: token }
+                }, 20000);
+                const result = await readResponse(response);
+                if (!response.ok || response.redirected || result?.status !== "discarded")
+                    throw new Error(result?.message || "No pudimos comprobar el estado del envío. Conservamos el borrador; vuelve a intentarlo cuando tengas conexión y la sesión esté activa.");
+            }
+            await (state.recoveryWrite || Promise.resolve()).catch(() => {});
+            await window.CopiersMtoV2Drafts.remove(root.dataset.recoveryOwner);
+            removeStoredSubmissionId();
+            state.pendingUpload = null;
+            state.receiptKey = "";
+            window.location.assign(elements.createAnother.href);
+        } catch (error) {
+            state.resetting = false;
+            state.recoveryReady = true;
+            form.inert = false;
+            if (elements.discardDraft) elements.discardDraft.disabled = false;
+            recoveryMessage(error.message || "No fue posible borrar el borrador. Tus datos se conservan; vuelve a intentarlo.", true);
         }
     }
 

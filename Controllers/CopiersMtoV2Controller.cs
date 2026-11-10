@@ -60,6 +60,23 @@ public sealed class CopiersMtoV2Controller : Controller
         return item is null ? NotFound() : Ok(CopiersSubmissionStore.Status(item));
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DiscardDraft(string submissionKey, CancellationToken ct)
+    {
+        if (_submissions is null || _activities is null) return StatusCode(503);
+        if (string.IsNullOrWhiteSpace(submissionKey) || submissionKey.Length > 128) return BadRequest();
+        try
+        {
+            var discarded = await _submissions.DiscardAsync(CopiersSubmissionStore.Owner(User), submissionKey,
+                _activities.VerifyDiscardableDraftAsync, ct);
+            return Ok(CopiersSubmissionStore.Status(discarded));
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (CopiersMaintenanceV2ConcurrencyException ex) { return Conflict(Error(ex.Message, code: "discard_not_safe")); }
+        catch (CopiersMaintenanceV2PersistenceException ex) { return StatusCode(502, Error(ex.Message)); }
+    }
+
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]

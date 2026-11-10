@@ -178,5 +178,65 @@ public sealed class CopiersSubmissionStoreTests : IDisposable
         await Worker(Store()).ProcessAsync(item.Id, default, (_, _) => throw new Exception("Must not run"));
         Assert.Equal(1, (await Store().FindAsync(Owner, Key, default))!.Attempts);
     }
+    [Fact] public async Task DiscardBeforeReceiptBlocksALateUploadAndIsIdempotent()
+    {
+        var store = Store();
+        var first = await store.DiscardAsync(Owner, Key, (_, _) => throw new Exception("Nothing was received"), default);
+        Assert.NotNull(first.DiscardedAtUtc);
+        Assert.Null(first.Payload);
+        Assert.Contains("discarded", JsonSerializer.Serialize(CopiersSubmissionStore.Status(first)));
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => store.ReceiveAsync(Owner, Draft(), Request(), Actor(), default));
+        var again = await Store().DiscardAsync(Owner, Key, (_, _) => throw new Exception("Already discarded"), default);
+        Assert.Equal(first.DiscardedAtUtc, again.DiscardedAtUtc);
+        await Worker(store).ProcessAsync(first.Id, default, (_, _) => throw new Exception("Discarded receipts cannot run"));
+    }
+
+    [Fact] public async Task DiscardRejectedDraftRequiresReadBackAndKeepsAuditWithoutFiles()
+    {
+        var store = Store();
+        var item = await store.ReceiveAsync(Owner, Draft(), Request(), Actor(), default);
+        await Worker(store).ProcessAsync(item.Id, default, (_, _) => throw new CopiersMaintenanceV2ValidationException("activity_snapshot_invalid", "Revisar datos"));
+        var checks = 0;
+        var discarded = await store.DiscardAsync(Owner, Key, (receipt, _) => { checks++; Assert.Equal(item.Fingerprint, receipt.Fingerprint); return Task.CompletedTask; }, default);
+        Assert.Equal(1, checks);
+        Assert.NotNull(discarded.DiscardedAtUtc);
+        Assert.Null((await Store().FindAsync(Owner, Key, default))!.Payload);
+        Assert.Equal(item.Fingerprint, discarded.Fingerprint);
+        for (int i = 0; i < 10; i++) { var request = Request(); request.SubmissionKey = Key + i; await store.ReceiveAsync(Owner, Draft(), request, Actor(), default); }
+    }
+
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("completed")]
+    [InlineData("previous_attempt")]
+    [InlineData("unverified")]
+    public async Task DiscardNeverReleasesAmbiguousOrCompletedSubmission(string kind)
+    {
+        var store = Store();
+        var item = await store.ReceiveAsync(Owner, Draft(), Request(), Actor(), default);
+        if (kind != "pending")
+        {
+            item.NeedsReview = true; item.Attempts = kind == "previous_attempt" ? 2 : 1;
+            if (kind == "completed") item.Result = new() { RecordId = Guid.NewGuid().ToString(), State = CopiersMaintenanceV2WorkflowState.ReadyToSend };
+            await store.WriteAsync(item, default);
+        }
+        var checks = 0;
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => store.DiscardAsync(Owner, Key, (_, _) => { checks++; throw new CopiersMaintenanceV2ConcurrencyException("Read-back did not prove rejection"); }, default));
+        Assert.Equal(kind == "unverified" ? 1 : 0, checks);
+        var restored = (await Store().FindAsync(Owner, Key, default))!;
+        Assert.Null(restored.DiscardedAtUtc);
+        Assert.NotNull(restored.Payload);
+        Assert.Equal(item.Fingerprint, restored.Fingerprint);
+    }
+
+    [Fact] public async Task DiscardIsScopedToAuthenticatedOwner()
+    {
+        var store = Store();
+        await store.ReceiveAsync(Owner, Draft(), Request(), Actor(), default);
+        await store.DiscardAsync("tenant/other", Key, (_, _) => throw new Exception("Other owner cannot inspect receipt"), default);
+        Assert.Null((await store.FindAsync(Owner, Key, default))!.DiscardedAtUtc);
+        Assert.NotNull((await store.FindAsync(Owner, Key, default))!.Payload);
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 }

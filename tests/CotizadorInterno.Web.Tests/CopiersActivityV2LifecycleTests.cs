@@ -307,6 +307,51 @@ public sealed class CopiersActivityV2LifecycleTests
     }
 
     [Theory]
+    [InlineData("safe")]
+    [InlineData("sent")]
+    [InlineData("processing")]
+    [InlineData("fingerprint")]
+    [InlineData("report")]
+    [InlineData("other_error")]
+    [InlineData("another_owner")]
+    [InlineData("missing_field")]
+    [InlineData("missing_row")]
+    [InlineData("duplicate_row")]
+    [InlineData("unavailable")]
+    public async Task DiscardChecksAuthoritativeUnpublishedRowWithoutAnyBusinessWrite(string scenario)
+    {
+        var f = new ControllerFixture();
+        var o = f.Bindings;
+        o.OperationKeyField = "dtc_operationkey"; o.LastErrorCodeField = "dtc_lasterrorcode";
+        o.FinalizationFingerprintField = "dtc_finalizationfingerprint"; o.SignatureEvidenceKeyField = "dtc_signatureevidencekey";
+        o.SignedReportEvidenceKeyField = "dtc_signedreportevidencekey"; o.SignedReportSha256Field = "dtc_reportsha256";
+        o.ReadyAtUtcField = "dtc_readyatutc"; o.ProviderDraftIdField = "dtc_providerdraftid"; o.InternetMessageIdField = "dtc_internetmessageid";
+        var request = OtherRequest();
+        var item = new CopiersSubmission { SubmissionKey = SubmissionKey, NeedsReview = true, Attempts = 1,
+            Payload = new() { RequestJson = JsonSerializer.Serialize(request), Actor = Actor(), Draft = new() { SubmissionKey = SubmissionKey } } };
+        var row = new Dictionary<string, object?> {
+            [o.TechnicianUserIdField] = TechnicianId, [o.WorkflowStateField] = o.FailedStateValue,
+            [o.EmailStateField] = o.EmailNotReadyStateValue, [o.LastErrorCodeField] = "activity_snapshot_invalid",
+            [o.FinalizationFingerprintField] = null, [o.SignatureEvidenceKeyField] = null, [o.SignedReportEvidenceKeyField] = null,
+            [o.SignedReportSha256Field] = null, [o.ReadyAtUtcField] = null, [o.ProviderDraftIdField] = null, [o.InternetMessageIdField] = null
+        };
+        if (scenario == "sent") row[o.EmailStateField] = o.EmailSentStateValue;
+        if (scenario == "processing") row[o.WorkflowStateField] = o.FinalizingStateValue;
+        if (scenario == "fingerprint") row[o.FinalizationFingerprintField] = "previously-persisted";
+        if (scenario == "report") row[o.SignedReportEvidenceKeyField] = "signed-report";
+        if (scenario == "other_error") row[o.LastErrorCodeField] = "finalization_failed";
+        if (scenario == "another_owner") row[o.TechnicianUserIdField] = OriginId;
+        if (scenario == "missing_field") row.Remove(o.ReadyAtUtcField);
+        if (scenario == "unavailable") f.App.Status = HttpStatusCode.ServiceUnavailable;
+        f.App.Response = JsonSerializer.Serialize(new { value = scenario == "missing_row" ? Array.Empty<object>() : scenario == "duplicate_row" ? new object[] { row, row } : new object[] { row } });
+        if (scenario == "safe") await f.Runtime.VerifyDiscardableDraftAsync(item, default);
+        else if (scenario == "another_owner") await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Runtime.VerifyDiscardableDraftAsync(item, default));
+        else if (scenario == "unavailable") await Assert.ThrowsAsync<CopiersMaintenanceV2PersistenceException>(() => f.Runtime.VerifyDiscardableDraftAsync(item, default));
+        else await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => f.Runtime.VerifyDiscardableDraftAsync(item, default));
+        Assert.Contains(CopiersActivityV2Bindings.MainEntitySet + "?", Assert.Single(f.App.Reads));
+    }
+
+    [Theory]
     [InlineData("maintenance", 827270000, 0)]
     [InlineData("movement", 827270001, 1)]
     [InlineData("toner", 827270002, 2)]
@@ -549,6 +594,23 @@ public sealed class CopiersActivityV2LifecycleTests
         changed.WorkPerformed = "Otro trabajo";
         ChangeAnswer(changed, "activity_notes", changed.WorkPerformed);
         await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => f.Service().FinalizeMultipartAsync(changed, Actor()));
+    }
+
+    [Theory]
+    [InlineData("Primera tarea\nSegunda tarea", "Primera tarea\r\nSegunda tarea")]
+    [InlineData("Primera tarea\r\n\r\nSegunda tarea", "Primera tarea\n\nSegunda tarea")]
+    public async Task OtherActivityAcceptsMultipartLineEndingsWithoutChangingSignedText(string snapshot, string multipart)
+    {
+        var f = OtherLifecycle();
+        var request = OtherRequest();
+        request.WorkPerformed = multipart;
+        ChangeAnswer(request, "activity_notes", snapshot);
+        var result = await f.Service().FinalizeMultipartAsync(request, Actor());
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, result.State);
+        Assert.Equal(multipart, Assert.Single(f.Repository.Completed).WorkPerformed);
+        Assert.Equal(snapshot, Assert.Single(f.Repository.Completed).Answers.Single(x => x.Key == "activity_notes").Value);
+        Assert.True((await f.Service(Now.AddDays(2)).FinalizeMultipartAsync(request, Actor())).IdempotentReplay);
+        Assert.Equal(1, f.Repository.PublishCalls);
     }
 
     [Theory]

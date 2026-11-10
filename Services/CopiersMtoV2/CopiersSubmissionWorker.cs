@@ -17,7 +17,7 @@ public sealed class CopiersSubmissionWorker(CopiersSubmissionStore store, IServi
                 foreach (var id in store.PendingIds())
                 {
                     var snapshot = await store.ReadAsync(id, stoppingToken);
-                    if (snapshot is null || snapshot.Result is not null || snapshot.NeedsReview || snapshot.NextAttemptUtc > DateTimeOffset.UtcNow) continue;
+                    if (snapshot is null || snapshot.Result is not null || snapshot.DiscardedAtUtc.HasValue || snapshot.NeedsReview || snapshot.NextAttemptUtc > DateTimeOffset.UtcNow) continue;
                     try { await ProcessAsync(id, stoppingToken); }
                     catch (IOException) { /* Another worker holds this receipt; next scan will reconcile it. */ }
                 }
@@ -33,7 +33,7 @@ public sealed class CopiersSubmissionWorker(CopiersSubmissionStore store, IServi
     {
         await using var lease = await store.LockAsync(id, stoppingToken);
         var item = await store.ReadAsync(id, stoppingToken);
-        if (item?.Payload is null || item.Result is not null || item.NeedsReview || item.NextAttemptUtc > DateTimeOffset.UtcNow) return;
+        if (item?.Payload is null || item.Result is not null || item.DiscardedAtUtc.HasValue || item.NeedsReview || item.NextAttemptUtc > DateTimeOffset.UtcNow) return;
         item.Attempts++;
         // Persist admission before doing any remote business write. A process exit
         // resumes this same immutable payload, never creates a replacement key.

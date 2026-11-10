@@ -43,7 +43,10 @@ internal static class CopiersActivityV2Capture
             if (!string.IsNullOrWhiteSpace(row.EquipmentId) || !string.IsNullOrWhiteSpace(row.EquipmentSerial))
                 throw Invalid("Otras actividades no corresponde a un equipo.");
             var notes = CopiersMaintenanceV2Validation.Required(request.WorkPerformed, "activity_notes_required", "las notas de la actividad", CopiersMtoV2CompactCapture.WorkMaxLength);
-            Match(Value(answers, "activity_notes"), notes);
+            // Multipart text fields use CRLF while the JSON snapshot preserves LF.
+            // Compare equivalent line endings without rewriting the signed payload
+            // or its finalization fingerprint on a replay.
+            Match(Value(answers, "activity_notes").ReplaceLineEndings("\n"), notes.ReplaceLineEndings("\n"));
             request.WorkPerformed = notes;
         }
         else

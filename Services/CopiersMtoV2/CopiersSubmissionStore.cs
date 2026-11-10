@@ -71,6 +71,8 @@ public sealed class CopiersSubmissionStore
         var old = await ReadAsync(id, ct);
         if (old is not null)
         {
+            if (old.DiscardedAtUtc.HasValue)
+                throw new CopiersMaintenanceV2ConcurrencyException("Este borrador fue descartado. Inicia un registro nuevo.");
             if (old.Fingerprint != hash) throw new CopiersMaintenanceV2ConcurrencyException("Esta clave ya recibió otro contenido firmado. Recupera el envío original.");
             return old;
         }
@@ -79,7 +81,7 @@ public sealed class CopiersSubmissionStore
         foreach (var path in Directory.EnumerateFiles(_directory, "*.json"))
         {
             var entry = await ReadAsync(Path.GetFileNameWithoutExtension(path), ct);
-            if (entry?.Owner == owner && entry.Result is null) pending++;
+            if (entry?.Owner == owner && entry.Result is null && !entry.DiscardedAtUtc.HasValue) pending++;
         }
         if (pending >= 10) throw new CopiersMaintenanceV2ValidationException("pending_limit", "Hay diez envíos pendientes. Revisa su estado antes de crear otro.");
         var item = new CopiersSubmission { Id = id, Owner = owner, SubmissionKey = request.SubmissionKey,
@@ -91,6 +93,32 @@ public sealed class CopiersSubmissionStore
     {
         var item = await ReadAsync(Key(owner, key), ct);
         return item?.Owner == owner ? item : null;
+    }
+
+    public async Task<CopiersSubmission> DiscardAsync(string owner, string key,
+        Func<CopiersSubmission, CancellationToken, Task> verifyUnpublished, CancellationToken ct)
+    {
+        var id = Key(owner, key);
+        await using var ownerLock = await LockAsync(Key(owner, "owner"), ct);
+        await using var lease = await LockAsync(id, ct);
+        var item = await ReadAsync(id, ct);
+        if (item?.DiscardedAtUtc.HasValue == true) return item;
+        if (item is not null)
+        {
+            if (item.Owner != owner) throw new UnauthorizedAccessException();
+            if (item.Result is not null || !item.NeedsReview || item.Attempts != 1 || item.Payload is null)
+                throw new CopiersMaintenanceV2ConcurrencyException("El envío ya fue recibido y puede estar procesándose o tener un reporte creado. Conservamos el borrador para evitar duplicados.");
+            // A validation error can occur after a business write. Only an
+            // authoritative read proving rejection before publication may release it.
+            await verifyUnpublished(item, ct);
+        }
+        item ??= new CopiersSubmission { Id = id, Owner = owner, SubmissionKey = key, ReceivedAtUtc = DateTimeOffset.UtcNow };
+        item.DiscardedAtUtc = DateTimeOffset.UtcNow;
+        item.Payload = null;
+        // Keep a tombstone: a delayed POST with the old key must never resurrect
+        // the discarded capture. No report, evidence or business row is deleted.
+        await WriteAsync(item, ct);
+        return item;
     }
     internal IEnumerable<string> PendingIds() => Directory.Exists(_directory)
         ? Directory.EnumerateFiles(_directory, "*.json").Select(Path.GetFileNameWithoutExtension).OfType<string>() : [];
@@ -133,9 +161,9 @@ public sealed class CopiersSubmissionStore
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
     public static object Status(CopiersSubmission item) => new { received = true, submissionKey = item.SubmissionKey,
-        status = item.Result is not null ? "completed" : item.NeedsReview ? "needs_review" : "received",
+        status = item.DiscardedAtUtc.HasValue ? "discarded" : item.Result is not null ? "completed" : item.NeedsReview ? "needs_review" : "received",
         receivedAtUtc = item.ReceivedAtUtc, result = item.Result,
-        message = item.Result is not null ? "Registro creado; consultando el correo." : item.NeedsReview ? item.Error : "Recibido de forma segura. El servidor está preparando el registro y el PDF." };
+        message = item.DiscardedAtUtc.HasValue ? "Borrador descartado. Puedes iniciar un registro nuevo." : item.Result is not null ? "Registro creado; consultando el correo." : item.NeedsReview ? item.Error : "Recibido de forma segura. El servidor está preparando el registro y el PDF." };
 }
 public sealed class CopiersSubmission
 {
@@ -147,6 +175,7 @@ public sealed class CopiersSubmission
     public DateTimeOffset NextAttemptUtc { get; set; }
     public int Attempts { get; set; }
     public bool NeedsReview { get; set; }
+    public DateTimeOffset? DiscardedAtUtc { get; set; }
     public string Error { get; set; } = "";
     public CopiersSubmissionPayload? Payload { get; set; }
     public CopiersMaintenanceV2FinalizeResultDto? Result { get; set; }

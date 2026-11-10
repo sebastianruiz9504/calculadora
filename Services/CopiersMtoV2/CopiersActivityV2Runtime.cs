@@ -42,6 +42,42 @@ public sealed class CopiersActivityV2Runtime(
         return document.RootElement.GetProperty("value").GetArrayLength() == 0;
     }
 
+    public async Task VerifyDiscardableDraftAsync(CopiersSubmission item, CancellationToken ct)
+    {
+        var payload = item.Payload ?? throw new InvalidOperationException("Falta el contenido del envío.");
+        var request = JsonSerializer.Deserialize<CopiersMaintenanceV2FinalizeMultipartRequestDto>(payload.RequestJson)!;
+        // activity_snapshot_invalid is raised before PDF, counters, inventory or
+        // publication. Existing receipts do not persist exception codes, so read
+        // the authoritative row instead of trusting a browser flag or message.
+        if (item.Result is not null || !item.NeedsReview || item.Attempts != 1
+            || request.ActivityKind is not ("movement" or "toner" or "counter" or "other")
+            || request.SubmissionKey != item.SubmissionKey || payload.Draft.SubmissionKey != item.SubmissionKey)
+            throw new CopiersMaintenanceV2ConcurrencyException("Este envío requiere revisión interna antes de poder descartarlo.");
+        var o = CopiersActivityV2Bindings.Create(bindings.Value);
+        var filter = $"{o.OperationKeyField} eq '{item.SubmissionKey.Replace("'", "''", StringComparison.Ordinal)}'";
+        var fields = new[] { o.TechnicianUserIdField, o.WorkflowStateField, o.EmailStateField, o.LastErrorCodeField,
+            o.FinalizationFingerprintField, o.SignatureEvidenceKeyField, o.SignedReportEvidenceKeyField,
+            o.SignedReportSha256Field, o.ReadyAtUtcField, o.ProviderDraftIdField, o.InternetMessageIdField };
+        using var response = await client.SendAsync($"/api/data/v9.2/{o.MainEntitySetName}?$select={string.Join(',', fields)}&$filter={Uri.EscapeDataString(filter)}&$top=2",
+            HttpMethod.Get, null, null, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new CopiersMaintenanceV2PersistenceException("No fue posible verificar el envío. Conservamos el borrador; vuelve a intentarlo.");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        var rows = document.RootElement.GetProperty("value");
+        if (rows.GetArrayLength() != 1)
+            throw new CopiersMaintenanceV2ConcurrencyException("No se pudo identificar un único borrador rechazado. El envío requiere revisión interna.");
+        var row = rows[0];
+        string Text(string field) => row.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+        if (!string.Equals(Text(o.TechnicianUserIdField), payload.Actor.SystemUserId, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException();
+        if (row.GetProperty(o.WorkflowStateField).GetInt32() != o.FailedStateValue
+            || row.GetProperty(o.EmailStateField).GetInt32() != o.EmailNotReadyStateValue
+            || Text(o.LastErrorCodeField) != "activity_snapshot_invalid"
+            || fields.Skip(4).Any(field => !row.TryGetProperty(field, out var value)
+                || value.ValueKind != JsonValueKind.Null && (value.ValueKind != JsonValueKind.String || !string.IsNullOrEmpty(value.GetString()))))
+            throw new CopiersMaintenanceV2ConcurrencyException("El envío puede tener un reporte o una operación registrada. Conservamos el borrador para evitar duplicados.");
+    }
+
     public async Task<object> StatusAsync(string recordId, string activityKind, string technicianId, CancellationToken ct)
     {
         var id = CopiersMaintenanceV2Validation.RequiredGuid(recordId, "record_invalid", "El registro");
