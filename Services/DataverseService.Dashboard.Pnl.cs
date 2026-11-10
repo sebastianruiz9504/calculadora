@@ -625,7 +625,8 @@ public sealed partial class DataverseService
         DateOnly startInclusive,
         DateOnly endExclusive,
         ClaimsPrincipal user,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool useUtcCalendarBounds = false)
     {
         Exception? lastError = null;
         foreach (var dateField in DashboardExpenseEmissionDateFieldCandidates)
@@ -649,7 +650,7 @@ public sealed partial class DataverseService
 
             var filter = BuildBillingDateFilter(
                 dateField.FieldName,
-                dateField.FieldKind,
+                useUtcCalendarBounds ? "date-time" : dateField.FieldKind,
                 startInclusive,
                 endExclusive);
 

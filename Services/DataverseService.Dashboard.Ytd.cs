@@ -48,7 +48,11 @@ public sealed partial class DataverseService
             yearStart,
             periodEndExclusive,
             httpContext.User,
-            ct);
+            ct,
+            // ParsePnlExpenseRow and the frozen close use the stored calendar date.
+            // Dataverse interprets date-only filter literals in the caller's zone,
+            // omitting records at 00:00Z on January 1 unless the bounds are explicit.
+            useUtcCalendarBounds: true);
 
         var rebatesTask = _sharePointRebatesProvider.GetSnapshotAsync(ct);
 

@@ -11,6 +11,8 @@ El panel usa capturas persistidas. La primera consulta lee solamente resúmenes;
 
 El borrador mensual tiene un ID separado y actualizaciones condicionales por versión. Al comenzar el mes siguiente se copia su última observación completa a un cierre creado una sola vez; conserva la fecha real de observación. No se recalculan los cierres nuevos con fuentes actuales. Si no existe ninguna observación anterior, el cierre se identifica como reconstruido.
 
+El YTD original también usa límites UTC explícitos al consultar gastos para respetar la fecha de calendario almacenada, igual que el cierre. Se verificó contra Dataverse que el filtro anterior omitía cuatro gastos de `2026-01-01T00:00:00Z`, por COP 21.150.000. La corrección no cambia registros ni capturas cerradas.
+
 La ampliación inicial del histórico agrega una nueva versión con utilidad y YTD reconstruidos, conservando cada reporte financiero previo y su versión original. `DashboardApply` es idempotente y rechaza fuentes de prueba (`ReplayPath`). No corrige automáticamente el maestro de Account ID.
 
 ## Validación y operación
