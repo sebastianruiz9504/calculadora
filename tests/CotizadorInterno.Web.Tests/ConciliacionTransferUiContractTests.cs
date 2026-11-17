@@ -16,7 +16,7 @@ public sealed class ConciliacionTransferUiContractTests
 
         Assert.Contains("CashFlowFinalConciliated", view, StringComparison.Ordinal);
         Assert.Contains("CashFlowClosedWithoutSiigo", view, StringComparison.Ordinal);
-        Assert.Contains("var pending = !omitted && !conciliated;", view, StringComparison.Ordinal);
+        Assert.Contains("var pending = !row.IsManualBank && !omitted && !conciliated;", view, StringComparison.Ordinal);
         Assert.Contains("pending ? \"is-review-pending\"", view, StringComparison.Ordinal);
         Assert.DoesNotContain("CashFlowReportedForClose", view, StringComparison.Ordinal);
         Assert.DoesNotContain("is-siigo-pending", view, StringComparison.Ordinal);

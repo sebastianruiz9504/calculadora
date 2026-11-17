@@ -2,7 +2,7 @@
 param(
     [string]$SubscriptionId = "7018b9b6-5dfc-4d91-bc4d-5f29f27553bd",
     [string]$ResourceGroupName = "DigitalTechAppAI",
-    [string]$WebAppName = "calculadoradt",
+    [string]$WebAppName = "dtc-calculadora-linux-7018",
     [string]$ProjectPath = "$PSScriptRoot\..\CotizadorInterno.Web.csproj",
     [string]$Configuration = "Release",
     [string]$VerifyPath = "/PrimaLegal",

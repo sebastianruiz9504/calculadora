@@ -7,6 +7,7 @@
   <AsyncAutoDelete>0</AsyncAutoDelete>
   <Configuration>enabled</Configuration>
   <FilteringAttributes>cr07a_cliente,createdon,cr07a_contractstartdate,cr07a_esprimercontratoconelcliente</FilteringAttributes>
+  <ImpersonatingUserIdName></ImpersonatingUserIdName>
   <InvocationSource>1</InvocationSource>
   <Mode>0</Mode>
   <Rank>1</Rank>

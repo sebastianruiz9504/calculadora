@@ -9369,6 +9369,7 @@
                     <span>Categor&iacute;a</span>
                     <select class="form-select" data-cnc-cashflow-wizard-category aria-label="Categor&iacute;a del movimiento">${optionHtml}</select>
                 </label>`;
+            window.DirectCashFlow?.mount(card, row);
         }
 
         if (count) {
@@ -9423,6 +9424,10 @@
             return;
         }
         if (row.dataset.cncCashflowPending !== "true") {
+            if (window.DirectCashFlow) {
+                window.DirectCashFlow.openRow(row.dataset.sourceKind || "Movimiento", row.dataset.cashflowRecordId || row.dataset.recordId);
+                return;
+            }
             const omitted = String(row.dataset.dataverseStatus || "").trim().toLowerCase() === "omitido";
             setStatus(
                 omitted

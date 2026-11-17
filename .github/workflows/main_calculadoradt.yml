@@ -1,7 +1,7 @@
 name: Deploy CotizadorInterno.Web to Azure App Service
 
 env:
-  AZURE_WEBAPP_NAME: calculadoradt
+  AZURE_WEBAPP_NAME: dtc-calculadora-linux-7018
   AZURE_RESOURCE_GROUP: DigitalTechAppAI
   AZURE_CLIENT_ID: 774a5f8a-8b6c-4e43-83a1-3efd8a90cea0
   AZURE_TENANT_ID: cab7ea42-4a21-4548-952f-fcde81f2bdd6

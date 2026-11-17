@@ -29,6 +29,13 @@ namespace CotizadorInterno.Web.Services;
 
 public interface IDataverseService
 {
+    Task<DirectCashFlowData> GetDirectCashFlowDataAsync(int year, int first, int last, CancellationToken ct = default) => throw new NotImplementedException();
+    Task<DirectCashFlowMovement> GetDirectCashFlowMovementAsync(string sourceKind, string recordId, CancellationToken ct = default) => throw new NotImplementedException();
+    Task SaveDirectCashFlowAssignmentAsync(DirectCashFlowAssignmentRequest request, CancellationToken ct = default) => throw new NotImplementedException();
+    Task<DirectCashFlowMovement> SaveDirectCashFlowManualAsync(DirectCashFlowManualRequest request, CancellationToken ct = default) => throw new NotImplementedException();
+    Task VoidDirectCashFlowManualAsync(DirectCashFlowAssignmentRequest request, CancellationToken ct = default) => throw new NotImplementedException();
+    Task SaveDirectCashFlowBalancesAsync(DirectCashFlowBalances request, CancellationToken ct = default) => throw new NotImplementedException();
+    Task<int> SuggestDirectCashFlowOctoberAsync(CancellationToken ct = default) => throw new NotImplementedException();
     Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<ProductLookupItem> EnsureCalculatorProductAsync(ProductCreateInput input, CancellationToken ct = default);
     Task<IReadOnlyList<ClientLookupItem>> SearchClientsAsync(string query, int top = 12, CancellationToken ct = default);

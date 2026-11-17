@@ -2428,7 +2428,7 @@ public sealed partial class DataverseService
         var transferUrl = $"/api/data/v9.2/{transferMetadata.EntitySetName}?$select={transferSelect}&$filter={Uri.EscapeDataString(transferFilter)}&$orderby={CashFlowTransferDateField} desc";
         var transferRows = await GetDataverseAppEntitiesAsync(transferUrl, ct);
 
-        return movementRows
+        var sourceRows = movementRows
             .Select(item => ParseConciliacionCashFlowMovementRow(item, movementMetadata))
             .Concat(transferRows.Select(item => ParseConciliacionCashFlowTransferRow(item, transferMetadata)))
             .Where(static row => row is not null)
@@ -2437,6 +2437,7 @@ public sealed partial class DataverseService
             .ThenBy(static row => row.SourceFlow, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static row => row.Description, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        return await AddDirectCashFlowRowsAsync(sourceRows, startInclusive, endExclusive, ct);
     }
 
     private static ConciliacionCashFlowSummaryDto BuildConciliacionCashFlowSummary(
@@ -2497,6 +2498,8 @@ public sealed partial class DataverseService
     }
 
     private static bool IsConciliacionClientPaymentMovementCandidate(ConciliacionCashFlowRowDto row) =>
+        !row.IsManualBank
+        &&
         !string.Equals(row.SourceKind, "Traslado", StringComparison.OrdinalIgnoreCase)
         && !string.Equals(row.DetectedTypeKey, "traslado-interno", StringComparison.OrdinalIgnoreCase)
         && !IsConciliacionCashFlowPendingReview(row)

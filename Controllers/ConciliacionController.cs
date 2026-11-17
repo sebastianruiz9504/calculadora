@@ -86,9 +86,15 @@ public sealed class ConciliacionController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Index([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
+    public async Task<IActionResult> Index([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct, [FromQuery] string? tab = null)
     {
         var (resolvedYear, resolvedMonth) = ResolvePeriod(year, month);
+        if (tab == "flujo-caja-directo")
+            return View("FlujoCajaDirecto", new ConciliacionPageViewModel
+            {
+                CurrentUser = await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo(),
+                Board = new ConciliacionBoardDto { Year = resolvedYear, Month = resolvedMonth }
+            });
         var currentUserTask = _dataverse.GetCurrentUserAsync(ct);
         var boardTask = _dataverse.GetConciliacionBoardAsync(resolvedYear, resolvedMonth, ct);
         var deduccionesHistoryTask = _deduccionesIvaHistory.GetHistoryAsync(25, ct);

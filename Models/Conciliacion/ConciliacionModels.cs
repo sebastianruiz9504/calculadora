@@ -138,6 +138,11 @@ public sealed class ConciliacionBankBalanceDto
 
 public sealed class ConciliacionCashFlowRowDto
 {
+    public string DirectConceptKey { get; set; } = "";
+    public string DirectStatus { get; set; } = "";
+    public string DirectReason { get; set; } = "";
+    public string DirectVersion { get; set; } = "";
+    public bool IsManualBank => SourceKind == "Manual";
     public string RecordId { get; set; } = "";
     public string SourceKind { get; set; } = "";
     public string SourceKindLabel { get; set; } = "";

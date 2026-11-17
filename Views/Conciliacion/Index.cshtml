@@ -239,10 +239,15 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/conciliacion.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/direct-cash-flow.css" asp-append-version="true" />
 }
+
+@Html.AntiForgeryToken()
 
 <div class="cnc-shell"
      id="conciliacionApp"
+     data-year="@board.Year"
+     data-month="@board.Month"
      data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")"
      data-manual-payment-url="@Url.Action("MarkClientPaymentManualSiigo", "Conciliacion")"
      data-cashflow-category-url="@Url.Action("UpdateCashFlowCategory", "Conciliacion")"
@@ -348,6 +353,7 @@
                     aria-selected="true">
                 <span>Conciliacion 2</span>
             </button>
+            <a class="cnc-phase-tab" href="@Url.Action("Index", new { year = board.Year, month = board.Month, tab = "flujo-caja-directo" })"><span>Flujo de caja directo</span></a>
             @foreach (var phase in board.Phases)
             {
                 var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
@@ -2692,5 +2698,6 @@
 </template>
 
 @section Scripts {
+    <script src="~/js/direct-cash-flow.js" asp-append-version="true"></script>
     <script src="~/js/conciliacion.js" asp-append-version="true"></script>
 }

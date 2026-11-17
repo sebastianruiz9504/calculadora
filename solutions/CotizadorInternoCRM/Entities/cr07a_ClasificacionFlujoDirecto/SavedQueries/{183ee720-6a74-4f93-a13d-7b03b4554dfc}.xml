@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{183ee720-6a74-4f93-a13d-7b03b4554dfc}</savedqueryid>
+    <layoutxml>
+      <grid name="cr07a_clasificacionflujodirectos" jump="cr07a_name" select="1" icon="1" preview="1">
+        <row name="cr07a_clasificacionflujodirecto" id="cr07a_clasificacionflujodirectoid">
+          <cell name="cr07a_name" width="300" />
+          <cell name="createdon" width="125" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>2</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_clasificacionflujodirecto">
+          <attribute name="cr07a_clasificacionflujodirectoid" />
+          <attribute name="cr07a_name" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_name" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Vista asociada de Clasificacion de flujo de caja directo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

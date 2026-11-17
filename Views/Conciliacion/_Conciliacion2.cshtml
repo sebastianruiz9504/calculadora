@@ -78,6 +78,7 @@
          data-cnc-panel="conciliacion-2"
          role="tabpanel">
     <div class="cnc-panel-header">
+        <button type="button" class="dcf-button dcf-button-primary" data-dcf-manual>+ Registro manual del banco</button>
         <div>
             <div class="cnc-kicker">Vista paralela</div>
             <h2>Conciliacion 2</h2>
@@ -232,7 +233,7 @@
                         var omitted = CashFlowOmitted(row);
                         var pendingReview = CashFlowPendingReview(row);
                         var conciliated = !omitted && (CashFlowFinalConciliated(row) || CashFlowClosedWithoutSiigo(row));
-                        var pending = !omitted && !conciliated;
+                        var pending = !row.IsManualBank && !omitted && !conciliated;
                         var userDescription = ConciliatedDescription(row, conciliated);
                         var importedDescription = row.Observations.Trim();
                         var importedDescriptionLabel = FirstNonEmpty(importedDescription, "Sin descripcion importada");
@@ -242,10 +243,12 @@
                         var amountLabel = Money(row.Amount);
                         var verticalFilter = VerticalFilter(row);
                         var directionFilter = DirectionFilter(row);
-                        <tr class="cnc-click-row cnc-v2-row @(omitted ? "is-omitted" : conciliated ? "is-manual-conciliated" : pending ? "is-review-pending" : "")"
+                        <tr class="cnc-click-row cnc-v2-row @(row.IsManualBank ? "is-direct-manual" : omitted ? "is-omitted" : conciliated ? "is-manual-conciliated" : pending ? "is-review-pending" : "")"
                             hidden="@(verticalFilter == "cloud" && directionFilter == "entrada" ? null : "hidden")"
                             data-cnc-v2-row
                             data-record-id="@row.RecordId"
+                            data-direct-concept="@row.DirectConceptKey"
+                            data-direct-version="@row.DirectVersion"
                             data-cashflow-record-id="@row.RecordId"
                             data-source-kind="@row.SourceKind"
                             data-movement-external-key="@row.ExternalKey"
@@ -285,7 +288,11 @@
                             data-account-name="@row.AccountName"
                             data-description="@userDescription">
                             <td class="cnc-v2-conciliated-cell">
-                                @if (omitted)
+                                @if (row.IsManualBank)
+                                {
+                                    <span class="dcf-manual-key">Solo banco</span>
+                                }
+                                else if (omitted)
                                 {
                                     <span class="cnc-v2-state cnc-v2-state--omitted" data-cnc-v2-conciliated-label aria-label="Omitido">Omitido</span>
                                 }
@@ -304,6 +311,7 @@
                             </td>
                             <td>
                                 <strong>@row.MovementDateDisplay</strong>
+                                <button type="button" class="dcf-legacy-concept" data-dcf-open-row>@(CotizadorInterno.Web.Services.DirectCashFlowCatalog.Find(row.DirectConceptKey) is { } concept ? $"{concept.Code} · {concept.Label}" : "Asignar concepto de flujo")@(row.DirectStatus == "Sugerido" ? " · Sugerido" : "")</button>
                                 <small>@ExcelRowLabel(row.SourceRowNumber) · @row.SourceFlow</small>
                             </td>
                             <td>
@@ -311,6 +319,13 @@
                                 <small class="cnc-v2-description-meta">@bankLabel@if (!string.IsNullOrWhiteSpace(detail)) { <text> | @detail</text> }</small>
                             </td>
                             <td>
+                                @if (row.IsManualBank)
+                                {
+                                    <span>@userDescription</span>
+                                    <button type="button" class="dcf-legacy-concept" data-dcf-open-row>Editar registro manual</button>
+                                }
+                                else
+                                {
                                 <div class="cnc-v2-description-editor">
                                     <input class="form-control"
                                            type="text"
@@ -324,6 +339,7 @@
                                         Guardar
                                     </button>
                                 </div>
+                                }
                             </td>
                             <td class="text-end">
                                 <strong>@amountLabel</strong>
