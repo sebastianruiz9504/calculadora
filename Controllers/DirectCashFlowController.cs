@@ -19,7 +19,7 @@ public sealed class DirectCashFlowController(IDataverseService dataverse,ILogger
         var data=await dataverse.GetDirectCashFlowDataAsync(year,month,month,ct);
         IEnumerable<DirectCashFlowMovement> rows=data.Movements;
         if(!string.IsNullOrEmpty(concept))rows=rows.Where(x=>x.ConceptKey==concept);
-        if(!string.IsNullOrEmpty(status))rows=status=="Manual"?rows.Where(x=>x.IsManual):rows.Where(x=>x.Status==status);
+        if(!string.IsNullOrEmpty(status))rows=status=="Manual"?rows.Where(x=>x.IsManual):status=="Extracto"?rows.Where(x=>x.IsStatement):rows.Where(x=>x.Status==status);
         if(!string.IsNullOrWhiteSpace(search))rows=rows.Where(x=>x.Description.Contains(search,StringComparison.OrdinalIgnoreCase)||x.ConceptLabel.Contains(search,StringComparison.OrdinalIgnoreCase));
         var all=rows.OrderByDescending(x=>x.Date).ThenBy(x=>x.RecordId).ToArray();
         return Ok(new DirectCashFlowPage(all.Skip((page-1)*pageSize).Take(pageSize).ToArray(),all.Length,page,pageSize));

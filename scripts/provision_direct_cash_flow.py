@@ -16,7 +16,7 @@ TABLES = {
         'columns': [('Fecha','Fecha','DateOnly',0),('Banco','Cuenta bancaria','String',30),('Entrada','Ingreso','Decimal',2),('Salida','Egreso','Decimal',2),('Descripcion','Descripcion','String',500),('Referencia','Referencia bancaria','String',200),('Concepto','Concepto','String',40),('Origen','Origen','String',30),('EstadoSiigo','Estado Siigo','String',30),('LoteExtracto','Lote de extracto futuro','String',100)]},
     'cr07a_SaldoFlujoDirecto': {
         'display': 'Saldos de flujo de caja directo',
-        'columns': [('Periodo','Periodo','String',7),('Inicial','Saldo inicial consolidado','Decimal',2),('Cloud','Saldo cierre Cloud','Decimal',2),('Copiers','Saldo cierre Copiers','Decimal',2),('Bolsillos','Saldo cierre Bolsillos','Decimal',2),('Fidurenta','Saldo cierre Fiduciaria','Decimal',2)]}
+        'columns': [('Periodo','Periodo','String',7),('Inicial','Saldo inicial consolidado','Decimal',2),('Cloud','Saldo cierre Cloud','Decimal',2),('Copiers','Saldo cierre Copiers','Decimal',2),('Bolsillos','Saldo cierre Bolsillos','Decimal',2),('Fidurenta','Saldo cierre Fiduciaria','Decimal',2),('Extractos','Control de extractos bancarios','Memo',1048576)]}
 }
 
 def main():
@@ -47,6 +47,8 @@ def main():
                 if column.lower() in names: continue
                 if kind=='DateOnly':
                     payload={'@odata.type':'Microsoft.Dynamics.CRM.DateTimeAttributeMetadata','SchemaName':column,'DisplayName':label(display),'RequiredLevel':{'Value':'None'},'Format':'DateOnly','DateTimeBehavior':{'Value':'DateOnly'}}
+                elif kind=='Memo':
+                    payload={'@odata.type':'Microsoft.Dynamics.CRM.MemoAttributeMetadata','SchemaName':column,'DisplayName':label(display),'RequiredLevel':{'Value':'None'},'Format':'Text','MaxLength':size}
                 else:
                     # Custom lengths and monetary precision/ranges need the metadata API.
                     payload=column_payload(column,display,kind,size)

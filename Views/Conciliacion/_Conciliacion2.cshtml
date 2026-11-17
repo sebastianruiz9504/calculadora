@@ -290,7 +290,7 @@
                             <td class="cnc-v2-conciliated-cell">
                                 @if (row.IsManualBank)
                                 {
-                                    <span class="dcf-manual-key">Solo banco</span>
+                                    <span class="dcf-manual-key">@(row.IsBankStatement ? "Extracto" : "Solo banco")</span>
                                 }
                                 else if (omitted)
                                 {
@@ -322,7 +322,7 @@
                                 @if (row.IsManualBank)
                                 {
                                     <span>@userDescription</span>
-                                    <button type="button" class="dcf-legacy-concept" data-dcf-open-row>Editar registro manual</button>
+                                    <button type="button" class="dcf-legacy-concept" data-dcf-open-row>@(row.IsBankStatement ? "Categorizar movimiento" : "Editar registro manual")</button>
                                 }
                                 else
                                 {

@@ -31,6 +31,7 @@ public sealed class DirectCashFlowReport
     public DateTimeOffset CapturedAt { get; set; } = DateTimeOffset.UtcNow;
     public IReadOnlyList<DirectCashFlowMonth> Months { get; set; } = [];
     public IReadOnlyList<DirectCashFlowReportRow> Rows { get; set; } = [];
+    public IReadOnlyList<DirectCashFlowBankCheck> BankChecks { get; set; } = [];
 }
 public sealed class DirectCashFlowMovement
 {
@@ -50,6 +51,7 @@ public sealed class DirectCashFlowMovement
     public string Reason { get; set; } = "";
     public string Version { get; set; } = "";
     public bool IsManual => SourceKind == "Manual";
+    public bool IsStatement { get; set; }
     public bool IsInternalTransfer { get; set; }
 }
 public sealed record DirectCashFlowPage(IReadOnlyList<DirectCashFlowMovement> Items, int Total, int Page, int PageSize);
@@ -89,4 +91,51 @@ public sealed class DirectCashFlowData
     public IReadOnlyList<DirectCashFlowMovement> Movements { get; init; } = [];
     public IReadOnlyList<DirectCashFlowBalances> Balances { get; init; } = [];
     public IReadOnlyDictionary<int, decimal> BankOpenings { get; init; } = new Dictionary<int, decimal>();
+    public IReadOnlyList<DirectCashFlowStatement> Statements { get; init; } = [];
+}
+
+public sealed class DirectCashFlowStatement
+{
+    public string Period { get; set; } = "";
+    public string Bank { get; set; } = "";
+    public string Account { get; set; } = "";
+    public string FileHash { get; set; } = "";
+    public decimal Opening { get; set; }
+    public decimal Credits { get; set; }
+    public decimal Debits { get; set; }
+    public decimal Closing { get; set; }
+    public IReadOnlyList<DirectCashFlowStatementLine> Rows { get; set; } = [];
+}
+public sealed class DirectCashFlowStatementLine
+{
+    public string RecordId { get; set; } = "";
+    public string SourceKind { get; set; } = "";
+    public string Date { get; set; } = "";
+    public decimal Amount { get; set; }
+    public decimal Balance { get; set; }
+    public int Page { get; set; }
+    public int Line { get; set; }
+}
+public sealed class DirectCashFlowBankCheck
+{
+    public string Period { get; set; } = "";
+    public string Bank { get; set; } = "";
+    public string Account { get; set; } = "";
+    public decimal Opening { get; set; }
+    public decimal StatementCredits { get; set; }
+    public decimal StatementDebits { get; set; }
+    public decimal StatementClosing { get; set; }
+    public decimal RegisteredCredits { get; set; }
+    public decimal RegisteredDebits { get; set; }
+    public decimal CalculatedClosing => Opening + RegisteredCredits - RegisteredDebits;
+    public decimal Difference => CalculatedClosing - StatementClosing;
+    public int StatementCount { get; set; }
+    public int RegisteredCount { get; set; }
+    public int MissingCount { get; set; }
+    public int UnexpectedCount { get; set; }
+    public int ChangedCount { get; set; }
+    public int PendingCount { get; set; }
+    public int ImportedCount { get; set; }
+    public bool StatementValid { get; set; }
+    public bool Matches => StatementValid && Difference == 0 && RegisteredCredits == StatementCredits && RegisteredDebits == StatementDebits && MissingCount == 0 && UnexpectedCount == 0 && ChangedCount == 0;
 }

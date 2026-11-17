@@ -3,32 +3,37 @@
 @section Styles {
     <link rel="stylesheet" href="~/css/direct-cash-flow.css" asp-append-version="true" />
 }
-<div class="dcf-shell" id="directCashFlowApp" data-year="@Model.Board.Year" data-month="@Model.Board.Month">
+<div class="dcf-layout" id="directCashFlowApp" data-year="@Model.Board.Year" data-month="@Model.Board.Month">
     @Html.AntiForgeryToken()
-    <nav class="dcf-tabs" aria-label="Conciliación">
-        <a href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=deducciones-iva">Deducciones IVA</a>
-        <a href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=conciliacion-2">Conciliación 2</a>
-        <a href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=registro-dian">Registro DIAN</a>
-        <a class="is-active" aria-current="page" href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month,tab="flujo-caja-directo"})">Flujo de caja directo</a>
-    </nav>
-    <header class="dcf-header">
-        <div><div class="dcf-eyebrow">DIGITAL TECH · TESORERÍA</div><h1>Flujo de caja directo</h1><p>Ingresos, egresos y disponibilidad de efectivo en un solo lugar.</p></div>
-        <div class="dcf-header-actions"><span class="dcf-live" data-dcf-live>Conectando…</span><button class="dcf-button dcf-button-light" type="button" data-dcf-refresh>Actualizar</button></div>
-    </header>
-    <section class="dcf-toolbar" aria-label="Período del reporte">
-        <label>Año<input type="number" min="2020" max="2100" value="@Model.Board.Year" data-dcf-year /></label>
-        <label>Desde<select data-dcf-first aria-label="Mes inicial"></select></label>
-        <label>Hasta<select data-dcf-last aria-label="Mes final"></select></label>
-        <button class="dcf-button" type="button" data-dcf-apply>Ver período</button>
-        <div class="dcf-toolbar-end"><button class="dcf-button dcf-button-primary" type="button" data-dcf-manual>+ Registro manual</button><a class="dcf-button" data-dcf-export href="#">Descargar Excel ↓</a></div>
-    </section>
-    <p class="dcf-status" role="status" aria-live="polite" data-dcf-status></p>
-    <section class="dcf-kpis" data-dcf-kpis aria-label="Resumen del período"><div class="dcf-skeleton">Cargando resumen del banco…</div></section>
-    <section class="dcf-review" data-dcf-review aria-label="Estado de clasificación"></section>
-    <section class="dcf-report">
-        <div class="dcf-report-heading"><div><h2>Flujo de Caja Real</h2><p>Administración Digital Tech Copiers · Cifras en pesos colombianos</p></div><button class="dcf-button" type="button" data-dcf-all>Ver registros</button></div>
-        <div class="dcf-table-scroll" tabindex="0" aria-label="Reporte de flujo de caja"><table class="dcf-table"><thead data-dcf-head></thead><tbody data-dcf-body></tbody></table></div>
-        <footer class="dcf-report-footer"><span>Selecciona un valor para ver sus registros. Selecciona un saldo para completarlo.</span><span class="dcf-manual-key">Registro manual · sin envío a Siigo</span></footer>
-    </section>
+    <aside class="dcf-sidebar" aria-label="Navegación de Conciliación">
+        <a class="dcf-sidebar-title" href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=conciliacion-2">Conciliación<span>Gestión financiera</span></a>
+        <div class="dcf-nav-label">TESORERÍA</div>
+        <nav>
+            <a href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=conciliacion-2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h7m5-1 2 2 4-5" /></svg><span>Conciliación bancaria</span></a>
+            <a class="is-active" aria-current="page" href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month,tab="flujo-caja-directo"})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h17M7 15V9m6 6V4m6 11v-6" /></svg><span>Flujo de caja directo</span></a>
+            <a href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=deducciones-iva"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6" /></svg><span>Deducciones IVA</span></a>
+            <a href="@Url.Action("Index",new {year=Model.Board.Year,month=Model.Board.Month})#tab=registro-dian"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8m-8 4h6" /></svg><span>Registro DIAN</span></a>
+        </nav>
+        <div class="dcf-sidebar-note"><span class="dcf-live-dot"></span><div>Datos de conciliación<small>Actualización automática</small></div></div>
+    </aside>
+    <div class="dcf-shell">
+        <header class="dcf-header">
+            <div><div class="dcf-eyebrow">FINANZAS <span>/</span> TESORERÍA</div><h1>Flujo de caja directo</h1><p>Una visión clara de tu efectivo, mes a mes.</p></div>
+            <div class="dcf-header-actions"><span class="dcf-live" data-dcf-live>Actualizando…</span><button class="dcf-icon-button" type="button" data-dcf-refresh aria-label="Actualizar reporte" title="Actualizar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5m-4-4a8 8 0 0 1 14-2l1 2M4 16l1 2a8 8 0 0 0 14-2" /></svg></button></div>
+        </header>
+        <section class="dcf-toolbar" aria-label="Período del reporte">
+            <div class="dcf-period-fields"><label>Año<input type="number" min="2020" max="2100" value="@Model.Board.Year" data-dcf-year /></label><label>Desde<select data-dcf-first aria-label="Mes inicial"></select></label><label>Hasta<select data-dcf-last aria-label="Mes final"></select></label><button class="dcf-button" type="button" data-dcf-apply>Ver período</button></div>
+            <div class="dcf-toolbar-end"><button class="dcf-button" type="button" data-dcf-manual><span aria-hidden="true">＋</span> Registro manual</button><a class="dcf-button dcf-button-primary" data-dcf-export href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4" /></svg>Descargar Excel</a></div>
+        </section>
+        <p class="dcf-status" role="status" aria-live="polite" data-dcf-status></p>
+        <section class="dcf-kpis" data-dcf-kpis aria-label="Resumen del período"><div class="dcf-skeleton">Cargando resumen bancario…</div></section>
+        <section class="dcf-bank-panel" data-dcf-banks aria-label="Cotejo de extractos"></section>
+        <section class="dcf-review" data-dcf-review aria-label="Estado de clasificación"></section>
+        <section class="dcf-report">
+            <div class="dcf-report-heading"><div><div class="dcf-eyebrow">REPORTE CONSOLIDADO</div><h2>Flujo de Caja Real</h2><p>Digital Tech · Pesos colombianos (COP)</p></div><button class="dcf-button" type="button" data-dcf-all>Ver movimientos <span aria-hidden="true">↗</span></button></div>
+            <div class="dcf-table-scroll" tabindex="0" aria-label="Reporte de flujo de caja"><table class="dcf-table"><thead data-dcf-head></thead><tbody data-dcf-body></tbody></table></div>
+            <footer class="dcf-report-footer"><span>Haz clic en un valor para ver sus movimientos o en un saldo para completarlo.</span><span class="dcf-manual-key">Extractos y manuales · solo banco</span></footer>
+        </section>
+    </div>
 </div>
 @section Scripts { <script src="~/js/direct-cash-flow.js" asp-append-version="true"></script> }

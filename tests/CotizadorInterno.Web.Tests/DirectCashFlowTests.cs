@@ -8,6 +8,55 @@ namespace CotizadorInterno.Web.Tests;
 
 public sealed class DirectCashFlowTests
 {
+    private static DirectCashFlowStatement Statement(params DirectCashFlowMovement[] rows)
+    {
+        var balance=100m;
+        return new(){Bank="Cloud",Period="2026-10",Account="00008100",Opening=100,Credits=rows.Sum(x=>x.Entry),Debits=rows.Sum(x=>x.Exit),Closing=100+rows.Sum(x=>x.Entry-x.Exit),Rows=rows.Select((x,i)=>new DirectCashFlowStatementLine{RecordId=x.RecordId,SourceKind=x.SourceKind,Date=x.Date,Amount=x.Entry-x.Exit,Balance=balance+=x.Entry-x.Exit,Line=i+1,Page=1}).ToArray()};
+    }
+    [Fact] public void StatementBalancesIncludePendingCategoriesAndInternalTransfers()
+    {
+        var incoming=Row("",33.11m,direction:"Entrada");incoming.IsStatement=true;incoming.SourceKind="Manual";
+        var outgoing=Row("",7.59m);outgoing.IsInternalTransfer=true;
+        var statement=Statement(incoming,outgoing);
+        var report=DirectCashFlowReportBuilder.Build(2026,10,10,new(){Movements=[incoming,outgoing],Statements=[statement]});
+        var check=Assert.Single(report.BankChecks);Assert.True(check.Matches);Assert.Equal(125.52m,check.CalculatedClosing);Assert.Equal(1,check.PendingCount);Assert.Equal(1,check.ImportedCount);
+        Assert.Null(report.Months[0].ClosingBalance);
+    }
+    [Fact] public void EqualNetMissingAndAdditionalMovementsDoNotProduceFalseBankMatch()
+    {
+        var original=Row("",20,direction:"Entrada");var replacement=Row("",20,direction:"Entrada");
+        var check=DirectCashFlowReportBuilder.CheckStatement(Statement(original),[replacement]);
+        Assert.Equal(0,check.Difference);Assert.False(check.Matches);Assert.Equal(1,check.MissingCount);Assert.Equal(1,check.UnexpectedCount);
+    }
+    [Fact] public void VerifiedStatementTransferPairsAreExcludedButOrdinaryManualRowsAreNot()
+    {
+        var outgoing=Row("",8731264);var incoming=Row("",8731264,direction:"Entrada");incoming.Bank="Copiers";
+        foreach(var row in new[]{outgoing,incoming}){row.SourceKind="Manual";row.IsStatement=true;row.Description="TRANSFERENCIA CTA SUC VIRTUAL";}
+        DirectCashFlowReportBuilder.MarkInternalTransfers([outgoing,incoming],new HashSet<string>());
+        Assert.True(outgoing.IsInternalTransfer);Assert.True(incoming.IsInternalTransfer);
+        outgoing.IsInternalTransfer=incoming.IsInternalTransfer=false;incoming.IsStatement=false;
+        DirectCashFlowReportBuilder.MarkInternalTransfers([outgoing,incoming],new HashSet<string>());
+        Assert.False(outgoing.IsInternalTransfer);Assert.False(incoming.IsInternalTransfer);
+    }
+    [Fact] public void ChangedAmountsAndCorruptRunningBalancesAreDetected()
+    {
+        var movement=Row("",10.15m,direction:"Entrada");var statement=Statement(movement);
+        movement.Entry+=.01m;var check=DirectCashFlowReportBuilder.CheckStatement(statement,[movement]);
+        Assert.False(check.Matches);Assert.Equal(.01m,check.Difference);Assert.Equal(1,check.ChangedCount);
+        movement.Entry-=.01m;statement.Rows[0].Balance+=1;
+        Assert.False(DirectCashFlowReportBuilder.CheckStatement(statement,[movement]).StatementValid);
+    }
+    [Fact] public void BankControlExportContainsOpeningClosingAndRecalculatedDifference()
+    {
+        var movement=Row("",10.15m,direction:"Entrada");
+        var report=DirectCashFlowReportBuilder.Build(2026,10,10,new(){Movements=[movement],Statements=[Statement(movement)]});
+        using var stream=new MemoryStream(DirectCashFlowExcelExporter.Export(report));using var zip=new ZipArchive(stream);
+        using var sheet=zip.GetEntry("xl/worksheets/direct-bank-control.xml")!.Open();var xml=XDocument.Load(sheet);XNamespace ns="http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        var cells=xml.Descendants(ns+"c").ToDictionary(c=>(string)c.Attribute("r")!);
+        Assert.Equal("100",cells["B7"].Element(ns+"v")!.Value);Assert.Equal("110.15",cells["B11"].Element(ns+"v")!.Value);Assert.Equal("B10-B11",cells["B12"].Element(ns+"f")!.Value);Assert.Equal("0.00",cells["B12"].Element(ns+"v")!.Value);
+        using var rel=zip.GetEntry("xl/_rels/workbook.xml.rels")!.Open();Assert.Contains("/relationships/worksheet",new StreamReader(rel).ReadToEnd());
+        using var wb=zip.GetEntry("xl/workbook.xml")!.Open();Assert.Contains("Control bancario",new StreamReader(wb).ReadToEnd());
+    }
     private static DirectCashFlowMovement Row(string concept,decimal amount,int month=10,string direction="Salida")=>new(){RecordId=Guid.NewGuid().ToString(),Date=$"2026-{month:D2}-15",ConceptKey=concept,Amount=amount,Direction=direction,Entry=direction=="Entrada"?amount:0,Exit=direction=="Salida"?amount:0,Status="Confirmado",Bank="Cloud"};
     private static decimal? Value(DirectCashFlowReport report,int row,int index=0)=>report.Rows.Single(x=>x.Row==row).Values[index];
     [Fact] public void DuplicatePrinted903HasTwoStableDistinctKeys()

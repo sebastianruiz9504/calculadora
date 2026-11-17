@@ -22,7 +22,7 @@ public sealed partial class DataverseService
     {
         var filter=Uri.EscapeDataString($"cr07a_fecha ge {start:yyyy-MM-dd}T00:00:00Z and cr07a_fecha lt {end:yyyy-MM-dd}T00:00:00Z");
         var assignmentsTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectAssignmentSet}?$select=cr07a_clasificacionflujodirectoid,cr07a_concepto,cr07a_estado,cr07a_motivo&$filter={filter}",ct);
-        var manualTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectManualSet}?$select=cr07a_movimientomanualbancoid,cr07a_fecha,cr07a_banco,cr07a_entrada,cr07a_salida,cr07a_descripcion,cr07a_referencia,cr07a_concepto,modifiedon&$filter={filter} and statecode eq 0",ct);
+        var manualTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectManualSet}?$select=cr07a_movimientomanualbancoid,cr07a_fecha,cr07a_banco,cr07a_entrada,cr07a_salida,cr07a_descripcion,cr07a_referencia,cr07a_concepto,cr07a_origen,modifiedon&$filter={filter} and statecode eq 0",ct);
         await Task.WhenAll(assignmentsTask,manualTask);
         var assignments=assignmentsTask.Result.ToDictionary(x=>ReadString(x,"cr07a_clasificacionflujodirectoid"),StringComparer.OrdinalIgnoreCase);
         foreach(var row in source)
@@ -42,16 +42,18 @@ public sealed partial class DataverseService
         var bank=ReadString(item,"cr07a_banco");var entry=ReadDecimal(item,"cr07a_entrada")??0;var exit=ReadDecimal(item,"cr07a_salida")??0;
         var date=ReadDateOnly(item,"cr07a_fecha");
         var account=ResolveConciliacionCashFlowBankAccount(bank);
+        var statement=ReadString(item,"cr07a_origen")=="Extracto";
+        var origin=statement?"Extracto · solo banco":"Manual · solo banco";
         return new()
         {
-            RecordId=ReadString(item,"cr07a_movimientomanualbancoid"),SourceKind="Manual",SourceKindLabel="Manual · solo banco",
+            RecordId=ReadString(item,"cr07a_movimientomanualbancoid"),SourceKind="Manual",SourceKindLabel=origin,IsBankStatement=statement,
             MovementDateValue=date?.ToString("yyyy-MM-dd")??"",MovementDateDisplay=date?.ToString("dd/MM/yyyy")??"",
             SourceFlow=bank,BankAccountCode=account.Code,BankAccountName=account.Name,
             EntryValue=entry,ExitValue=exit,Amount=Math.Max(entry,exit),Direction=entry>0?"Entrada":"Salida",DirectionTone=entry>0?"success":"danger",
             Description=ReadString(item,"cr07a_descripcion"),Observations=ReadString(item,"cr07a_referencia"),
-            DetectedTypeKey="manual-bancario",DetectedTypeLabel="Manual · solo banco",DetectedTypeTone="manual",
+            DetectedTypeKey="manual-bancario",DetectedTypeLabel=origin,DetectedTypeTone="manual",
             DataverseStatus="SoloBanco",SiigoStatus="NoEnviar",RegistrationStatus="Solo banco · no enviado a Siigo",ValidationStatus="Registro manual",CanValidate=false,
-            DirectConceptKey=ReadString(item,"cr07a_concepto"),DirectStatus="Confirmado",DirectVersion=ReadString(item,"@odata.etag"),
+            DirectConceptKey=ReadString(item,"cr07a_concepto"),DirectStatus=string.IsNullOrEmpty(ReadString(item,"cr07a_concepto"))?"Pendiente":"Confirmado",DirectVersion=ReadString(item,"@odata.etag"),
             ModifiedOnValue=ReadString(item,"modifiedon")
         };
     }
@@ -63,7 +65,7 @@ public sealed partial class DataverseService
             RecordId=r.RecordId,SourceKind=r.SourceKind,Date=r.MovementDateValue,Bank=r.SourceFlow,
             Description=r.Description,Reference=r.Observations,Direction=r.Direction,Amount=r.Amount,Entry=r.EntryValue,Exit=r.ExitValue,
             ConceptKey=c?.Key??"",ConceptLabel=c is null?"Sin clasificar":$"{c.Code} · {c.Label}",
-            Status=c is null?"Pendiente":r.DirectStatus,Reason=r.DirectReason,Version=r.DirectVersion,
+            Status=c is null?"Pendiente":r.DirectStatus,Reason=r.DirectReason,Version=r.DirectVersion,IsStatement=r.IsBankStatement,
             IsInternalTransfer=r.SourceKind=="Traslado" || r.DetectedTypeKey=="traslado-interno"
         };
     }
@@ -79,7 +81,7 @@ public sealed partial class DataverseService
             var start=new DateOnly(year,first,1);var end=new DateOnly(year,last,1).AddMonths(1);
             var sourceTask=GetConciliacionCashFlowRowsAsync(start,end,ct);
             var periodFilter=Uri.EscapeDataString($"cr07a_periodo ge '{year:D4}-{first:D2}' and cr07a_periodo le '{year:D4}-{last:D2}'");
-            var balancesTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectBalanceSet}?$select=cr07a_periodo,cr07a_inicial,cr07a_cloud,cr07a_copiers,cr07a_bolsillos,cr07a_fidurenta&$filter={periodFilter}",ct);
+            var balancesTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectBalanceSet}?$select=cr07a_periodo,cr07a_inicial,cr07a_cloud,cr07a_copiers,cr07a_bolsillos,cr07a_fidurenta,cr07a_extractos&$filter={periodFilter}",ct);
             var openingFilter=Uri.EscapeDataString($"cr07a_periodokey ge '{year:D4}-{first:D2}' and cr07a_periodokey le '{year:D4}-{last:D2}'");
             var openingsTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{ConciliacionBankCloseSetName}?$select=cr07a_periodokey,cr07a_origenflujo,cr07a_saldoinicial&$filter={openingFilter}",ct);
             await Task.WhenAll(sourceTask,balancesTask,openingsTask);
@@ -93,7 +95,8 @@ public sealed partial class DataverseService
             }).ToArray();
             var openings=openingsTask.Result.GroupBy(x=>ReadString(x,"cr07a_periodokey")).Where(g=>g.Count()==2 && g.Select(x=>ReadString(x,"cr07a_origenflujo")).Distinct().Count()==2)
                 .ToDictionary(g=>int.Parse(g.Key[5..],CultureInfo.InvariantCulture),g=>g.Sum(x=>ReadDecimal(x,"cr07a_saldoinicial")??0));
-            var result=new DirectCashFlowData {Movements=movements,Balances=balances,BankOpenings=openings};
+            var statements=balancesTask.Result.SelectMany(x=>string.IsNullOrWhiteSpace(ReadString(x,"cr07a_extractos"))?Array.Empty<DirectCashFlowStatement>():JsonSerializer.Deserialize<DirectCashFlowStatement[]>(ReadString(x,"cr07a_extractos"),new JsonSerializerOptions(JsonSerializerDefaults.Web))??[]).ToArray();
+            var result=new DirectCashFlowData {Movements=movements,Balances=balances,BankOpenings=openings,Statements=statements};
             _memoryCache.Set(key,result,TimeSpan.FromSeconds(20));return result;
         }
         finally{DirectCashFlowReadGate.Release();}
@@ -143,7 +146,10 @@ public sealed partial class DataverseService
         if(request.Bank is not ("Cloud" or "Copiers"))throw new InvalidOperationException("Selecciona la cuenta Cloud o Copiers.");
         if(request.Amount<=0||request.Amount>100_000_000_000m||decimal.Round(request.Amount,2)!=request.Amount)throw new InvalidOperationException("El importe debe ser positivo y tener máximo dos decimales.");
         if(request.Description.Trim().Length is < 3 or > 500||request.Reference.Length>200)throw new InvalidOperationException("Escribe una descripción de 3 a 500 caracteres y una referencia de máximo 200.");
-        DirectCashFlowCatalog.Require(request.ConceptKey,request.Direction);
+        if(request.Direction is not ("Entrada" or "Salida"))throw new InvalidOperationException("Selecciona ingreso o salida.");
+        if(!string.IsNullOrEmpty(request.ConceptKey))DirectCashFlowCatalog.Require(request.ConceptKey,request.Direction);
+        if(!string.IsNullOrEmpty(request.Version) && (await ReadDirectSourceAsync("Manual",request.RecordId,ct)).IsBankStatement)
+            throw new InvalidOperationException("Los valores importados conservan el extracto original. Puedes asignar su concepto desde Clasificar.");
         var payload=new Dictionary<string,object?>
         {
             ["cr07a_name"]=$"Manual {date:yyyy-MM-dd} {request.Bank}",["cr07a_fecha"]=request.Date,["cr07a_banco"]=request.Bank,
@@ -170,7 +176,8 @@ public sealed partial class DataverseService
     }
     public async Task VoidDirectCashFlowManualAsync(DirectCashFlowAssignmentRequest request,CancellationToken ct=default)
     {
-        await ReadDirectSourceAsync("Manual",request.RecordId,ct);
+        if((await ReadDirectSourceAsync("Manual",request.RecordId,ct)).IsBankStatement)
+            throw new InvalidOperationException("Los movimientos del extracto se conservan para comprobar sus saldos. Puedes modificar su clasificación.");
         await DirectWriteAsync(DirectManualSet,Guid.Parse(request.RecordId),new Dictionary<string,object?>{["statecode"]=1,["statuscode"]=2},request.Version,ct,requireExisting:true);
         Interlocked.Increment(ref DirectCashFlowRevision);
     }

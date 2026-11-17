@@ -143,6 +143,7 @@ public sealed class ConciliacionCashFlowRowDto
     public string DirectReason { get; set; } = "";
     public string DirectVersion { get; set; } = "";
     public bool IsManualBank => SourceKind == "Manual";
+    public bool IsBankStatement { get; set; }
     public string RecordId { get; set; } = "";
     public string SourceKind { get; set; } = "";
     public string SourceKindLabel { get; set; } = "";

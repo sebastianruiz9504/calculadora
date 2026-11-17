@@ -23,7 +23,8 @@ public static class DirectCashFlowExcelExporter
             var reportRows=report.Rows.ToDictionary(x=>x.Row);
             var pending=report.Months.Sum(x=>x.UnclassifiedCount);
             var suggested=report.Months.Sum(x=>x.SuggestedCount);
-            var statusText=$"{report.Year} · {suggested} registros sugeridos · {pending} sin concepto";
+            var bankStatus=report.BankChecks.Count==0?"":report.BankChecks.All(x=>x.Matches)?" · Extractos cuadrados (ver Control bancario)":" · Revisar Control bancario";
+            var statusText=$"{report.Year} · {suggested} registros sugeridos · {pending} sin concepto{bankStatus}";
             var statusRow=sourceRows.GetValueOrDefault(4);
             if(statusRow!=null)
             {
@@ -87,6 +88,7 @@ public static class DirectCashFlowExcelExporter
             calc.SetAttributeValue("fullCalcOnLoad",1);calc.SetAttributeValue("forceFullCalc",1);calc.SetAttributeValue("calcMode","auto");
             foreach(var name in workbook.Descendants(S+"definedName").Where(n=>(string?)n.Attribute("name")=="_xlnm.Print_Area"&&(string?)n.Attribute("localSheetId")=="0"))name.Value=$"'FLUJO DE CAJA REAL'!$A$1:${ColumnName(report.Months.Count+2)}$90";
             Write(zip,"xl/workbook.xml",workbook);
+            if(report.BankChecks.Count>0)WriteBankControl(zip,workbook,report);
             // Original calculation-chain entries no longer describe the regenerated formulas.
             zip.GetEntry("xl/calcChain.xml")?.Delete();
             foreach(var path in new[]{"xl/_rels/workbook.xml.rels","[Content_Types].xml"})
@@ -96,6 +98,69 @@ public static class DirectCashFlowExcelExporter
             }
         }
         return output.ToArray();
+    }
+    private static void WriteBankControl(ZipArchive zip,XDocument workbook,DirectCashFlowReport report)
+    {
+        const string path="xl/worksheets/direct-bank-control.xml";
+        const string relationshipId="rIdDirectBankControl";
+        XNamespace relationships="http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        XNamespace packageRelationships="http://schemas.openxmlformats.org/package/2006/relationships";
+        XNamespace contentTypes="http://schemas.openxmlformats.org/package/2006/content-types";
+        var rows=new XElement(S+"sheetData");
+        var labels=new Dictionary<int,string>
+        {
+            [1]="CONTROL BANCARIO · FLUJO DE CAJA DIRECTO",[2]="Cotejo de los movimientos con los extractos",
+            [3]="Incluye registros sin categoría y traslados. La clasificación del flujo se revisa por separado.",
+            [5]="CUENTA / PERÍODO",[6]="Número de cuenta",[7]="SALDO INICIAL DEL EXTRACTO",[8]="Ingresos registrados",[9]="Egresos registrados",
+            [10]="SALDO FINAL CALCULADO",[11]="Saldo final del extracto",[12]="DIFERENCIA DE SALDOS",[13]="Estado del cotejo",[14]="Movimientos del extracto",
+            [15]="Movimientos registrados",[16]="Importados del extracto",[17]="Pendientes de categoría",[18]="Movimientos faltantes",[19]="Movimientos adicionales",[20]="Movimientos modificados",
+            [22]="Ingresos del extracto",[23]="Egresos del extracto",[24]="Diferencia de ingresos",[25]="Diferencia de egresos"
+        };
+        foreach(var (n,label) in labels)
+        {
+            var row=new XElement(S+"row",new XAttribute("r",n),new XAttribute("ht",n==3?36:23),new XAttribute("customHeight",1));
+            var heading=n is 1 or 5 or 7 or 10 or 12;
+            var labelCell=new XElement(S+"c",new XAttribute("r",$"A{n}"),new XAttribute("s",heading?"63":"15"));SetText(labelCell,label);row.Add(labelCell);
+            for(var i=0;i<report.BankChecks.Count;i++)
+            {
+                var b=report.BankChecks[i];var col=ColumnName(i+2);
+                var cell=new XElement(S+"c",new XAttribute("r",$"{col}{n}"),new XAttribute("s",heading?"89":"68"));
+                object? value=n switch
+                {
+                    5=>$"{b.Bank} · {b.Period}",6=>b.Account,7=>b.Opening,8=>b.RegisteredCredits,9=>b.RegisteredDebits,10=>b.CalculatedClosing,11=>b.StatementClosing,12=>b.Difference,
+                    13=>b.Matches?"CUADRADO":"REVISAR DIFERENCIAS",14=>b.StatementCount,15=>b.RegisteredCount,16=>b.ImportedCount,17=>b.PendingCount,18=>b.MissingCount,19=>b.UnexpectedCount,20=>b.ChangedCount,
+                    22=>b.StatementCredits,23=>b.StatementDebits,24=>b.RegisteredCredits-b.StatementCredits,25=>b.RegisteredDebits-b.StatementDebits,_=>null
+                };
+                if(value is string text)SetText(cell,text);
+                else if(value is not null)
+                {
+                    if(value is decimal)cell.SetAttributeValue("s","40"); // Existing template style: #,##0.00.
+                    var formula=n switch{10=>$"{col}7+{col}8-{col}9",12=>$"{col}10-{col}11",24=>$"{col}8-{col}22",25=>$"{col}9-{col}23",_=>null};
+                    if(formula!=null)cell.Add(new XElement(S+"f",formula));
+                    cell.Add(new XElement(S+"v",Convert.ToString(value,CultureInfo.InvariantCulture)));
+                }
+                row.Add(cell);
+            }
+            rows.Add(row);
+        }
+        var last=ColumnName(report.BankChecks.Count+1);
+        var sheet=new XDocument(new XElement(S+"worksheet",
+            new XElement(S+"dimension",new XAttribute("ref",$"A1:{last}25")),
+            new XElement(S+"sheetViews",new XElement(S+"sheetView",new XAttribute("workbookViewId",0),new XAttribute("showGridLines",0),new XElement(S+"pane",new XAttribute("ySplit",5),new XAttribute("topLeftCell","A6"),new XAttribute("state","frozen")))),
+            new XElement(S+"cols",new XElement(S+"col",new XAttribute("min",1),new XAttribute("max",1),new XAttribute("width",45),new XAttribute("customWidth",1)),new XElement(S+"col",new XAttribute("min",2),new XAttribute("max",report.BankChecks.Count+1),new XAttribute("width",28),new XAttribute("customWidth",1))),rows,
+            new XElement(S+"mergeCells",new XAttribute("count",3),Enumerable.Range(1,3).Select(n=>new XElement(S+"mergeCell",new XAttribute("ref",$"A{n}:{last}{n}")))),
+            new XElement(S+"pageMargins",new XAttribute("left",.25),new XAttribute("right",.25),new XAttribute("top",.5),new XAttribute("bottom",.5),new XAttribute("header",.25),new XAttribute("footer",.25)),
+            new XElement(S+"pageSetup",new XAttribute("orientation","landscape"),new XAttribute("fitToWidth",1),new XAttribute("fitToHeight",1))));
+        Write(zip,path,sheet);
+        var sheets=workbook.Root!.Element(S+"sheets")!;
+        sheets.Add(new XElement(S+"sheet",new XAttribute("name","Control bancario"),new XAttribute("sheetId",sheets.Elements().Max(x=>(int)x.Attribute("sheetId")!)+1),new XAttribute(relationships+"id",relationshipId)));
+        Write(zip,"xl/workbook.xml",workbook);
+        using var relStream=zip.GetEntry("xl/_rels/workbook.xml.rels")!.Open();var rels=XDocument.Load(relStream);relStream.Close();
+        rels.Root!.Add(new XElement(packageRelationships+"Relationship",new XAttribute("Id",relationshipId),new XAttribute("Type",relationships.NamespaceName+"/worksheet"),new XAttribute("Target","worksheets/direct-bank-control.xml")));
+        Write(zip,"xl/_rels/workbook.xml.rels",rels);
+        using var typesStream=zip.GetEntry("[Content_Types].xml")!.Open();var types=XDocument.Load(typesStream);typesStream.Close();
+        types.Root!.Add(new XElement(contentTypes+"Override",new XAttribute("PartName","/"+path),new XAttribute("ContentType","application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")));
+        Write(zip,"[Content_Types].xml",types);
     }
     private static void SetText(XElement cell,string text){cell.SetAttributeValue("t","inlineStr");cell.Add(new XElement(S+"is",new XElement(S+"t",text)));}
     private static void Write(ZipArchive zip,string path,XDocument document){zip.GetEntry(path)?.Delete();using var s=zip.CreateEntry(path,CompressionLevel.Optimal).Open();document.Save(s);}

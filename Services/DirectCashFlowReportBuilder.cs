@@ -74,10 +74,47 @@ public static class DirectCashFlowReportBuilder
             if(c!=null) reportRows.Add(new(r,c.Code,c.Label,"detail",c.Key,cells.Select(v=>v.GetValueOrDefault(r)).ToArray()));
             else if(Headings.TryGetValue(r,out var h)) reportRows.Add(new(r,h.Code,h.Label,h.Kind,null,cells.Select(v=>v.GetValueOrDefault(r)).ToArray()));
         }
-        return new(){Year=year,StartMonth=first,EndMonth=last,Months=months,Rows=reportRows,CapturedAt=data.CapturedAt};
+        var checks=data.Statements.Where(s=>string.CompareOrdinal(s.Period,$"{year:D4}-{first:D2}")>=0 && string.CompareOrdinal(s.Period,$"{year:D4}-{last:D2}")<=0)
+            .Select(s=>CheckStatement(s,data.Movements)).OrderBy(x=>x.Period).ThenBy(x=>x.Bank).ToArray();
+        return new(){Year=year,StartMonth=first,EndMonth=last,Months=months,Rows=reportRows,CapturedAt=data.CapturedAt,BankChecks=checks};
+    }
+    public static DirectCashFlowBankCheck CheckStatement(DirectCashFlowStatement statement,IReadOnlyList<DirectCashFlowMovement> movements)
+    {
+        var current=movements.Where(x=>x.Bank==statement.Bank && x.Date.StartsWith(statement.Period+"-",StringComparison.Ordinal)).ToArray();
+        var byId=current.ToDictionary(x=>(x.SourceKind,x.RecordId));
+        var expected=statement.Rows.Select(x=>(x.SourceKind,x.RecordId)).ToHashSet();
+        var missing=0;var changed=0;var prior=statement.Opening;
+        var valid=statement.Rows.Count>0 && expected.Count==statement.Rows.Count;
+        foreach(var line in statement.Rows)
+        {
+            valid &= line.Date.StartsWith(statement.Period+"-",StringComparison.Ordinal) && line.Amount!=0 && prior+line.Amount==line.Balance;
+            prior=line.Balance;
+            if(!byId.TryGetValue((line.SourceKind,line.RecordId),out var actual))missing++;
+            else if(actual.Date!=line.Date || actual.Entry-actual.Exit!=line.Amount)changed++;
+        }
+        valid &= prior==statement.Closing && statement.Opening+statement.Credits-statement.Debits==statement.Closing
+            && statement.Rows.Sum(x=>Math.Max(0,x.Amount))==statement.Credits && statement.Rows.Sum(x=>Math.Max(0,-x.Amount))==statement.Debits;
+        return new()
+        {
+            Period=statement.Period,Bank=statement.Bank,Account=statement.Account,Opening=statement.Opening,
+            StatementCredits=statement.Credits,StatementDebits=statement.Debits,StatementClosing=statement.Closing,
+            RegisteredCredits=current.Sum(x=>x.Entry),RegisteredDebits=current.Sum(x=>x.Exit),StatementCount=statement.Rows.Count,RegisteredCount=current.Length,
+            MissingCount=missing,ChangedCount=changed,UnexpectedCount=current.Count(x=>!expected.Contains((x.SourceKind,x.RecordId))),
+            PendingCount=current.Count(x=>!x.IsInternalTransfer&&DirectCashFlowCatalog.Find(x.ConceptKey)is null),ImportedCount=current.Count(x=>x.IsStatement),StatementValid=valid
+        };
     }
     public static void MarkInternalTransfers(IReadOnlyList<DirectCashFlowMovement> movements, IReadOnlySet<string> omittedIds)
     {
+        // A pair present in both statements, on the same day, with the bank's
+        // own-transfer description is independent of manual cash adjustments.
+        var statementTransfers=movements.Where(x=>x.IsStatement && x.Description.Equals("TRANSFERENCIA CTA SUC VIRTUAL",StringComparison.OrdinalIgnoreCase))
+            .GroupBy(x=>(x.Date,x.Amount));
+        foreach(var group in statementTransfers)
+        {
+            var pair=group.ToArray();
+            if(pair.Length==2 && pair[0].Bank!=pair[1].Bank && pair[0].Entry==pair[1].Exit && pair[0].Exit==pair[1].Entry)
+                foreach(var row in pair)row.IsInternalTransfer=true;
+        }
         foreach(var row in movements.Where(x=>omittedIds.Contains(x.RecordId)))
         {
             var counterparts=movements.Where(other=>!other.IsManual && other.Date[..7]==row.Date[..7] && other.RecordId!=row.RecordId && other.Bank!=row.Bank && other.Amount==row.Amount && other.Direction!=row.Direction
