@@ -5,7 +5,7 @@ param(
     [string]$WebAppName = "dtc-calculadora-linux-7018",
     [string]$ProjectPath = "$PSScriptRoot\..\CotizadorInterno.Web.csproj",
     [string]$Configuration = "Release",
-    [string]$VerifyPath = "/PrimaLegal",
+    [string]$VerifyPath = "/healthz",
     [int]$TimeoutSeconds = 900,
     [switch]$NoRestore,
     [switch]$SkipVerify,
@@ -63,7 +63,7 @@ try {
         --src-path $zipPath `
         --type zip `
         --restart true `
-        --timeout $TimeoutSeconds `
+        --timeout ($TimeoutSeconds * 1000) `
         --output json
     if ($LASTEXITCODE -ne 0) {
         throw "Azure rechazo el despliegue de $WebAppName con codigo $LASTEXITCODE."
