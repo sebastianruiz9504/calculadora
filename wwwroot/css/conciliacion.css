@@ -1126,17 +1126,17 @@ tr.is-highlighted td {
 }
 
 .cnc-v2-table-wrap {
-    overflow: hidden;
+    overflow-x: auto;
 }
 
 .cnc-table--v2 {
     width: 100%;
-    min-width: 0;
+    min-width: 54rem;
     table-layout: fixed;
 }
 
 .cnc-table--v2 .cnc-v2-col-status {
-    width: 3rem;
+    width: 4rem;
 }
 
 .cnc-table--v2 .cnc-v2-col-date {
@@ -1153,6 +1153,10 @@ tr.is-highlighted td {
 
 .cnc-table--v2 .cnc-v2-col-amount {
     width: 6.5rem;
+}
+
+.cnc-table--v2 .cnc-v2-col-concept {
+    width: 11rem;
 }
 
 .cnc-table--v2 th,

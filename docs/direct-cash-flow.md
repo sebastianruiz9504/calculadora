@@ -5,7 +5,7 @@ Implementado sobre `origin/production` (`89d2ce6`) el 17 de noviembre de 2026.
 ## Uso
 
 - Abrir **Conciliación → Flujo de caja directo**. Conserva la navegación lateral del módulo y abre el mes seleccionado; los filtros permiten ampliar el período.
-- Abrir un movimiento desde Conciliación 2 o desde una celda del reporte y guardar su número y concepto. El catálogo filtra ingresos y salidas, con validación adicional en el servidor.
+- En Conciliación 2, la última columna **Flujo de caja** muestra únicamente el número y concepto. Hacer clic permite asignarlo o editarlo; al guardar se actualiza la celda sin recargar el tablero. También se puede abrir un movimiento desde una celda del reporte. El catálogo filtra ingresos y salidas, con validación adicional en el servidor.
 - **Registro manual** permite incorporar movimientos bancarios faltantes, identificados en morado y con estado **Solo banco**. Se pueden editar o anular, conservando el registro. No generan comprobantes ni llamadas a Siigo.
 - Completar el saldo inicial consolidado y los cuatro saldos de cierre seleccionando sus celdas. Cero es un valor válido; vacío significa pendiente. CHECK compara el cierre calculado con Cloud + Copiers + Bolsillos + Fidurenta únicamente cuando todos están informados.
 - Descargar Excel conserva el formato, orden, códigos, estilos y hojas ocultas del archivo entregado. Las columnas corresponden al período seleccionado. Los datos pendientes no se inventan.

@@ -195,6 +195,7 @@
                     <col class="cnc-v2-col-imported-description" />
                     <col class="cnc-v2-col-description" />
                     <col class="cnc-v2-col-amount" />
+                    <col class="cnc-v2-col-concept" />
                 </colgroup>
                 <thead>
                     <tr>
@@ -203,6 +204,7 @@
                         <th>Descripcion importacion</th>
                         <th>Descripcion usuario</th>
                         <th class="text-end">Valor</th>
+                        <th>Flujo de caja</th>
                     </tr>
                     <tr class="cnc-v2-filter-row">
                         <th>
@@ -225,6 +227,7 @@
                         <th>
                             <input class="form-control text-end" type="search" placeholder="Valor" data-cnc-column-filter="conciliacion-2" data-cnc-filter-field="amount" aria-label="Filtrar valor" />
                         </th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody data-cnc-table-body="conciliacion-2">
@@ -311,7 +314,6 @@
                             </td>
                             <td>
                                 <strong>@row.MovementDateDisplay</strong>
-                                <button type="button" class="dcf-legacy-concept" data-dcf-open-row>@(CotizadorInterno.Web.Services.DirectCashFlowCatalog.Find(row.DirectConceptKey) is { } concept ? $"{concept.Code} · {concept.Label}" : "Asignar concepto de flujo")@(row.DirectStatus == "Sugerido" ? " · Sugerido" : "")</button>
                                 <small>@ExcelRowLabel(row.SourceRowNumber) · @row.SourceFlow</small>
                             </td>
                             <td>
@@ -322,7 +324,10 @@
                                 @if (row.IsManualBank)
                                 {
                                     <span>@userDescription</span>
-                                    <button type="button" class="dcf-legacy-concept" data-dcf-open-row>@(row.IsBankStatement ? "Categorizar movimiento" : "Editar registro manual")</button>
+                                    @if (!row.IsBankStatement)
+                                    {
+                                        <button type="button" class="dcf-legacy-concept" data-dcf-open-row>Editar registro manual</button>
+                                    }
                                 }
                                 else
                                 {
@@ -344,6 +349,9 @@
                             <td class="text-end">
                                 <strong>@amountLabel</strong>
                                 <small>@row.Direction</small>
+                            </td>
+                            <td class="cnc-v2-concept-cell">
+                                <button type="button" class="dcf-legacy-concept" data-dcf-open-row data-dcf-concept-label title="Editar concepto de flujo de caja">@(CotizadorInterno.Web.Services.DirectCashFlowCatalog.Find(row.DirectConceptKey) is { } concept ? $"{concept.Code} · {concept.Label}" : "Asignar concepto")</button>
                             </td>
                         </tr>
                     }

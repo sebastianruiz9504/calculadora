@@ -42,7 +42,7 @@
         document.querySelectorAll("[data-cnc-v2-row]").forEach(el => {
             if (el.dataset.recordId !== row.recordId) return;
             el.dataset.directConcept = row.conceptKey; el.dataset.directVersion = row.version;
-            const label = $("[data-dcf-open-row]",el); if(label)label.textContent = row.conceptLabel + (row.status === "Sugerido" ? " · Sugerido" : "");
+            const label = $("[data-dcf-concept-label]",el); if(label)label.textContent = row.conceptLabel || "Asignar concepto";
         });
     }
     async function changed() { if (root) await refresh(); if (detailReload) await detailReload(); }

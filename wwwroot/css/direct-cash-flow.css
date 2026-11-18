@@ -160,6 +160,11 @@ html[data-bs-theme="dark"] body.app-shell :is(.dcf-dialog tr.is-manual,.cnc-v2-r
 .cnc-v2-row.is-direct-manual td{background:#f4ebfc!important;color:#6b4d88}
 .cnc-v2-row.is-direct-manual:hover td{background:#ebdef7!important}
 .dcf-legacy-concept{display:block;border:0;background:transparent;color:#416e9a;font-size:11px;text-align:left;padding:5px 0;cursor:pointer}
+.cnc-v2-concept-cell .dcf-legacy-concept{width:100%;padding:7px 5px;border-radius:6px;font-size:.76rem;line-height:1.35;white-space:normal}
+.cnc-v2-concept-cell .dcf-legacy-concept:hover{background:#e9f0f7;color:#284f76;text-decoration:underline;text-underline-offset:3px}
+.cnc-v2-concept-cell .dcf-legacy-concept:focus-visible{outline:2px solid #8bb5df;outline-offset:2px}
+html[data-bs-theme="dark"] body.app-shell .dcf-legacy-concept{color:#b8d8f8}
+html[data-bs-theme="dark"] body.app-shell .cnc-v2-concept-cell .dcf-legacy-concept:hover{background:#1c3249;color:#e1edfa}
 .dcf-dialog :focus-visible,.dcf-layout :focus-visible{outline:3px solid #8bb5df;outline-offset:3px}
 @media(max-width:1200px){.dcf-layout{grid-template-columns:180px minmax(0,1fr);gap:22px}
 .dcf-sidebar{padding-right:12px}
