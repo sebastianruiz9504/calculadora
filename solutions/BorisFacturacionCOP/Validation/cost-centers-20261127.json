@@ -1,0 +1,48 @@
+{
+  "contracts": 8,
+  "centers": {
+    "101-00": 0,
+    "102-00": 0,
+    "103-00": 8,
+    "104-00": 0,
+    "105-00": 0
+  },
+  "forms": 1,
+  "views": 2,
+  "field": "cr07a_centrocosto",
+  "document_id": 7481,
+  "flow_state": "Started",
+  "mode": "Produccion",
+  "billing_controls_unchanged": 4,
+  "cloud_flow_unchanged": true,
+  "verified_utc": "2026-11-27T15:14:53.119153+00:00",
+  "flow_id": "76ea371e-9a4f-4862-90cd-4df8fe3a606a",
+  "ui": {
+    "application": "Gerencia",
+    "table_rows": 8,
+    "cost_center_column_visible": true,
+    "editable_choices": [
+      "101-00 - Ventas",
+      "102-00 - Ventas",
+      "103-00 - Ventas",
+      "104-00 - Ventas",
+      "105-00 - Ventas"
+    ],
+    "selected": "103-00 - Ventas"
+  },
+  "tests": {
+    "valid": {
+      "status": "Succeeded",
+      "passed": true,
+      "run": "08584058145009237747158229067CU26"
+    },
+    "invalid": {
+      "status": "Failed",
+      "passed": true,
+      "run": "08584058144652872469190502607CU28"
+    }
+  },
+  "real_invoices_created_by_validation": 0,
+  "temporary_test_flows_deleted": true,
+  "flow_modified_utc": "2026-11-27T15:14:13Z"
+}

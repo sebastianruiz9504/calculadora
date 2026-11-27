@@ -1,0 +1,1571 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {},
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "hours": [
+                6
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "hours": [
+                6
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "type": "Recurrence",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "runs": 1
+            }
+          }
+        }
+      },
+      "actions": {
+        "Configuracion": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": {
+            "modo": "Produccion",
+            "contratoPrueba": "a4b6d116-56d8-f111-84ea-70a8a5a95cf5",
+            "simularTodos": false,
+            "fechaSimulacion": ""
+          }
+        },
+        "Hoy_Bogota": {
+          "runAfter": {
+            "Configuracion": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@if(and(equals(outputs('Configuracion')?['modo'],'Simulacion'),not(empty(outputs('Configuracion')?['fechaSimulacion']))),outputs('Configuracion')?['fechaSimulacion'],convertTimeZone(utcNow(),'UTC','SA Pacific Standard Time','yyyy-MM-dd'))"
+        },
+        "varResultados": {
+          "runAfter": {
+            "Hoy_Bogota": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varResultados",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "varErrores": {
+          "runAfter": {
+            "varResultados": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varErrores",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "varListo": {
+          "runAfter": {
+            "varErrores": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varListo",
+                "type": "boolean",
+                "value": false
+              }
+            ]
+          }
+        },
+        "varControlId": {
+          "runAfter": {
+            "varListo": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varControlId",
+                "type": "string",
+                "value": ""
+              }
+            ]
+          }
+        },
+        "varPayload": {
+          "runAfter": {
+            "varControlId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varPayload",
+                "type": "object",
+                "value": {}
+              }
+            ]
+          }
+        },
+        "varRespuestaSiigo": {
+          "runAfter": {
+            "varPayload": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varRespuestaSiigo",
+                "type": "object",
+                "value": {}
+              }
+            ]
+          }
+        },
+        "varFacturaId": {
+          "runAfter": {
+            "varRespuestaSiigo": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varFacturaId",
+                "type": "string",
+                "value": ""
+              }
+            ]
+          }
+        },
+        "varFacturaNombre": {
+          "runAfter": {
+            "varFacturaId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varFacturaNombre",
+                "type": "string",
+                "value": ""
+              }
+            ]
+          }
+        },
+        "Listar_contratos": {
+          "runAfter": {
+            "varFacturaNombre": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "cr07a_contratosborises",
+              "$select": "cr07a_contratosborisid,cr07a_name,_cr07a_cliente_value,cr07a_costomensual,cr07a_diadefacturacion,cr07a_facturacionmensual,cr07a_fechaderenovacion,cr07a_siigo_code,cr07a_ultimoperiodofacturado,cr07a_siigo_invoice_id,cr07a_siigo_invoice_name,cr07a_centrocosto",
+              "$filter": "@if(equals(outputs('Configuracion')?['modo'],'Produccion'),'statecode eq 0',if(outputs('Configuracion')?['simularTodos'],'statecode eq 0','statecode eq 0 and cr07a_contratosborisid eq a4b6d116-56d8-f111-84ea-70a8a5a95cf5'))"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 100000
+            }
+          }
+        },
+        "Autenticar_Siigo": {
+          "runAfter": {
+            "Listar_contratos": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://api.siigo.com/auth",
+            "headers": {
+              "Partner-Id": "digitalTechFacturacion",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "username": "__SIIGO_USERNAME__",
+              "access_key": "__SIIGO_ACCESS_KEY__"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Consultar_impuestos": {
+          "runAfter": {
+            "Autenticar_Siigo": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://api.siigo.com/v1/taxes",
+            "headers": {
+              "Partner-Id": "digitalTechFacturacion",
+              "Content-Type": "application/json",
+              "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          }
+        },
+        "Impuesto_IVA19": {
+          "runAfter": {
+            "Consultar_impuestos": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Consultar_impuestos')",
+            "where": "@and(equals(item()?['id'],4021),equals(item()?['percentage'],19),equals(item()?['active'],true))"
+          }
+        },
+        "Consultar_pagos": {
+          "runAfter": {
+            "Impuesto_IVA19": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://api.siigo.com/v1/payment-types?document_type=FV",
+            "headers": {
+              "Partner-Id": "digitalTechFacturacion",
+              "Content-Type": "application/json",
+              "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          }
+        },
+        "Pago_credito": {
+          "runAfter": {
+            "Consultar_pagos": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Consultar_pagos')",
+            "where": "@and(equals(item()?['id'],1721),equals(item()?['active'],true),equals(item()?['due_date'],true))"
+          }
+        },
+        "Consultar_vendedores": {
+          "runAfter": {
+            "Pago_credito": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://api.siigo.com/v1/users?page=1&page_size=100",
+            "headers": {
+              "Partner-Id": "digitalTechFacturacion",
+              "Content-Type": "application/json",
+              "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          }
+        },
+        "Vendedor_activo": {
+          "runAfter": {
+            "Consultar_vendedores": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Consultar_vendedores')?['results']",
+            "where": "@and(equals(item()?['id'],808),equals(item()?['active'],true))"
+          }
+        },
+        "Por_contrato": {
+          "foreach": "@body('Listar_contratos')?['value']",
+          "actions": {
+            "Reiniciar_preparacion": {
+              "runAfter": {},
+              "type": "SetVariable",
+              "inputs": {
+                "name": "varListo",
+                "value": false
+              }
+            },
+            "Reiniciar_control": {
+              "runAfter": {
+                "Reiniciar_preparacion": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "varControlId",
+                "value": ""
+              }
+            },
+            "Reiniciar_payload": {
+              "runAfter": {
+                "Reiniciar_control": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "varPayload",
+                "value": {}
+              }
+            },
+            "Reiniciar_respuesta": {
+              "runAfter": {
+                "Reiniciar_payload": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "varRespuestaSiigo",
+                "value": {}
+              }
+            },
+            "Reiniciar_factura": {
+              "runAfter": {
+                "Reiniciar_respuesta": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "varFacturaId",
+                "value": ""
+              }
+            },
+            "Reiniciar_nombre": {
+              "runAfter": {
+                "Reiniciar_factura": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "varFacturaNombre",
+                "value": ""
+              }
+            },
+            "Dia_contrato": {
+              "runAfter": {
+                "Reiniciar_nombre": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@int(if(isInt(trim(coalesce(items('Por_contrato')?['cr07a_diadefacturacion'],''))),trim(coalesce(items('Por_contrato')?['cr07a_diadefacturacion'],'')),'0'))"
+            },
+            "Datos_contrato_validos": {
+              "actions": {
+                "Fecha_cobro": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": "@if(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),addDays(startOfMonth(outputs('Hoy_Bogota')),sub(min(outputs('Dia_contrato'),dayOfMonth(addDays(addToTime(startOfMonth(outputs('Hoy_Bogota')),1,'Month'),-1))),1),'yyyy-MM-dd'),formatDateTime(coalesce(items('Por_contrato')?['cr07a_fechaderenovacion'],'2099-12-31'),'yyyy-MM-dd'))"
+                },
+                "Periodo": {
+                  "runAfter": {
+                    "Fecha_cobro": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),concat('M',formatDateTime(outputs('Hoy_Bogota'),'yyyy-MM')),concat('A',outputs('Fecha_cobro')))"
+                },
+                "Clave_idempotencia": {
+                  "runAfter": {
+                    "Periodo": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@concat(if(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),'M','A'),substring(replace(items('Por_contrato')?['cr07a_contratosborisid'],'-',''),0,21),if(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),concat(formatDateTime(outputs('Hoy_Bogota'),'yyyyMM'),'01'),formatDateTime(outputs('Fecha_cobro'),'yyyyMMdd')))"
+                },
+                "Corresponde_facturar": {
+                  "actions": {
+                    "Periodo_pendiente": {
+                      "actions": {
+                        "Procesar_cobro": {
+                          "actions": {
+                            "Obtener_cliente": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                  "connectionName": "shared_commondataserviceforapps",
+                                  "operationId": "GetItem"
+                                },
+                                "parameters": {
+                                  "entityName": "cr07a_clientes",
+                                  "recordId": "@items('Por_contrato')?['_cr07a_cliente_value']",
+                                  "$select": "cr07a_nit,cr07a_nombre,statecode"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Buscar_cliente_Siigo": {
+                              "runAfter": {
+                                "Obtener_cliente": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Http",
+                              "inputs": {
+                                "method": "GET",
+                                "uri": "@concat('https://api.siigo.com/v1/customers?identification=',encodeUriComponent(string(body('Obtener_cliente')?['cr07a_nit'])),'&branch_office=0&page=1&page_size=100')",
+                                "headers": {
+                                  "Partner-Id": "digitalTechFacturacion",
+                                  "Content-Type": "application/json",
+                                  "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+                                }
+                              },
+                              "runtimeConfiguration": {
+                                "secureData": {
+                                  "properties": [
+                                    "inputs"
+                                  ]
+                                }
+                              }
+                            },
+                            "Cliente_Siigo_activo": {
+                              "runAfter": {
+                                "Buscar_cliente_Siigo": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@body('Buscar_cliente_Siigo')?['results']",
+                                "where": "@and(equals(item()?['identification'],string(body('Obtener_cliente')?['cr07a_nit'])),equals(item()?['branch_office'],0),equals(item()?['active'],true),equals(body('Obtener_cliente')?['statecode'],0))"
+                              }
+                            },
+                            "Buscar_producto_Siigo": {
+                              "runAfter": {
+                                "Cliente_Siigo_activo": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Http",
+                              "inputs": {
+                                "method": "GET",
+                                "uri": "@concat('https://api.siigo.com/v1/products?code=',encodeUriComponent(items('Por_contrato')?['cr07a_siigo_code']),'&active=true&page=1&page_size=100')",
+                                "headers": {
+                                  "Partner-Id": "digitalTechFacturacion",
+                                  "Content-Type": "application/json",
+                                  "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+                                }
+                              },
+                              "runtimeConfiguration": {
+                                "secureData": {
+                                  "properties": [
+                                    "inputs"
+                                  ]
+                                }
+                              }
+                            },
+                            "Producto_Siigo_activo": {
+                              "runAfter": {
+                                "Buscar_producto_Siigo": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@body('Buscar_producto_Siigo')?['results']",
+                                "where": "@and(equals(item()?['code'],items('Por_contrato')?['cr07a_siigo_code']),equals(item()?['active'],true),equals(item()?['tax_classification'],'Taxed'),equals(item()?['tax_included'],false))"
+                              }
+                            },
+                            "Consultar_documentos": {
+                              "runAfter": {
+                                "Producto_Siigo_activo": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Http",
+                              "inputs": {
+                                "method": "GET",
+                                "uri": "https://api.siigo.com/v1/document-types?type=FV",
+                                "headers": {
+                                  "Partner-Id": "digitalTechFacturacion",
+                                  "Content-Type": "application/json",
+                                  "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+                                }
+                              },
+                              "runtimeConfiguration": {
+                                "secureData": {
+                                  "properties": [
+                                    "inputs"
+                                  ]
+                                }
+                              }
+                            },
+                            "Documento_FV1": {
+                              "runAfter": {
+                                "Consultar_documentos": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@body('Consultar_documentos')",
+                                "where": "@and(equals(item()?['id'],7481),equals(item()?['active'],true))"
+                              }
+                            },
+                            "Referencias_validas": {
+                              "actions": {
+                                "Subtotal_COP": {
+                                  "runAfter": {},
+                                  "type": "Compose",
+                                  "inputs": "@float(formatNumber(mul(float(items('Por_contrato')?['cr07a_costomensual']),if(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),1,12)),'0.00','en-US'))"
+                                },
+                                "IVA_COP": {
+                                  "runAfter": {
+                                    "Subtotal_COP": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@float(formatNumber(mul(outputs('Subtotal_COP'),0.19),'0.00','en-US'))"
+                                },
+                                "Total_COP": {
+                                  "runAfter": {
+                                    "IVA_COP": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@float(formatNumber(add(outputs('Subtotal_COP'),outputs('IVA_COP')),'0.00','en-US'))"
+                                },
+                                "BodyFactura": {
+                                  "runAfter": {
+                                    "CentroCostoSiigo": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": {
+                                    "document": {
+                                      "id": 7481
+                                    },
+                                    "number": "@int(first(body('Documento_FV1'))?['consecutive'])",
+                                    "date": "@outputs('Hoy_Bogota')",
+                                    "customer": {
+                                      "identification": "@string(body('Obtener_cliente')?['cr07a_nit'])",
+                                      "branch_office": 0
+                                    },
+                                    "seller": 808,
+                                    "items": [
+                                      {
+                                        "code": "@items('Por_contrato')?['cr07a_siigo_code']",
+                                        "description": "@concat('BORIS - ',substring(coalesce(items('Por_contrato')?['cr07a_name'],''),0,min(length(coalesce(items('Por_contrato')?['cr07a_name'],'')),500)),' | ',outputs('Periodo'))",
+                                        "quantity": 1,
+                                        "price": "@outputs('Subtotal_COP')",
+                                        "taxes": [
+                                          {
+                                            "id": 4021
+                                          }
+                                        ]
+                                      }
+                                    ],
+                                    "payments": [
+                                      {
+                                        "id": 1721,
+                                        "value": "@outputs('Total_COP')",
+                                        "due_date": "@addDays(outputs('Hoy_Bogota'),30,'yyyy-MM-dd')"
+                                      }
+                                    ],
+                                    "stamp": {
+                                      "send": false
+                                    },
+                                    "mail": {
+                                      "send": false
+                                    },
+                                    "retentions": [],
+                                    "observations": "@concat('BORIS | Contrato ',items('Por_contrato')?['cr07a_contratosborisid'],' | Periodo ',outputs('Periodo'),' | Clave ',outputs('Clave_idempotencia'))",
+                                    "cost_center": "@outputs('CentroCostoSiigo')"
+                                  }
+                                },
+                                "Buscar_control_cobro": {
+                                  "runAfter": {
+                                    "BodyFactura": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                      "connectionName": "shared_commondataserviceforapps",
+                                      "operationId": "ListRecords"
+                                    },
+                                    "parameters": {
+                                      "entityName": "cr07a_boriscobros",
+                                      "$select": "cr07a_boriscobroid,cr07a_name,cr07a_periodo,cr07a_estado,cr07a_payload,cr07a_siigofactura,cr07a_siigonombre,cr07a_contratoref,cr07a_total",
+                                      "$filter": "@concat('cr07a_name eq ',decodeUriComponent('%27'),outputs('Clave_idempotencia'),decodeUriComponent('%27'))"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                },
+                                "Preparacion_completa": {
+                                  "runAfter": {
+                                    "Buscar_control_cobro": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "varListo",
+                                    "value": true
+                                  }
+                                },
+                                "CentroCostoSiigo": {
+                                  "runAfter": {
+                                    "Total_COP": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@int(json('{\"10100\":589,\"10200\":602,\"10300\":611,\"10400\":622,\"10500\":633}')?[string(coalesce(items('Por_contrato')?['cr07a_centrocosto'],10300))])"
+                                }
+                              },
+                              "runAfter": {
+                                "Documento_FV1": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "else": {
+                                "actions": {
+                                  "Referencias_incompletas": {
+                                    "runAfter": {},
+                                    "type": "AppendToArrayVariable",
+                                    "inputs": {
+                                      "name": "varErrores",
+                                      "value": "@concat('Cliente, producto, documento, impuesto, pago o vendedor no valido para ',items('Por_contrato')?['cr07a_name'])"
+                                    }
+                                  }
+                                }
+                              },
+                              "expression": "@and(equals(length(body('Cliente_Siigo_activo')),1),equals(length(body('Producto_Siigo_activo')),1),equals(length(body('Documento_FV1')),1),equals(length(body('Impuesto_IVA19')),1),equals(length(body('Pago_credito')),1),equals(length(body('Vendedor_activo')),1))",
+                              "type": "If"
+                            }
+                          },
+                          "runAfter": {},
+                          "type": "Scope"
+                        },
+                        "Registrar_fallo": {
+                          "actions": {
+                            "Agregar_error": {
+                              "runAfter": {},
+                              "type": "AppendToArrayVariable",
+                              "inputs": {
+                                "name": "varErrores",
+                                "value": "@concat('Fallo en ',items('Por_contrato')?['cr07a_name'],' | Clave ',outputs('Clave_idempotencia'),' | Run ',workflow()?['run']?['name'])"
+                              }
+                            },
+                            "Guardar_error_si_hubo_envio": {
+                              "actions": {
+                                "Error_contrato": {
+                                  "runAfter": {},
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                      "connectionName": "shared_commondataserviceforapps",
+                                      "operationId": "UpdateOnlyRecord"
+                                    },
+                                    "parameters": {
+                                      "entityName": "cr07a_contratosborises",
+                                      "recordId": "@items('Por_contrato')?['cr07a_contratosborisid']",
+                                      "item/cr07a_error_facturacion": "@concat('Revisar ejecucion ',workflow()?['run']?['name'],' | Clave ',outputs('Clave_idempotencia'),'. Reintentar con la misma clave. No crear factura manual sin revisar Siigo.')"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                }
+                              },
+                              "runAfter": {
+                                "Agregar_error": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "else": {
+                                "actions": {}
+                              },
+                              "expression": "@not(equals(outputs('Configuracion')?['modo'],'Simulacion'))",
+                              "type": "If"
+                            }
+                          },
+                          "runAfter": {
+                            "Procesar_cobro": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          },
+                          "type": "Scope"
+                        }
+                      },
+                      "runAfter": {},
+                      "else": {
+                        "actions": {
+                          "Resultado_ya_facturado": {
+                            "runAfter": {},
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "varResultados",
+                              "value": {
+                                "estado": "PeriodoYaFacturado",
+                                "periodo": "@outputs('Periodo')",
+                                "contrato": "@items('Por_contrato')?['cr07a_contratosborisid']"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "expression": "@not(equals(coalesce(items('Por_contrato')?['cr07a_ultimoperiodofacturado'],''),outputs('Periodo')))",
+                      "type": "If"
+                    }
+                  },
+                  "runAfter": {
+                    "Clave_idempotencia": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {
+                      "Resultado_no_vence": {
+                        "runAfter": {},
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "name": "varResultados",
+                          "value": {
+                            "estado": "NoVenceHoy",
+                            "fechaCobro": "@outputs('Fecha_cobro')",
+                            "contrato": "@items('Por_contrato')?['cr07a_contratosborisid']"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "expression": "@or(and(equals(outputs('Configuracion')?['modo'],'Simulacion'),outputs('Configuracion')?['simularTodos']),and(not(equals(outputs('Configuracion')?['modo'],'Produccion')),equals(items('Por_contrato')?['cr07a_contratosborisid'],outputs('Configuracion')?['contratoPrueba'])),and(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),equals(outputs('Fecha_cobro'),outputs('Hoy_Bogota'))),and(equals(items('Por_contrato')?['cr07a_facturacionmensual'],false),lessOrEquals(outputs('Fecha_cobro'),outputs('Hoy_Bogota'))))",
+                  "type": "If"
+                }
+              },
+              "runAfter": {
+                "Dia_contrato": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Datos_incompletos": {
+                    "runAfter": {},
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "varErrores",
+                      "value": "@concat('Faltan datos validos en contrato ',items('Por_contrato')?['cr07a_contratosborisid'])"
+                    }
+                  }
+                }
+              },
+              "expression": "@and(not(empty(items('Por_contrato')?['_cr07a_cliente_value'])),not(empty(items('Por_contrato')?['cr07a_siigo_code'])),greater(float(coalesce(items('Por_contrato')?['cr07a_costomensual'],0)),0),or(and(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),greaterOrEquals(outputs('Dia_contrato'),1),lessOrEquals(outputs('Dia_contrato'),31)),and(equals(items('Por_contrato')?['cr07a_facturacionmensual'],false),not(empty(items('Por_contrato')?['cr07a_fechaderenovacion'])))))",
+              "type": "If"
+            },
+            "Modo_simulacion": {
+              "actions": {
+                "Resultado_simulacion": {
+                  "runAfter": {},
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "varResultados",
+                    "value": {
+                      "estado": "SimulacionSinEnvio",
+                      "contrato": "@items('Por_contrato')?['cr07a_contratosborisid']",
+                      "cliente": "@body('Obtener_cliente')?['cr07a_nombre']",
+                      "fechaCobro": "@outputs('Fecha_cobro')",
+                      "periodo": "@outputs('Periodo')",
+                      "subtotal": "@outputs('Subtotal_COP')",
+                      "iva": "@outputs('IVA_COP')",
+                      "total": "@outputs('Total_COP')",
+                      "claveIdempotencia": "@outputs('Clave_idempotencia')",
+                      "bodyFactura": "@outputs('BodyFactura')",
+                      "controlExistente": "@not(empty(body('Buscar_control_cobro')?['value']))"
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Datos_contrato_validos": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {}
+              },
+              "expression": "@and(variables('varListo'),equals(outputs('Configuracion')?['modo'],'Simulacion'))",
+              "type": "If"
+            },
+            "Envio_habilitado": {
+              "actions": {
+                "Ya_existe_factura_control": {
+                  "actions": {
+                    "Control_confirmado": {
+                      "actions": {
+                        "Recuperar_factura_id": {
+                          "runAfter": {},
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "varFacturaId",
+                            "value": "@first(body('Buscar_control_cobro')?['value'])?['cr07a_siigofactura']"
+                          }
+                        },
+                        "Recuperar_factura_nombre": {
+                          "runAfter": {
+                            "Recuperar_factura_id": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "varFacturaNombre",
+                            "value": "@first(body('Buscar_control_cobro')?['value'])?['cr07a_siigonombre']"
+                          }
+                        }
+                      },
+                      "runAfter": {},
+                      "else": {
+                        "actions": {
+                          "Control_revision": {
+                            "runAfter": {},
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "varErrores",
+                              "value": "@concat('El control ',outputs('Clave_idempotencia'),' ya tiene factura y requiere revision; se evita otro envio.')"
+                            }
+                          }
+                        }
+                      },
+                      "expression": "@equals(first(body('Buscar_control_cobro')?['value'])?['cr07a_estado'],'BorradorCreado')",
+                      "type": "If"
+                    }
+                  },
+                  "runAfter": {},
+                  "else": {
+                    "actions": {
+                      "Preparar_y_enviar": {
+                        "actions": {
+                          "Control_preparado": {
+                            "actions": {
+                              "Crear_control_cobro": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "operationId": "CreateRecord"
+                                  },
+                                  "parameters": {
+                                    "entityName": "cr07a_boriscobros",
+                                    "item/cr07a_name": "@outputs('Clave_idempotencia')",
+                                    "item/cr07a_contratoref": "@items('Por_contrato')?['cr07a_contratosborisid']",
+                                    "item/cr07a_periodo": "@outputs('Periodo')",
+                                    "item/cr07a_estado": "Preparado",
+                                    "item/cr07a_payload": "@string(outputs('BodyFactura'))",
+                                    "item/cr07a_renovacionorigen": "@outputs('Fecha_cobro')",
+                                    "item/cr07a_subtotal": "@outputs('Subtotal_COP')",
+                                    "item/cr07a_total": "@outputs('Total_COP')"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              },
+                              "Control_nuevo": {
+                                "runAfter": {
+                                  "Crear_control_cobro": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "varControlId",
+                                  "value": "@body('Crear_control_cobro')?['cr07a_boriscobroid']"
+                                }
+                              },
+                              "Payload_nuevo": {
+                                "runAfter": {
+                                  "Control_nuevo": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "varPayload",
+                                  "value": "@outputs('BodyFactura')"
+                                }
+                              }
+                            },
+                            "runAfter": {},
+                            "else": {
+                              "actions": {
+                                "Control_existente": {
+                                  "runAfter": {},
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "varControlId",
+                                    "value": "@first(body('Buscar_control_cobro')?['value'])?['cr07a_boriscobroid']"
+                                  }
+                                },
+                                "Payload_guardado": {
+                                  "runAfter": {
+                                    "Control_existente": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "varPayload",
+                                    "value": "@json(first(body('Buscar_control_cobro')?['value'])?['cr07a_payload'])"
+                                  }
+                                }
+                              }
+                            },
+                            "expression": "@empty(body('Buscar_control_cobro')?['value'])",
+                            "type": "If"
+                          },
+                          "Payload_reintentable_hoy": {
+                            "actions": {
+                              "Crear_borrador_Siigo": {
+                                "runAfter": {},
+                                "type": "Http",
+                                "inputs": {
+                                  "method": "POST",
+                                  "uri": "https://api.siigo.com/v1/invoices",
+                                  "headers": {
+                                    "Partner-Id": "digitalTechFacturacion",
+                                    "Content-Type": "application/json",
+                                    "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])",
+                                    "Idempotency-Key": "@outputs('Clave_idempotencia')"
+                                  },
+                                  "body": "@variables('varPayload')",
+                                  "retryPolicy": {
+                                    "type": "none"
+                                  },
+                                  "timeout": "PT2M"
+                                },
+                                "runtimeConfiguration": {
+                                  "secureData": {
+                                    "properties": [
+                                      "inputs"
+                                    ]
+                                  }
+                                }
+                              },
+                              "Respuesta_primer_envio": {
+                                "actions": {
+                                  "Conservar_respuesta_primer_envio": {
+                                    "runAfter": {},
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                      "name": "varRespuestaSiigo",
+                                      "value": "@body('Crear_borrador_Siigo')"
+                                    }
+                                  }
+                                },
+                                "runAfter": {
+                                  "Crear_borrador_Siigo": [
+                                    "Succeeded",
+                                    "Failed",
+                                    "TimedOut"
+                                  ]
+                                },
+                                "else": {
+                                  "actions": {}
+                                },
+                                "expression": "@equals(actions('Crear_borrador_Siigo')?['status'],'Succeeded')",
+                                "type": "If"
+                              },
+                              "Errores_numero": {
+                                "runAfter": {
+                                  "Respuesta_primer_envio": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "Query",
+                                "inputs": {
+                                  "from": "@coalesce(body('Crear_borrador_Siigo')?['Errors'],body('Crear_borrador_Siigo')?['errors'],json('[]'))",
+                                  "where": "@and(equals(toLower(coalesce(item()?['Code'],item()?['code'],'')),'already_exists'),contains(coalesce(item()?['Params'],item()?['params'],json('[]')),'number'))"
+                                }
+                              },
+                              "Colision_explicita_consecutivo": {
+                                "actions": {
+                                  "Consultar_consecutivo_actual": {
+                                    "runAfter": {},
+                                    "type": "Http",
+                                    "inputs": {
+                                      "method": "GET",
+                                      "uri": "https://api.siigo.com/v1/document-types?type=FV",
+                                      "headers": {
+                                        "Partner-Id": "digitalTechFacturacion",
+                                        "Content-Type": "application/json",
+                                        "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])"
+                                      }
+                                    },
+                                    "runtimeConfiguration": {
+                                      "secureData": {
+                                        "properties": [
+                                          "inputs"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "FV1_actual": {
+                                    "runAfter": {
+                                      "Consultar_consecutivo_actual": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "Query",
+                                    "inputs": {
+                                      "from": "@body('Consultar_consecutivo_actual')",
+                                      "where": "@and(equals(item()?['id'],7481),equals(item()?['active'],true))"
+                                    }
+                                  },
+                                  "Nuevo_payload_consecutivo": {
+                                    "runAfter": {
+                                      "FV1_actual": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "Compose",
+                                    "inputs": "@setProperty(variables('varPayload'),'number',int(first(body('FV1_actual'))?['consecutive']))"
+                                  },
+                                  "Consecutivo_ha_cambiado": {
+                                    "actions": {
+                                      "Conservar_nuevo_payload": {
+                                        "runAfter": {},
+                                        "type": "OpenApiConnection",
+                                        "inputs": {
+                                          "host": {
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                            "connectionName": "shared_commondataserviceforapps",
+                                            "operationId": "UpdateOnlyRecord"
+                                          },
+                                          "parameters": {
+                                            "entityName": "cr07a_boriscobros",
+                                            "recordId": "@variables('varControlId')",
+                                            "item/cr07a_payload": "@string(outputs('Nuevo_payload_consecutivo'))"
+                                          },
+                                          "authentication": "@parameters('$authentication')"
+                                        }
+                                      },
+                                      "Usar_nuevo_payload": {
+                                        "runAfter": {
+                                          "Conservar_nuevo_payload": [
+                                            "Succeeded"
+                                          ]
+                                        },
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                          "name": "varPayload",
+                                          "value": "@outputs('Nuevo_payload_consecutivo')"
+                                        }
+                                      },
+                                      "Reintentar_colision_Siigo": {
+                                        "runAfter": {
+                                          "Usar_nuevo_payload": [
+                                            "Succeeded"
+                                          ]
+                                        },
+                                        "type": "Http",
+                                        "inputs": {
+                                          "method": "POST",
+                                          "uri": "https://api.siigo.com/v1/invoices",
+                                          "headers": {
+                                            "Partner-Id": "digitalTechFacturacion",
+                                            "Content-Type": "application/json",
+                                            "Authorization": "@concat('Bearer ',body('Autenticar_Siigo')?['access_token'])",
+                                            "Idempotency-Key": "@outputs('Clave_idempotencia')"
+                                          },
+                                          "body": "@variables('varPayload')",
+                                          "retryPolicy": {
+                                            "type": "none"
+                                          },
+                                          "timeout": "PT2M"
+                                        },
+                                        "runtimeConfiguration": {
+                                          "secureData": {
+                                            "properties": [
+                                              "inputs"
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      "Respuesta_reintento": {
+                                        "runAfter": {
+                                          "Reintentar_colision_Siigo": [
+                                            "Succeeded"
+                                          ]
+                                        },
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                          "name": "varRespuestaSiigo",
+                                          "value": "@body('Reintentar_colision_Siigo')"
+                                        }
+                                      }
+                                    },
+                                    "runAfter": {
+                                      "Nuevo_payload_consecutivo": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "else": {
+                                      "actions": {
+                                        "Consecutivo_sin_cambio": {
+                                          "runAfter": {},
+                                          "type": "AppendToArrayVariable",
+                                          "inputs": {
+                                            "name": "varErrores",
+                                            "value": "@concat('Colision de consecutivo sin numero nuevo. Revisar ',outputs('Clave_idempotencia'))"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "expression": "@not(equals(outputs('Nuevo_payload_consecutivo')?['number'],variables('varPayload')?['number']))",
+                                    "type": "If"
+                                  }
+                                },
+                                "runAfter": {
+                                  "Errores_numero": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "else": {
+                                  "actions": {
+                                    "Envio_sin_confirmar": {
+                                      "actions": {
+                                        "Error_envio_no_reintentado": {
+                                          "runAfter": {},
+                                          "type": "AppendToArrayVariable",
+                                          "inputs": {
+                                            "name": "varErrores",
+                                            "value": "@concat('Siigo no confirmo el envio de ',outputs('Clave_idempotencia'),'. Se conserva la solicitud y la misma clave para revisar/reintentar sin duplicar.')"
+                                          }
+                                        }
+                                      },
+                                      "runAfter": {},
+                                      "else": {
+                                        "actions": {}
+                                      },
+                                      "expression": "@not(equals(actions('Crear_borrador_Siigo')?['status'],'Succeeded'))",
+                                      "type": "If"
+                                    }
+                                  }
+                                },
+                                "expression": "@and(or(equals(outputs('Crear_borrador_Siigo')?['statusCode'],400),equals(outputs('Crear_borrador_Siigo')?['statusCode'],409)),greater(length(body('Errores_numero')),0))",
+                                "type": "If"
+                              },
+                              "Respuesta_disponible": {
+                                "actions": {
+                                  "Registrar_respuesta_Siigo": {
+                                    "runAfter": {},
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                        "connectionName": "shared_commondataserviceforapps",
+                                        "operationId": "UpdateOnlyRecord"
+                                      },
+                                      "parameters": {
+                                        "entityName": "cr07a_boriscobros",
+                                        "recordId": "@variables('varControlId')",
+                                        "item/cr07a_estado": "RespuestaRecibida",
+                                        "item/cr07a_siigofactura": "@variables('varRespuestaSiigo')?['id']",
+                                        "item/cr07a_siigonombre": "@variables('varRespuestaSiigo')?['name']",
+                                        "item/cr07a_resultado": "@string(setProperty(setProperty(setProperty(json('{}'),'id',variables('varRespuestaSiigo')?['id']),'total',variables('varRespuestaSiigo')?['total']),'stamp',variables('varRespuestaSiigo')?['stamp']))"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  },
+                                  "Respuesta_correcta": {
+                                    "actions": {
+                                      "Marcar_borrador_creado": {
+                                        "runAfter": {},
+                                        "type": "OpenApiConnection",
+                                        "inputs": {
+                                          "host": {
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                            "connectionName": "shared_commondataserviceforapps",
+                                            "operationId": "UpdateOnlyRecord"
+                                          },
+                                          "parameters": {
+                                            "entityName": "cr07a_boriscobros",
+                                            "recordId": "@variables('varControlId')",
+                                            "item/cr07a_estado": "BorradorCreado",
+                                            "item/cr07a_error": ""
+                                          },
+                                          "authentication": "@parameters('$authentication')"
+                                        }
+                                      },
+                                      "Factura_nueva_id": {
+                                        "runAfter": {
+                                          "Marcar_borrador_creado": [
+                                            "Succeeded"
+                                          ]
+                                        },
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                          "name": "varFacturaId",
+                                          "value": "@variables('varRespuestaSiigo')?['id']"
+                                        }
+                                      },
+                                      "Factura_nueva_nombre": {
+                                        "runAfter": {
+                                          "Factura_nueva_id": [
+                                            "Succeeded"
+                                          ]
+                                        },
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                          "name": "varFacturaNombre",
+                                          "value": "@variables('varRespuestaSiigo')?['name']"
+                                        }
+                                      }
+                                    },
+                                    "runAfter": {
+                                      "Registrar_respuesta_Siigo": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "else": {
+                                      "actions": {
+                                        "Respuesta_requiere_revision": {
+                                          "runAfter": {},
+                                          "type": "AppendToArrayVariable",
+                                          "inputs": {
+                                            "name": "varErrores",
+                                            "value": "@concat('Revisar respuesta Siigo para ',outputs('Clave_idempotencia'),'. Se conservo el ID recibido; no se volvera a emitir automaticamente.')"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "expression": "@and(not(empty(variables('varRespuestaSiigo')?['id'])),equals(variables('varRespuestaSiigo')?['stamp']?['status'],'Draft'),equals(float(variables('varRespuestaSiigo')?['total']),float(variables('varPayload')?['payments'][0]?['value'])))",
+                                    "type": "If"
+                                  }
+                                },
+                                "runAfter": {
+                                  "Colision_explicita_consecutivo": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "else": {
+                                  "actions": {
+                                    "Sin_id_confirmado": {
+                                      "runAfter": {},
+                                      "type": "AppendToArrayVariable",
+                                      "inputs": {
+                                        "name": "varErrores",
+                                        "value": "@concat('No se recibio un ID de factura confirmado para ',outputs('Clave_idempotencia'),'. Revisar el control antes de otro envio.')"
+                                      }
+                                    }
+                                  }
+                                },
+                                "expression": "@not(empty(variables('varRespuestaSiigo')?['id']))",
+                                "type": "If"
+                              }
+                            },
+                            "runAfter": {
+                              "Control_preparado": [
+                                "Succeeded"
+                              ]
+                            },
+                            "else": {
+                              "actions": {
+                                "Reintento_requiere_revision": {
+                                  "runAfter": {},
+                                  "type": "AppendToArrayVariable",
+                                  "inputs": {
+                                    "name": "varErrores",
+                                    "value": "@concat('Revisar payload pendiente de ',outputs('Clave_idempotencia'),': cambio la fecha, el valor, el comprobante o el centro de costo. No se envio otra factura.')"
+                                  }
+                                }
+                              }
+                            },
+                            "expression": "@and(equals(variables('varPayload')?['date'],outputs('Hoy_Bogota')),equals(variables('varPayload')?['stamp']?['send'],false),equals(variables('varPayload')?['mail']?['send'],false),equals(float(variables('varPayload')?['payments'][0]?['value']),outputs('Total_COP')),equals(variables('varPayload')?['document']?['id'],outputs('BodyFactura')?['document']?['id']),equals(variables('varPayload')?['cost_center'],outputs('BodyFactura')?['cost_center']))",
+                            "type": "If"
+                          }
+                        },
+                        "runAfter": {},
+                        "type": "Scope"
+                      }
+                    }
+                  },
+                  "expression": "@not(empty(first(body('Buscar_control_cobro')?['value'])?['cr07a_siigofactura']))",
+                  "type": "If"
+                },
+                "Tiene_factura_confirmada": {
+                  "actions": {
+                    "Actualizar_contrato_facturado": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "UpdateOnlyRecord"
+                        },
+                        "parameters": {
+                          "entityName": "cr07a_contratosborises",
+                          "recordId": "@items('Por_contrato')?['cr07a_contratosborisid']",
+                          "item/cr07a_ultimoperiodofacturado": "@outputs('Periodo')",
+                          "item/cr07a_fechaultimafactura": "@utcNow()",
+                          "item/cr07a_siigo_invoice_id": "@variables('varFacturaId')",
+                          "item/cr07a_siigo_invoice_name": "@variables('varFacturaNombre')",
+                          "item/cr07a_error_facturacion": "",
+                          "item/cr07a_fechaderenovacion": "@if(equals(items('Por_contrato')?['cr07a_facturacionmensual'],true),items('Por_contrato')?['cr07a_fechaderenovacion'],addToTime(outputs('Fecha_cobro'),1,'Year','yyyy-MM-ddT00:00:00Z'))"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Resultado_borrador": {
+                      "runAfter": {
+                        "Actualizar_contrato_facturado": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "varResultados",
+                        "value": {
+                          "contrato": "@items('Por_contrato')?['cr07a_contratosborisid']",
+                          "periodo": "@outputs('Periodo')",
+                          "estado": "BorradorCreado",
+                          "factura": "@variables('varFacturaNombre')",
+                          "siigoId": "@variables('varFacturaId')",
+                          "total": "@outputs('Total_COP')"
+                        }
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Ya_existe_factura_control": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "expression": "@not(empty(variables('varFacturaId')))",
+                  "type": "If"
+                }
+              },
+              "runAfter": {
+                "Modo_simulacion": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {}
+              },
+              "expression": "@and(variables('varListo'),not(equals(outputs('Configuracion')?['modo'],'Simulacion')))",
+              "type": "If"
+            },
+            "Registrar_fallo_envio": {
+              "actions": {
+                "Agregar_error_envio": {
+                  "runAfter": {},
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "varErrores",
+                    "value": "@concat('Fallo de envio/finalizacion para ',items('Por_contrato')?['cr07a_name'],' | Clave ',outputs('Clave_idempotencia'),' | Run ',workflow()?['run']?['name'])"
+                  }
+                },
+                "Guardar_error_envio": {
+                  "runAfter": {
+                    "Agregar_error_envio": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateOnlyRecord"
+                    },
+                    "parameters": {
+                      "entityName": "cr07a_contratosborises",
+                      "recordId": "@items('Por_contrato')?['cr07a_contratosborisid']",
+                      "item/cr07a_error_facturacion": "@concat('Revisar ejecucion ',workflow()?['run']?['name'],' | Clave ',outputs('Clave_idempotencia'),'. Conservar la misma clave y revisar Siigo antes de otro envio.')"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {
+                "Envio_habilitado": [
+                  "Failed",
+                  "TimedOut"
+                ]
+              },
+              "type": "Scope"
+            }
+          },
+          "runAfter": {
+            "Vendedor_activo": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          }
+        },
+        "Resumen": {
+          "runAfter": {
+            "Por_contrato": [
+              "Succeeded",
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Compose",
+          "inputs": {
+            "modo": "@outputs('Configuracion')?['modo']",
+            "fecha": "@outputs('Hoy_Bogota')",
+            "resultados": "@variables('varResultados')",
+            "errores": "@variables('varErrores')"
+          }
+        },
+        "Hay_errores": {
+          "actions": {
+            "Finalizar_con_error": {
+              "runAfter": {},
+              "type": "Terminate",
+              "inputs": {
+                "runStatus": "Failed",
+                "runError": {
+                  "code": "BorisBillingValidation",
+                  "message": "Revisar Resumen e historial. No repetir facturas manualmente."
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Resumen": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {}
+          },
+          "expression": "@or(greater(length(variables('varErrores')),0),not(equals(actions('Por_contrato')?['status'],'Succeeded')))",
+          "type": "If"
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}

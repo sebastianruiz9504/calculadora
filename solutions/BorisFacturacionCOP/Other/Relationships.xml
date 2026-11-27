@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<EntityRelationships xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <EntityRelationship Name="business_unit_cr07a_boriscobro" />
+  <EntityRelationship Name="business_unit_cr07a_contratosboris" />
+  <EntityRelationship Name="cr07a_contratosboris_Cliente_cr07a_cliente" />
+  <EntityRelationship Name="lk_cr07a_boriscobro_createdby" />
+  <EntityRelationship Name="lk_cr07a_boriscobro_modifiedby" />
+  <EntityRelationship Name="lk_cr07a_contratosboris_createdby" />
+  <EntityRelationship Name="lk_cr07a_contratosboris_modifiedby" />
+  <EntityRelationship Name="owner_cr07a_boriscobro" />
+  <EntityRelationship Name="owner_cr07a_contratosboris" />
+  <EntityRelationship Name="team_cr07a_boriscobro" />
+  <EntityRelationship Name="team_cr07a_contratosboris" />
+  <EntityRelationship Name="user_cr07a_boriscobro" />
+  <EntityRelationship Name="user_cr07a_contratosboris" />
+</EntityRelationships>

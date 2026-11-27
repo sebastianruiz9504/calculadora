@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{7398f34e-4600-492a-9d0b-359e98bc9ec5}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_name" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_contratosborisid">
+          <cell name="cr07a_name" width="300" />
+          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_cliente" width="100" />
+          <cell name="cr07a_costomensual" width="125" />
+          <cell name="cr07a_diadefacturacion" width="144" />
+          <cell name="cr07a_fechaderenovacion" width="156" />
+          <cell name="cr07a_facturacionmensual" width="158" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_contratosboris">
+          <attribute name="cr07a_contratosborisid" />
+          <attribute name="cr07a_name" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_cliente" />
+          <attribute name="cr07a_costomensual" />
+          <attribute name="cr07a_diadefacturacion" />
+          <order attribute="cr07a_diadefacturacion" descending="false" />
+          <attribute name="cr07a_fechaderenovacion" />
+          <attribute name="cr07a_facturacionmensual" />
+          <attribute name="cr07a_centrocosto" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Contratos Boris activo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

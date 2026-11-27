@@ -227,6 +227,13 @@ Fuente Siigo: `/v1/document-types`.
 
 Nota: desde el 27 de noviembre de 2026, el flujo automatico `Facturacion con TRM` emite facturas de venta con el documento FV codigo 1, id 7481. Toma el centro de costo de `cr07a_precioscloud.cr07a_centrocosto` y agrupa las lineas por cliente y centro de costo. Las opciones de Ventas son 101-00, 102-00, 103-00, 104-00 y 105-00; la carga inicial de 979 productos usa 101-00. Ver `scripts/cloud_cost_centers/README.md` para la correspondencia de IDs, pruebas y respaldo.
 
+El flujo `BORIS - Facturacion COP mensual y anual` tambien usa FV codigo 1
+desde el 27 de noviembre de 2026. Lee `cr07a_contratosboris.cr07a_centrocosto`
+y envia su ID de Siigo en cada factura. Los ocho contratos existentes se
+inicializaron con 103-00 - Ventas; el formulario y las vistas activa/inactiva
+permiten consultar o editar entre las mismas cinco opciones. Los controles de
+cobro previos se conservan. Ver `scripts/boris_cost_centers/README.md`.
+
 ### Medios de pago / bancos activos
 
 Fuente Siigo: `/v1/payment-types`.
