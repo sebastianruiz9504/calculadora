@@ -225,7 +225,7 @@ Fuente Siigo: `/v1/document-types`.
 | CC | 7509 | 8 | Nomina |
 | CC | 7502 | 1 | Ajustes contables |
 
-Nota: desde el 27 de noviembre de 2026, el flujo automatico `Facturacion con TRM` emite facturas de venta con el documento FV codigo 1, id 7481. Toma el centro de costo de `cr07a_precioscloud.cr07a_centrocosto` y agrupa las lineas por cliente y centro de costo. Las opciones de Ventas son 101-00, 102-00, 103-00, 104-00 y 105-00; la carga inicial de 979 productos usa 101-00. Ver `scripts/cloud_cost_centers/README.md` para la correspondencia de IDs, pruebas y respaldo.
+Nota: desde el 27 de noviembre de 2026, el flujo automatico `Facturacion con TRM` emite facturas de venta con el documento FV codigo 1, id 7481. Toma el centro de costo de `cr07a_salesperformancerecord.cr07a_centrocosto` (Productos CLOUD de Gerencia, vista Productos x Cliente - CLOUD) y agrupa las lineas por cliente y centro de costo. Las opciones de Ventas son 101-00, 102-00, 103-00, 104-00 y 105-00; la carga inicial de 364 filas usa 101-00. El catalogo Precios Cloud solo aporta el codigo de producto Siigo. Ver `scripts/cloud_cost_centers/README.md` para la correspondencia de IDs, pruebas y respaldo.
 
 El flujo `BORIS - Facturacion COP mensual y anual` tambien usa FV codigo 1
 desde el 27 de noviembre de 2026. Lee `cr07a_contratosboris.cr07a_centrocosto`

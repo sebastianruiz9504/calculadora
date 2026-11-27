@@ -28,14 +28,6 @@
                       </cell>
                     </row>
                     <row>
-                      <cell id="{AD7B8DA4-1164-4980-B8C2-BEC40425FE4F}" showlabel="true">
-                        <labels>
-                          <label description="Centro de costo" languagecode="3082" />
-                        </labels>
-                        <control id="cr07a_centrocosto" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_centrocosto" disabled="false" />
-                      </cell>
-                    </row>
-                    <row>
                       <cell id="{a109d1ad-a50b-4890-a34e-f308449d8741}">
                         <labels>
                           <label description="Propietario" languagecode="3082" />

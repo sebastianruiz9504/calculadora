@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>0</isdefault>
+    <savedqueryid>{2142a5b2-f6cc-470e-8407-16a7485adc1c}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_icpname" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_salesperformancerecordid">
+          <cell name="cr07a_icpname" width="300" />
+          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="createdon" width="125" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_salesperformancerecord">
+          <attribute name="cr07a_salesperformancerecordid" />
+          <attribute name="cr07a_icpname" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_icpname" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="1" />
+          </filter>
+          <attribute name="cr07a_centrocosto" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Sales Performance Record inactivo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

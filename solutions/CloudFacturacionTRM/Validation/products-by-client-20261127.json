@@ -1,0 +1,55 @@
+{
+  "products": 364,
+  "centers": {
+    "101-00": 364,
+    "102-00": 0,
+    "103-00": 0,
+    "104-00": 0,
+    "105-00": 0
+  },
+  "forms": 1,
+  "views": 2,
+  "flow_state": "Started",
+  "document_id": 7481,
+  "automatic_billing_rows": 263,
+  "billing_rows_without_product": 0,
+  "table": "cr07a_salesperformancerecord",
+  "field": "cr07a_centrocosto",
+  "example_label": "101-00 - Ventas",
+  "concurrent_price_changes_preserved": 1,
+  "boris_flow_unchanged": true,
+  "catalog_control_retired": true,
+  "billing_controls_unchanged": true,
+  "verified_utc": "2026-11-27T15:40:54.289804+00:00",
+  "flow_modified_utc": "2026-11-27T15:35:08.3055798Z",
+  "ui": {
+    "application": "Gerencia",
+    "navigation": "Productos CLOUD",
+    "view": "Productos x Cliente - CLOUD",
+    "column_visible": true,
+    "editable_choices": [
+      "101-00 - Ventas",
+      "102-00 - Ventas",
+      "103-00 - Ventas",
+      "104-00 - Ventas",
+      "105-00 - Ventas"
+    ],
+    "selected": "101-00 - Ventas",
+    "rows": 364
+  },
+  "tests": {
+    "all-sales-centers": {
+      "status": "Succeeded",
+      "passed": true,
+      "run": "08584058132755997325948930617CU25"
+    },
+    "invalid": {
+      "status": "Failed",
+      "passed": true,
+      "run": "08584058132400476151425492390CU23"
+    },
+    "billing_row_overrides_catalog_center": true,
+    "temporary_flows_deleted": true,
+    "real_invoices_created_by_validation": 0
+  }
+}

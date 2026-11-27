@@ -13,7 +13,7 @@ ENVIRONMENT = 'Default-' + TENANT
 FLOW_ID = '50a4b698-8c77-4c02-a309-d6d7acae2256'
 FLOW_BASE = 'https://api.flow.microsoft.com/providers/Microsoft.ProcessSimple'
 FLOW_URL = f'{FLOW_BASE}/environments/{ENVIRONMENT}/flows/{FLOW_ID}'
-OUT = Path(__file__).resolve().parents[2] / 'tmp' / 'cloud-cost-centers-20261127'
+OUT = Path(__file__).resolve().parents[2] / 'tmp' / 'cloud-cost-centers-20261127-products-by-client'
 
 
 def credential():

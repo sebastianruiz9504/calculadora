@@ -6,11 +6,23 @@ import argparse
 import json
 import hashlib
 import uuid
+import sys
+import base64
+import html
+import io
+import subprocess
+import zipfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from access import client, dv, load_flow, request, siigo_headers, save, OUT, FLOW_URL, redact
 from flow_definition import FIELD, TABLE, PK, SOLUTION, CENTERS, build, differences
+
+PROTECTED_FIELDS = ['statecode','cr07a_facturado','cr07a_fechaultimafactura',
+    'cr07a_siigo_invoice_id','cr07a_error_facturacion','cr07a_quantity',
+    'cr07a_facturableautomatico','cr07a_unitsalevalueusd','cr07a_valorventaunidadusd',
+    'cr07a_billingday','cr07a_fecharenovacion','_cr07a_clientelookup_value','_cr07a_producto_value']
 
 
 def label(text):
@@ -41,13 +53,16 @@ def plan():
     definition = build(flow['properties']['definition'])
     save('flow-candidate.redacted.json', definition)
     save('flow-diff.json', differences(flow['properties']['definition'], definition))
+    from scripts.boris_cost_centers.access import load_flow as load_boris
+    boris, _ = load_boris()
+    save('boris-protected-before.redacted.json', boris)
     c = client()
     before_forms, before_views = forms(c), views(c)
     save('forms-before.json', before_forms)
     save('views-before.json', before_views)
     columns = c.tables.list_columns(TABLE, select=['LogicalName','AttributeType'])
     exists = any(x['LogicalName'] == FIELD for x in columns)
-    select = [PK] + ([FIELD] if exists else [])
+    select = [PK] + PROTECTED_FIELDS + ([FIELD] if exists else [])
     rows = [dict(r) for r in c.records.list(TABLE, select=select)]
     save('products-before.json', rows)
     sh = siigo_headers(flow)
@@ -147,6 +162,37 @@ def initialize():
     print(json.dumps({'rows_verified':len(after),'all_default':all(r[FIELD]==10100 for r in after)}))
 
 
+def retire_catalog_ui():
+    # Remove only the controls/columns added to the catalog in the earlier
+    # change. Keep the underlying attribute and values for rollback.
+    c = client()
+    catalog = 'cr07a_precioscloud'
+    catalog_forms = [dict(r) for r in c.records.list('systemform',select=['formid','name','formxml'],
+        filter=f"objecttypecode eq '{catalog}' and type eq 2 and formactivationstate eq 1")]
+    catalog_views = [dict(r) for r in c.records.list('savedquery',select=['savedqueryid','name','querytype','fetchxml','layoutxml'],
+        filter=f"returnedtypecode eq '{catalog}' and querytype eq 0 and statecode eq 0")]
+    save('catalog-ui-before-retirement.json',{'forms':catalog_forms,'views':catalog_views})
+    for form in catalog_forms:
+        root = ET.fromstring(form['formxml'])
+        for rows in root.findall('.//rows'):
+            for row in list(rows):
+                if row.find(f".//control[@datafieldname='{FIELD}']") is not None:
+                    assert len(row.findall('cell')) == 1 and len(row.findall('.//control')) == 1
+                    rows.remove(row)
+        assert root.find(f".//control[@datafieldname='{FIELD}']") is None
+        c.records.update('systemform',form['formid'],{'formxml':ET.tostring(root,encoding='unicode')})
+    for view in catalog_views:
+        fetch, layout = ET.fromstring(view['fetchxml']), ET.fromstring(view['layoutxml'])
+        for parent, tag, attr in [(fetch.find('entity'),'attribute','name'),(layout.find('row'),'cell','name')]:
+            for node in list(parent):
+                if node.tag == tag and node.attrib.get(attr) == FIELD: parent.remove(node)
+        c.records.update('savedquery',view['savedqueryid'],{'fetchxml':ET.tostring(fetch,encoding='unicode'),
+            'layoutxml':ET.tostring(layout,encoding='unicode'),'querytype':view['querytype']})
+    dv('POST','PublishXml',json={'ParameterXml':f'<importexportxml><entities><entity>{catalog}</entity></entities></importexportxml>'})
+    print(json.dumps({'catalog_forms_cleaned':len(catalog_forms),'catalog_views_cleaned':len(catalog_views),
+        'catalog_column_and_data_preserved':True}))
+
+
 def deploy():
     for case in ['all-sales-centers','invalid']:
         test = json.loads((OUT/('test-result-'+case+'.json')).read_text())
@@ -177,7 +223,20 @@ def deploy():
 
 def verify():
     c = client('dv-query')
-    rows = list(c.records.list(TABLE,select=[PK,FIELD],include_annotations='OData.Community.Display.V1.FormattedValue'))
+    rows = list(c.records.list(TABLE,select=[PK,FIELD]+PROTECTED_FIELDS,include_annotations='OData.Community.Display.V1.FormattedValue'))
+    before = json.loads((OUT/'products-before.json').read_text())
+    protected = lambda data:{r[PK]:{k:r.get(k) for k in PROTECTED_FIELDS} for r in data}
+    old, current = protected(before), protected(rows)
+    assert set(old)==set(current), 'Product rows changed'
+    changed = {identifier:{k:(old[identifier][k],current[identifier][k]) for k in PROTECTED_FIELDS
+        if old[identifier][k]!=current[identifier][k]} for identifier in old}
+    changed = {identifier:fields for identifier,fields in changed.items() if fields}
+    reviewed_path = OUT/'reviewed-concurrent-changes.json'
+    reviewed = json.loads(reviewed_path.read_text()) if reviewed_path.exists() else []
+    allowed = {r['id']:{k:(v['before'],v['after']) for k,v in r['fields'].items()} for r in reviewed}
+    for identifier, fields in changed.items():
+        assert fields==allowed.get(identifier), 'Unreviewed concurrent product change: '+identifier
+        assert set(fields)=={'cr07a_valorventaunidadusd'}, 'Billing controls must not change'
     counts = {code:sum(r.get(FIELD)==value for r in rows) for value,(code,_) in CENTERS.items()}
     assert sum(counts.values()) == len(rows)
     f,v = forms(c),views(c)
@@ -185,22 +244,74 @@ def verify():
     assert all(ET.fromstring(x['formxml']).find(f".//control[@datafieldname='{FIELD}']") is not None for x in f)
     assert all(ET.fromstring(x['fetchxml']).find(f"entity/attribute[@name='{FIELD}']") is not None and
                ET.fromstring(x['layoutxml']).find(f"row/cell[@name='{FIELD}']") is not None for x in v)
+    for form in c.records.list('systemform',select=['formxml'],
+            filter="objecttypecode eq 'cr07a_precioscloud' and type eq 2 and formactivationstate eq 1"):
+        assert ET.fromstring(form['formxml']).find(f".//control[@datafieldname='{FIELD}']") is None
+    for view in c.records.list('savedquery',select=['layoutxml'],
+            filter="returnedtypecode eq 'cr07a_precioscloud' and querytype eq 0 and statecode eq 0"):
+        assert ET.fromstring(view['layoutxml']).find(f"row/cell[@name='{FIELD}']") is None
     flow,_ = load_flow()
     p = flow['properties']['definition']['actions']['Por_cliente']['actions']
     assert p['BodyFactura']['inputs']['document']['id'] == 7481
     assert p['BodyFactura']['inputs']['cost_center'] == "@outputs('CentroCostoSiigo')"
+    expected = json.loads((OUT/'flow-candidate.redacted.json').read_text())
+    assert redact(flow['properties']['definition']) == expected
+    assert flow['properties']['state'] == 'Started'
     expanded = list(c.records.list('cr07a_salesperformancerecord',select=['cr07a_salesperformancerecordid'],
-        expand=[f'cr07a_Producto($select=cr07a_siigo_code,{FIELD})'],filter='cr07a_facturableautomatico eq true'))
+        expand=['cr07a_Producto($select=cr07a_siigo_code)'],filter='cr07a_facturableautomatico eq true'))
     missing_product = sum(not r.get('cr07a_Producto') for r in expanded)
+    from scripts.boris_cost_centers.access import load_flow as load_boris
+    boris, _ = load_boris()
+    protected_boris = json.loads((OUT/'boris-protected-before.redacted.json').read_text())
+    for key in ['definition','connectionReferences','state','lastModifiedTime']:
+        assert redact(boris['properties'].get(key)) == protected_boris['properties'].get(key), 'Boris changed: '+key
     result = {'products':len(rows),'centers':counts,'forms':len(f),'views':len(v),
         'flow_state':flow['properties']['state'],'document_id':7481,
         'automatic_billing_rows':len(expanded),'billing_rows_without_product':missing_product,
-        'field':FIELD,'example_label':rows[0].get(FIELD+'@OData.Community.Display.V1.FormattedValue')}
+        'table':TABLE,'field':FIELD,'example_label':rows[0].get(FIELD+'@OData.Community.Display.V1.FormattedValue'),
+        'billing_controls_unchanged':True,'concurrent_price_changes_preserved':len(changed),
+        'boris_flow_unchanged':True,
+        'catalog_control_retired':True}
     save('verified.json',result)
     print(json.dumps(result,ensure_ascii=True))
 
 
+def export():
+    flow, _ = load_flow()
+    auth = flow['properties']['definition']['actions']['HTTP_2']['inputs']['body']
+    replacements = {}
+    for key, secret in auth.items():
+        if isinstance(secret,str) and secret:
+            for encoded in [secret,json.dumps(secret)[1:-1],html.escape(secret),html.escape(secret,quote=False)]:
+                replacements[encoded] = '__SIIGO_'+key.upper()+'__'
+    # Redact in memory before any solution archive is written to disk.
+    result = dv('POST','ExportSolution',json={'SolutionName':SOLUTION,'Managed':False})
+    raw, clean = io.BytesIO(base64.b64decode(result['ExportSolutionFile'])), io.BytesIO()
+    with zipfile.ZipFile(raw) as source, zipfile.ZipFile(clean,'w',zipfile.ZIP_DEFLATED) as target:
+        for entry in source.infolist():
+            data = source.read(entry.filename)
+            try: text = data.decode('utf-8')
+            except UnicodeDecodeError: pass
+            else:
+                for secret,marker in replacements.items(): text = text.replace(secret,marker)
+                data = text.encode('utf-8')
+            assert not any(secret.encode('utf-8') in data for secret in replacements)
+            target.writestr(entry,data)
+    archive = OUT/'CloudFacturacionTRM.sanitized.zip'
+    archive.write_bytes(clean.getvalue())
+    dest = Path(__file__).resolve().parents[2]/'solutions'/SOLUTION
+    process = subprocess.run(['pac','solution','unpack','--zipfile',str(archive),'--folder',str(dest),
+        '--packagetype','Unmanaged'],capture_output=True,text=True)
+    if process.returncode: raise RuntimeError(process.stdout[-2000:]+process.stderr[-2000:])
+    for file in dest.rglob('*'):
+        if file.is_file(): assert not any(secret.encode('utf-8') in file.read_bytes() for secret in replacements)
+    exported = json.loads((dest/'FlowSource'/'Facturacion-con-TRM.redacted.json').read_text())
+    assert exported == redact(flow['properties']['definition'])
+    print(json.dumps({'exported':SOLUTION,'files':sum(p.is_file() for p in dest.rglob('*')),
+        'secrets_redacted':True,'flow_source_matches_production':True}))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('operation',choices=['plan','schema','ui','initialize','deploy','verify'])
+    parser.add_argument('operation',choices=['plan','schema','ui','initialize','retire_catalog_ui','deploy','verify','export'])
     globals()[parser.parse_args().operation]()

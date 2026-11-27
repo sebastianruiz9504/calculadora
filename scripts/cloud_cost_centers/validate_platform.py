@@ -16,10 +16,13 @@ def fixture_definition(source, invalid=False):
     a = d['actions']
     p = a['Por_cliente']['actions']
     values = [10100, 10100, None, 10200, 10300, 10400, 10500, 10100]
+    # Give the catalog a conflicting value: billing must use the customer's
+    # Productos CLOUD row, including when several rows share one product.
     rows = [{'row':str(i+1),'_cr07a_clientelookup_value':'B' if i==7 else 'A',
-             'cr07a_Producto':{FIELD:value}} for i,value in enumerate(values)]
+             FIELD:value,'_cr07a_producto_value':'same-catalog-product',
+             'cr07a_Producto':{FIELD:10500}} for i,value in enumerate(values)]
     if invalid:
-        rows = [{'row':'invalid','_cr07a_clientelookup_value':'A','cr07a_Producto':{FIELD:99999}}]
+        rows = [{'row':'invalid','_cr07a_clientelookup_value':'A',FIELD:99999,'cr07a_Producto':{FIELD:10100}}]
     select = deepcopy(a['Clientes_solo'])
     unique = deepcopy(a['Clientes_unicos'])
     filtered = deepcopy(p['Filtrar_matriz2'])

@@ -79,6 +79,7 @@
     </Publisher>
     <RootComponents>
       <RootComponent type="1" schemaName="cr07a_precioscloud" behavior="1" />
+      <RootComponent type="1" schemaName="cr07a_salesperformancerecord" behavior="1" />
     </RootComponents>
     <MissingDependencies>
       <MissingDependency>
@@ -86,6 +87,18 @@
         <Dependent type="1" schemaName="cr07a_precioscloud" displayName="Precios Cloud" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="1" schemaName="cr07a_salesperformancerecord" displayName="Productos CLOUD" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_salesperformancerecord" displayName="Productos CLOUD" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="10" schemaName="cr07a_salesperformancerecord_ClienteLookup_cr07a_cliente" displayName="cr07a_salesperformancerecord_ClienteLookup_cr07a_cliente" parentSchemaName="cr07a_cliente" parentDisplayName="Cliente" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="10" schemaName="cr07a_salesperformancerecord_Producto_cr07a_precioscloud" displayName="cr07a_salesperformancerecord_Producto_cr07a_precioscloud" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_actionby" displayName="ActionBy" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
@@ -110,12 +123,28 @@
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="cr07a_billingday" displayName="Dia de facturación" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_billingday" displayName="Dia de facturación" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_chargetype" displayName="ChargeType" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_chargetype" displayName="ChargeType" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_clientelookup" displayName="Cliente Lookup" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_clientelookup" displayName="Cliente Lookup" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_commitmentperiodmonths" displayName="CommitementPeriodInMonths" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
@@ -126,12 +155,48 @@
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="cr07a_contracttype" displayName="contrato" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_contracttype" displayName="contrato" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_currencycode" displayName="Currency" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_currencycode" displayName="Currency" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_daysnotguessed" displayName="A cuantos días" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_daysnotguessed" displayName="A cuantos días" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_facturableautomatico" displayName="facturableautomatico" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_facturableautomatico" displayName="facturableautomatico" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_fecharenovacion" displayName="Fecha Renovación" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_fecharenovacion" displayName="Fecha Renovación" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_icpname" displayName="Nombre en ICP" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Sales Performance Record inactivo" displayName="Sales Performance Record inactivo" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{2142a5b2-f6cc-470e-8407-16a7485adc1c}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_ishidden" displayName="IsHidden" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
@@ -258,6 +323,18 @@
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="cr07a_productline" displayName="Linea" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_productline" displayName="Linea" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_productname" displayName="Producto" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_productnumber" displayName="Productnumber" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
@@ -266,12 +343,36 @@
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="cr07a_producto" displayName="Producto" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_producto" displayName="Producto" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_purchaseprice" displayName="PurchasePrice" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_purchaseprice" displayName="PurchasePrice" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_quantity" displayName="Cantidad" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_quantity" displayName="Cantidad" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_salesperformancerecordid" displayName="Sales Performance Record" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Sales Performance Record inactivo" displayName="Sales Performance Record inactivo" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{2142a5b2-f6cc-470e-8407-16a7485adc1c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_salesperformancerecordid" displayName="Sales Performance Record" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_salesprice" displayName="SalesPrice" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
@@ -314,12 +415,28 @@
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="cr07a_sitieneiva" displayName="sitieneiva" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_sitieneiva" displayName="sitieneiva" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_suggestedretailprice" displayName="SuggestedRetailPrice" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_suggestedretailprice" displayName="SuggestedRetailPrice" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_valorventaunidadusd" displayName="Valor venta Unidad USD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_valorventaunidadusd" displayName="Valor venta Unidad USD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_vendorname" displayName="VendorName" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
@@ -336,18 +453,38 @@
       <MissingDependency>
         <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud inactivo" displayName="Precios Cloud inactivo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{92955c42-48a5-4644-a23d-b9128f5a46db}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Sales Performance Record inactivo" displayName="Sales Performance Record inactivo" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{2142a5b2-f6cc-470e-8407-16a7485adc1c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="ownerid" displayName="Propietario" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Precios Cloud" id="{05e0a237-8c57-4ded-aa2f-ad552a068919}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="ownerid" displayName="Propietario" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos CLOUD" id="{426c991d-e5d4-4507-a904-a04b08cbcb85}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud activo" displayName="Precios Cloud activo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}" />
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" solution="Active" />
         <Dependent type="26" schemaName="Precios Cloud inactivo" displayName="Precios Cloud inactivo" parentSchemaName="cr07a_precioscloud" parentDisplayName="Precios Cloud" id="{92955c42-48a5-4644-a23d-b9128f5a46db}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Sales Performance Record inactivo" displayName="Sales Performance Record inactivo" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{2142a5b2-f6cc-470e-8407-16a7485adc1c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" solution="Active" />
+        <Dependent type="26" schemaName="Productos x Cliente - CLOUD" displayName="Productos x Cliente - CLOUD" parentSchemaName="cr07a_salesperformancerecord" parentDisplayName="Productos CLOUD" id="{cdd19af1-acac-4203-9fae-ad7aad92e5b3}" />
       </MissingDependency>
     </MissingDependencies>
   </SolutionManifest>

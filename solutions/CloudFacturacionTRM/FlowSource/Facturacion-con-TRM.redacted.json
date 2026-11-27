@@ -141,7 +141,7 @@
         "parameters": {
           "entityName": "cr07a_salesperformancerecords",
           "$filter": "@{concat('cr07a_billingday eq ',string(outputs('DiaFacturacionBogota')),' and cr07a_facturableautomatico eq true and (cr07a_fechaultimafactura eq null or cr07a_fechaultimafactura lt ',outputs('FechaFacturacionBogota'),'T00:00:00Z)')}",
-          "$expand": "cr07a_Producto($select=cr07a_siigo_code,cr07a_centrocosto)"
+          "$expand": "cr07a_Producto($select=cr07a_siigo_code)"
         },
         "authentication": "@parameters('$authentication')"
       }
@@ -160,7 +160,7 @@
         "from": "@outputs('Enumerar_filas')?['body/value']",
         "select": {
           "cliente": "@item()?['_cr07a_clientelookup_value']",
-          "centroCosto": "@int(coalesce(item()?['cr07a_Producto']?['cr07a_centrocosto'],10100))"
+          "centroCosto": "@int(coalesce(item()?['cr07a_centrocosto'],10100))"
         }
       }
     },
@@ -191,7 +191,7 @@
           "type": "Query",
           "inputs": {
             "from": "@outputs('Enumerar_filas')?['body/value']",
-            "where": "@and(equals(item()?['_cr07a_clientelookup_value'],items('Por_cliente')?['cliente']),equals(int(coalesce(item()?['cr07a_Producto']?['cr07a_centrocosto'],10100)),items('Por_cliente')?['centroCosto']))"
+            "where": "@and(equals(item()?['_cr07a_clientelookup_value'],items('Por_cliente')?['cliente']),equals(int(coalesce(item()?['cr07a_centrocosto'],10100)),items('Por_cliente')?['centroCosto']))"
           }
         },
         "Establecer_variable": {

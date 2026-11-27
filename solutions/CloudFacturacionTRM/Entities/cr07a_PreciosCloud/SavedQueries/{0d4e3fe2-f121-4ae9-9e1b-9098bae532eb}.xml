@@ -11,7 +11,6 @@
       <grid name="resultset" jump="cr07a_priceableitemdescription" select="1" icon="1" preview="1">
         <row name="result" id="cr07a_precioscloudid">
           <cell name="cr07a_priceableitemdescription" width="300" />
-          <cell name="cr07a_centrocosto" width="170" />
           <cell name="cr07a_serviceidentifier" width="150" />
           <cell name="cr07a_servicename" width="150" />
           <cell name="cr07a_servicecategory" width="150" />
@@ -82,7 +81,6 @@
           <attribute name="cr07a_actionby" />
           <attribute name="cr07a_actiontype" />
           <attribute name="cr07a_actiontimestamp" />
-          <attribute name="cr07a_centrocosto" />
         </entity>
       </fetch>
     </fetchxml>

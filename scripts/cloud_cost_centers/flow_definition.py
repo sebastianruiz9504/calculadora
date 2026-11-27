@@ -3,12 +3,12 @@ from copy import deepcopy
 import json
 
 FIELD = 'cr07a_centrocosto'
-TABLE = 'cr07a_precioscloud'
+TABLE = 'cr07a_salesperformancerecord'
 PK = TABLE + 'id'
 SOLUTION = 'CloudFacturacionTRM'
 CENTERS = {10100: ('101-00', 589), 10200: ('102-00', 602),
            10300: ('103-00', 611), 10400: ('104-00', 622), 10500: ('105-00', 633)}
-PRODUCT_CHOICE = f"int(coalesce(item()?['cr07a_Producto']?['{FIELD}'],10100))"
+ROW_CHOICE = f"int(coalesce(item()?['{FIELD}'],10100))"
 
 
 def compose(value, after):
@@ -21,12 +21,17 @@ def build(definition):
     p = a['Por_cliente']['actions']
     if p['BodyFactura']['inputs']['document']['id'] not in (31072, 7481):
         raise ValueError('Unexpected source invoice document')
-    a['Enumerar_filas']['inputs']['parameters']['$expand'] = (
-        f'cr07a_Producto($select=cr07a_siigo_code,{FIELD})')
-    a['Clientes_solo']['inputs']['select']['centroCosto'] = '@' + PRODUCT_CHOICE
+    parameters = a['Enumerar_filas']['inputs']['parameters']
+    assert parameters['entityName'] == 'cr07a_salesperformancerecords'
+    parameters['$expand'] = 'cr07a_Producto($select=cr07a_siigo_code)'
+    if parameters.get('$select'):
+        selected = parameters['$select'].split(',')
+        if FIELD not in selected: selected.append(FIELD)
+        parameters['$select'] = ','.join(selected)
+    a['Clientes_solo']['inputs']['select']['centroCosto'] = '@' + ROW_CHOICE
     p['Filtrar_matriz2']['inputs']['where'] = (
         "@and(equals(item()?['_cr07a_clientelookup_value'],items('Por_cliente')?['cliente']),"
-        f"equals({PRODUCT_CHOICE},items('Por_cliente')?['centroCosto']))")
+        f"equals({ROW_CHOICE},items('Por_cliente')?['centroCosto']))")
     mapping = json.dumps({str(k): v[1] for k, v in CENTERS.items()}, separators=(',', ':'))
     p['CentroCostoSiigo'] = compose(
         "@int(json('" + mapping + "')?[string(items('Por_cliente')?['centroCosto'])])", 'NumeroFactura')
@@ -57,6 +62,7 @@ def differences(a, b, path=''):
 def validate_shape(before, after):
     allowed = {
         '/actions/Enumerar_filas/inputs/parameters/$expand',
+        '/actions/Enumerar_filas/inputs/parameters/$select',
         '/actions/Clientes_solo/inputs/select/centroCosto',
         '/actions/Por_cliente/actions/Filtrar_matriz2/inputs/where',
         '/actions/Por_cliente/actions/CentroCostoSiigo',
