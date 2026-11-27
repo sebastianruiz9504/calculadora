@@ -1,0 +1,287 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{05e0a237-8c57-4ded-aa2f-ad552a068919}</formid>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <FormPresentation>1</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form>
+      <tabs>
+        <tab verticallayout="true" id="{57b5e3d6-caa6-465d-8af2-118d58657e23}" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="{ab36cccd-8b11-4bb4-ad13-c646f09d07e8}">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="{2ca2eee6-5a9b-4608-b0a7-ca826bfed63f}">
+                        <labels>
+                          <label description="PriceableItem" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_priceableitemdescription" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="cr07a_priceableitemdescription" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{AD7B8DA4-1164-4980-B8C2-BEC40425FE4F}" showlabel="true">
+                        <labels>
+                          <label description="Centro de costo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_centrocosto" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_centrocosto" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a109d1ad-a50b-4890-a34e-f308449d8741}">
+                        <labels>
+                          <label description="Propietario" languagecode="3082" />
+                        </labels>
+                        <control id="ownerid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="ownerid" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{2635c62d-3d3f-4ccf-b2b0-a4e390e02900}">
+                        <labels>
+                          <label description="ServiceId" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_serviceidentifier" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_serviceidentifier" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{6db9547a-e55f-4746-829f-a574b6a4c2e7}">
+                        <labels>
+                          <label description="ServiceName" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_servicename" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_servicename" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{c5c2f61e-f048-4fbd-a536-5ed4b2a0c4f3}">
+                        <labels>
+                          <label description="Category" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_servicecategory" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_servicecategory" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a6a23dff-2b87-4d6d-a8eb-41c735764e9c}">
+                        <labels>
+                          <label description="PriceableItemId" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_priceableitemidentifier" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_priceableitemidentifier" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{0ff1cd2d-36bf-439a-aca7-12125e8cd255}">
+                        <labels>
+                          <label description="PriceableItemType" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_priceableitemtype" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_priceableitemtype" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{1c98c293-49b9-406a-9130-ce28e54da304}">
+                        <labels>
+                          <label description="IsHidden" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_ishidden" classid="{67fac785-cd58-4f9f-abb3-4b7ddc6ed5ed}" datafieldname="cr07a_ishidden" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{1ca3c9b8-3535-41f8-bc07-ce368947be50}">
+                        <labels>
+                          <label description="Productnumber" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_productnumber" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_productnumber" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{cd884dea-775c-4bda-a1ad-3abf4de99e28}">
+                        <labels>
+                          <label description="MaterialNumber" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_materialnumber" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_materialnumber" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{f6829d91-8a16-4f1d-8b13-0b60d1d25553}">
+                        <labels>
+                          <label description="ServiceGroup" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_servicegroup" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_servicegroup" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{d11b329c-0a67-4edd-9fe5-9ba9bfdf170a}">
+                        <labels>
+                          <label description="ChargeType" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_chargetype" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_chargetype" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a6313971-8607-4e06-af5b-ce54c449ca6c}">
+                        <labels>
+                          <label description="Currency" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_currencycode" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_currencycode" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{47a94c7e-334e-48c1-bfd0-ccbbc89a3da0}">
+                        <labels>
+                          <label description="PurchasePrice" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_purchaseprice" classid="{533b9e00-756b-4312-95a0-dc888637ac78}" datafieldname="cr07a_purchaseprice" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{b178ae34-6bc9-4b67-bac5-020f0c84463c}">
+                        <labels>
+                          <label description="SuggestedRetailPrice" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_suggestedretailprice" classid="{533b9e00-756b-4312-95a0-dc888637ac78}" datafieldname="cr07a_suggestedretailprice" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{52b999da-2f06-41a9-ba17-8bac8606d143}">
+                        <labels>
+                          <label description="SalesPrice" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_salesprice" classid="{533b9e00-756b-4312-95a0-dc888637ac78}" datafieldname="cr07a_salesprice" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{ce016500-7608-4dcc-a26c-5454865485de}">
+                        <labels>
+                          <label description="PrepaidPeriodInMonths" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_prepaidperiodmonths" classid="{c6d124ca-7eda-4a60-aea9-7fb8d318b68f}" datafieldname="cr07a_prepaidperiodmonths" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{3e8fbf80-2559-4a39-a174-d850e53dd5b9}">
+                        <labels>
+                          <label description="CommitementPeriodInMonths" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_commitmentperiodmonths" classid="{c6d124ca-7eda-4a60-aea9-7fb8d318b68f}" datafieldname="cr07a_commitmentperiodmonths" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{284a1ac7-2d4a-4c1d-8ff2-39d812cf9c42}">
+                        <labels>
+                          <label description="VendorName" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_vendorname" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_vendorname" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{cdb8a2c2-644d-4340-8274-c14b5015856b}">
+                        <labels>
+                          <label description="AddedToMarketplace" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_marketplaceadditiondate" classid="{5b773807-9fb2-42db-97c3-7a91eff8adff}" datafieldname="cr07a_marketplaceadditiondate" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{505d3474-10bf-4e07-9603-87502bab25bc}">
+                        <labels>
+                          <label description="PricingRuleName" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingrulename" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_pricingrulename" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{77c32fb1-f13e-4d48-aded-407e2a575e07}">
+                        <labels>
+                          <label description="PricingRuleType" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingruletype" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_pricingruletype" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{74cf9eb5-2021-4bf9-965a-de8c2b47bc32}">
+                        <labels>
+                          <label description="PricingRuleModel" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingrulemodel" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_pricingrulemodel" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{73ba6d72-332a-46f3-9628-b2155a99341c}">
+                        <labels>
+                          <label description="PricingRulePriority" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingrulepriority" classid="{c6d124ca-7eda-4a60-aea9-7fb8d318b68f}" datafieldname="cr07a_pricingrulepriority" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{0a22496e-fb18-4b39-a7ba-ab02e4964480}">
+                        <labels>
+                          <label description="PricingRuleGrossMargin" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingrulegrossmargin" classid="{c3efe0c3-0ec6-42be-8349-cbd9079dfd8e}" datafieldname="cr07a_pricingrulegrossmargin" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{546e9e9f-c69b-43ab-8dcd-43274d7c20e6}">
+                        <labels>
+                          <label description="PricingRuleMarkup" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingrulemarkup" classid="{c3efe0c3-0ec6-42be-8349-cbd9079dfd8e}" datafieldname="cr07a_pricingrulemarkup" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a2e17c1c-f58c-4b34-bf1a-9c3605d91799}">
+                        <labels>
+                          <label description="PricingRuleSrpDiscount" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_pricingrulesrpdiscount" classid="{c3efe0c3-0ec6-42be-8349-cbd9079dfd8e}" datafieldname="cr07a_pricingrulesrpdiscount" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a82821fa-6449-4f74-92d2-7248eab27984}">
+                        <labels>
+                          <label description="ActionBy" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_actionby" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_actionby" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{9a62317e-80df-4aa6-b1fb-8a2437c9c096}">
+                        <labels>
+                          <label description="ActionType" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_actiontype" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_actiontype" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{fea7d15e-9787-476d-b8fc-f067ac0fe38e}">
+                        <labels>
+                          <label description="ActionTimestamp" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_actiontimestamp" classid="{5b773807-9fb2-42db-97c3-7a91eff8adff}" datafieldname="cr07a_actiontimestamp" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Información" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Formulario para esta entidad." languagecode="3082" />
+    </Descriptions>
+  </systemform>
+</forms>

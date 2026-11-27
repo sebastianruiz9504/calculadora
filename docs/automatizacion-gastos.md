@@ -225,7 +225,7 @@ Fuente Siigo: `/v1/document-types`.
 | CC | 7509 | 8 | Nomina |
 | CC | 7502 | 1 | Ajustes contables |
 
-Nota: el flujo automatico `Facturacion con TRM` debe emitir facturas de venta con el documento FV codigo 2, id 31072.
+Nota: desde el 27 de noviembre de 2026, el flujo automatico `Facturacion con TRM` emite facturas de venta con el documento FV codigo 1, id 7481. Toma el centro de costo de `cr07a_precioscloud.cr07a_centrocosto` y agrupa las lineas por cliente y centro de costo. Las opciones de Ventas son 101-00, 102-00, 103-00, 104-00 y 105-00; la carga inicial de 979 productos usa 101-00. Ver `scripts/cloud_cost_centers/README.md` para la correspondencia de IDs, pruebas y respaldo.
 
 ### Medios de pago / bancos activos
 

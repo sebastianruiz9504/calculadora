@@ -1,0 +1,1382 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "undefined",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "SA Pacific Standard Time",
+        "schedule": {
+          "hours": [
+            "5"
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "SA Pacific Standard Time",
+        "schedule": {
+          "hours": [
+            "5"
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      },
+      "metadata": {
+        "operationMetadataId": "0779a7be-7e2b-4c9b-8b4f-055424b341fc"
+      },
+      "type": "Recurrence",
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1
+        }
+      }
+    }
+  },
+  "actions": {
+    "HTTP": {
+      "runAfter": {
+        "varTRM": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "66a612ce-a492-48c0-a12d-bb7793d6c76b"
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{concat('https://www.datos.gov.co/resource/ceyp-9c7c.json?$limit=1&$where=vigenciadesde%20%3C%3D%20%27',outputs('FechaFacturacionBogota'),'T23:59:59%27%20AND%20vigenciahasta%20%3E%3D%20%27',outputs('FechaFacturacionBogota'),'T00:00:00%27&$order=vigenciadesde%20DESC')}"
+      },
+      "runtimeConfiguration": {
+        "contentTransfer": {
+          "transferMode": "Chunked"
+        }
+      }
+    },
+    "Analizar_JSON": {
+      "runAfter": {
+        "HTTP": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "7009d9f5-2ed3-4bd3-94a5-51787cd0b306"
+      },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('HTTP')",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "valor": {
+                "type": "string"
+              },
+              "vigenciadesde": {
+                "type": "string"
+              },
+              "vigenciahasta": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "varTRM": {
+      "runAfter": {
+        "varErroresFacturacion": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "0d070c6e-61ea-4e24-a0e2-1892d9fec838"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varTRM",
+            "type": "float",
+            "value": 0
+          }
+        ]
+      }
+    },
+    "Enumerar_filas": {
+      "runAfter": {
+        "Set_varTRM": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "ac2f8685-0c1a-4bd5-9a16-9de4bb640881"
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+          "connectionName": "shared_commondataserviceforapps",
+          "operationId": "ListRecords"
+        },
+        "parameters": {
+          "entityName": "cr07a_salesperformancerecords",
+          "$filter": "@{concat('cr07a_billingday eq ',string(outputs('DiaFacturacionBogota')),' and cr07a_facturableautomatico eq true and (cr07a_fechaultimafactura eq null or cr07a_fechaultimafactura lt ',outputs('FechaFacturacionBogota'),'T00:00:00Z)')}",
+          "$expand": "cr07a_Producto($select=cr07a_siigo_code,cr07a_centrocosto)"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Clientes_solo": {
+      "runAfter": {
+        "Enumerar_filas": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "ac7fbaee-6edc-4da7-8d0c-ba126b9c3c67"
+      },
+      "type": "Select",
+      "inputs": {
+        "from": "@outputs('Enumerar_filas')?['body/value']",
+        "select": {
+          "cliente": "@item()?['_cr07a_clientelookup_value']",
+          "centroCosto": "@int(coalesce(item()?['cr07a_Producto']?['cr07a_centrocosto'],10100))"
+        }
+      }
+    },
+    "Clientes_unicos": {
+      "runAfter": {
+        "Clientes_solo": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "b16aa4c5-ecb2-4269-88c5-784b0b2f55b4"
+      },
+      "type": "Compose",
+      "inputs": "@union(body('Clientes_solo'), body('Clientes_solo'))"
+    },
+    "Por_cliente": {
+      "foreach": "@outputs('Clientes_unicos')",
+      "actions": {
+        "Filtrar_matriz2": {
+          "runAfter": {
+            "ClienteEsGranContribuyente": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "31195820-6668-41de-829f-c51dc461eeb3"
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@outputs('Enumerar_filas')?['body/value']",
+            "where": "@and(equals(item()?['_cr07a_clientelookup_value'],items('Por_cliente')?['cliente']),equals(int(coalesce(item()?['cr07a_Producto']?['cr07a_centrocosto'],10100)),items('Por_cliente')?['centroCosto']))"
+          }
+        },
+        "Establecer_variable": {
+          "runAfter": {
+            "Set_ReteIcaCOP": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2b09a8f8-5bff-4ff2-a2ee-681cb15521bc"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "varTotalCOP",
+            "value": 0
+          }
+        },
+        "Establecer_variable_1": {
+          "runAfter": {
+            "Establecer_variable": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "3a676331-d685-4cb0-aa32-3366c339732f"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "varLineasFactura",
+            "value": []
+          }
+        },
+        "Aplicar_a_cada_uno_1": {
+          "foreach": "@body('Filtrar_matriz2')",
+          "actions": {
+            "Cantidad": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "3efa6dbd-4a55-4893-9344-10d904ec55d3"
+              },
+              "type": "Compose",
+              "inputs": "@float(coalesce(item()?['cr07a_quantity'],0))"
+            },
+            "USD_unidad": {
+              "runAfter": {
+                "Cantidad": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "89139e93-5e26-4854-8d50-c79c9c6eb84d"
+              },
+              "type": "Compose",
+              "inputs": "@float(coalesce(item()?['cr07a_valorventaunidadusd'],0))"
+            },
+            "Incrementar_variable": {
+              "runAfter": {
+                "LineaTotalCOP": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "811f7165-644b-4fc5-8772-ee8874e1b5ce"
+              },
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "varTotalCOP",
+                "value": "@outputs('LineaTotalCOP')\n"
+              }
+            },
+            "PrecioUnitarioCOP": {
+              "runAfter": {
+                "USD_unidad": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "fbd77a60-8f09-4b1a-a56b-f464dcfe851d"
+              },
+              "type": "Compose",
+              "inputs": "@float(formatNumber(mul(outputs('USD_unidad'), variables('varTRM')), '0.00'))\r\n"
+            },
+            "LineaTotalCOP": {
+              "runAfter": {
+                "Increment_variable_1": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "3dbaf13d-66ec-4712-9f76-7de2620adcf4"
+              },
+              "type": "Compose",
+              "inputs": "@float(formatNumber(mul(outputs('Cantidad'), outputs('PrecioUnitarioCOP')), '0.00'))\n"
+            },
+            "List_rows_precios": {
+              "runAfter": {
+                "Incrementar_variable": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "3819ac79-cbc3-4159-8c2b-0d27dfe8700e"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords"
+                },
+                "parameters": {
+                  "entityName": "cr07a_preciosclouds",
+                  "$select": "cr07a_siigo_code,cr07a_priceableitemdescription",
+                  "$filter": "cr07a_precioscloudid eq @{item()?['_cr07a_producto_value']}\n"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "SubTotalLinea": {
+              "runAfter": {
+                "PrecioUnitarioCOP": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "58248d74-dd25-4ce0-b220-257899e12cbc"
+              },
+              "type": "Compose",
+              "inputs": "@float(formatNumber(mul(outputs('Cantidad'), outputs('PrecioUnitarioCOP')), '0.00'))\n"
+            },
+            "IvaLinea": {
+              "runAfter": {
+                "SubTotalLinea": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "894a5d4d-fae2-47ec-b8ca-6dfcbf3ccb23"
+              },
+              "type": "Compose",
+              "inputs": "@float(\r\n  if(\r\n    equals(coalesce(item()?['cr07a_sitieneiva'], false), true),\r\n    formatNumber(mul(outputs('SubTotalLinea'), 0.19), '0.00'),\r\n    '0.00'\r\n  )\r\n)\r\n"
+            },
+            "Increment_variable": {
+              "runAfter": {
+                "Increment_ReteIcaCOP": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "9d7fb5ca-4976-4ced-8343-f58ea97bbd4d"
+              },
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "varSubTotalCOP",
+                "value": "@outputs('SubTotalLinea')\n"
+              }
+            },
+            "Increment_variable_1": {
+              "runAfter": {
+                "Increment_variable": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "8df5b486-504c-46c5-aa98-d4d5b5daa79b"
+              },
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "varIvaCOP",
+                "value": "@outputs('IvaLinea')\n"
+              }
+            },
+            "Condition": {
+              "actions": {
+                "Anexar_a_la_variable_de_matriz": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "0048cd52-27b7-4c4d-bba4-2377db042a48"
+                  },
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "varLineasFactura",
+                    "value": {
+                      "description": "@{if(empty(trim(coalesce(first(body('List_rows_precios')?['value'])?['cr07a_priceableitemdescription'],''))),if(empty(trim(coalesce(item()?['cr07a_productname'],''))),first(body('List_rows_precios')?['value'])?['cr07a_siigo_code'],item()?['cr07a_productname']),first(body('List_rows_precios')?['value'])?['cr07a_priceableitemdescription'])}",
+                      "quantity": "@outputs('Cantidad')",
+                      "price": "@outputs('PrecioUnitarioCOP')",
+                      "code": "@{first(body('List_rows_precios')?['value'])?['cr07a_siigo_code']}",
+                      "taxes": "@json(concat('[{\"id\":', string(outputs('Iva19Id')), '}]'))"
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_precios": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Anexar_a_la_variable_de_matriz_1": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "0048cd52-27b7-4c4d-bba4-2377db042a48"
+                    },
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "varLineasFactura",
+                      "value": {
+                        "description": "@{if(empty(trim(coalesce(first(body('List_rows_precios')?['value'])?['cr07a_priceableitemdescription'],''))),if(empty(trim(coalesce(item()?['cr07a_productname'],''))),first(body('List_rows_precios')?['value'])?['cr07a_siigo_code'],item()?['cr07a_productname']),first(body('List_rows_precios')?['value'])?['cr07a_priceableitemdescription'])}",
+                        "quantity": "@outputs('Cantidad')",
+                        "price": "@outputs('PrecioUnitarioCOP')",
+                        "code": "@{first(body('List_rows_precios')?['value'])?['cr07a_siigo_code']}",
+                        "taxes": "@json('[]')"
+                      }
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@coalesce(item()?['cr07a_sitieneiva'], false)",
+                      true
+                    ]
+                  }
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "afe820c9-85b1-4ba8-a66c-98715204bf55"
+              },
+              "type": "If"
+            },
+            "ReteFuenteLinea": {
+              "runAfter": {
+                "IvaLinea": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "0274e654-2152-4346-b3b2-56ef4b6a22cc"
+              },
+              "type": "Compose",
+              "inputs": "@float(formatNumber(mul(outputs('SubTotalLinea'), 0.035), '0.00'))"
+            },
+            "ReteIcaLinea": {
+              "runAfter": {
+                "ReteFuenteLinea": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "9dd8d060-fdf3-4b85-8c15-1b816ae53228"
+              },
+              "type": "Compose",
+              "inputs": "@float(formatNumber(mul(outputs('SubTotalLinea'), 0.01104), '0.00'))"
+            },
+            "Increment_ReteFuenteCOP": {
+              "runAfter": {
+                "ReteIcaLinea": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "9d67dd48-74f3-42f1-a3bc-4ad8720809ef"
+              },
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "varReteFuenteCOP",
+                "value": "@outputs('ReteFuenteLinea')"
+              }
+            },
+            "Increment_ReteIcaCOP": {
+              "runAfter": {
+                "Increment_ReteFuenteCOP": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "f65a091c-69ba-419d-b2a7-aaa32541673d"
+              },
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "varReteIcaCOP",
+                "value": "@outputs('ReteIcaLinea')"
+              }
+            }
+          },
+          "runAfter": {
+            "Establecer_variable_1": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "922f9339-ab9d-4a8c-afae-0105189de63d"
+          },
+          "type": "Foreach",
+          "operationOptions": "Sequential"
+        },
+        "Filtrar_matriz_Clientes": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "e80ff469-36e9-40b3-a3c4-5bccb804f2a9"
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@outputs('Enumerar_filas_1')?['body/value']",
+            "where": "@equals(item()?['cr07a_clienteid'],items('Por_cliente')?['cliente'])"
+          }
+        },
+        "ClienteNITFinal": {
+          "runAfter": {
+            "Filtrar_matriz_Clientes": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "e82e00a5-315f-4430-a31a-e598ccee9206"
+          },
+          "type": "Compose",
+          "inputs": "@first(body('Filtrar_matriz_Clientes'))?['cr07a_nit']"
+        },
+        "BodyFactura": {
+          "runAfter": {
+            "CentroCostoCodigo": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "bbbe48e0-b584-4307-9470-528428e3fd72"
+          },
+          "type": "Compose",
+          "inputs": {
+            "document": {
+              "id": 7481
+            },
+            "number": "@outputs('NumeroFactura')",
+            "date": "@{outputs('FechaFacturacionBogota')}",
+            "customer": {
+              "identification": "@{outputs('ClienteNITFinal')}",
+              "branch_office": 0
+            },
+            "seller": 808,
+            "items": "@variables('varLineasFactura')",
+            "payments": [
+              {
+                "id": 1721,
+                "value": "@outputs('TotalPago')",
+                "due_date": "@{formatDateTime(addDays(outputs('FechaFacturacionBogota'),30),'yyyy-MM-dd')}"
+              }
+            ],
+            "stamp": {
+              "send": false
+            },
+            "retentions": "@json('[]')",
+            "cost_center": "@outputs('CentroCostoSiigo')"
+          }
+        },
+        "HTTP_3": {
+          "runAfter": {
+            "BodyFactura": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "13094f48-e121-424d-82ba-702b599affd7"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://api.siigo.com/v1/invoices",
+            "headers": {
+              "Authorization": "[REDACTED]",
+              "Content-Type": "application/json",
+              "Partner-Id": "digitalTechFacturacion"
+            },
+            "body": "@outputs('BodyFactura')"
+          },
+          "runtimeConfiguration": {
+            "contentTransfer": {
+              "transferMode": "Chunked"
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "TotalPagoNeto": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "aaf603a5-3127-47ed-bbc9-2489f180a2a0"
+          },
+          "type": "Compose",
+          "inputs": "@float(formatNumber(variables('varTotalCOP'), '0.00'))\n"
+        },
+        "HTTP_\u2013_GET_document-types": {
+          "runAfter": {
+            "Establecer_variable_2": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2336f4f8-f2a2-4a82-abce-a068c1a2bb12"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://api.siigo.com/v1/document-types?type=FV",
+            "headers": {
+              "Authorization": "[REDACTED]",
+              "Partner-Id": "digitalTechFacturacion"
+            }
+          },
+          "runtimeConfiguration": {
+            "contentTransfer": {
+              "transferMode": "Chunked"
+            }
+          }
+        },
+        "Parse_JSON": {
+          "runAfter": {
+            "HTTP_\u2013_GET_document-types": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b92b6085-f446-49ea-8944-7b7619c0a1ab"
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('HTTP_\u2013_GET_document-types')",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "number"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "consecutive": {
+                    "type": "number"
+                  },
+                  "automatic_number": {
+                    "type": "boolean"
+                  },
+                  "decimals": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Filter_array": {
+          "runAfter": {
+            "Parse_JSON": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "179b5c5d-5c70-4857-bf4d-90abdb8b4bf0"
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Parse_JSON')",
+            "where": "@equals(item()?['id'],7481)"
+          }
+        },
+        "NumeroFactura": {
+          "runAfter": {
+            "Filter_array": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "05c8b734-1142-4cc0-81ba-814fc5358fbe"
+          },
+          "type": "Compose",
+          "inputs": "@int(first(body('Filter_array'))?['consecutive'])\r\n"
+        },
+        "TotalPago": {
+          "runAfter": {
+            "Aplicar_a_cada_uno_1": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "d54643be-5d55-4322-8344-f2fd46b5c594"
+          },
+          "type": "Compose",
+          "inputs": "@float(formatNumber(add(variables('varSubTotalCOP'), variables('varIvaCOP')), '0.00'))\n"
+        },
+        "Establecer_variable_2": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2eb48b66-12e8-47ad-9468-b3fac9054f77"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "token",
+            "value": "@body('HTTP_2')['access_token']"
+          }
+        },
+        "Set_variable": {
+          "runAfter": {
+            "Filtrar_matriz2": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "5ce81236-0fa6-46fe-9f89-dacc71366513"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "varSubTotalCOP",
+            "value": 0
+          }
+        },
+        "Set_variable_1": {
+          "runAfter": {
+            "Set_variable": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "ca7f1642-39be-498a-baf7-6e9f0ef14aaf"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "varIvaCOP",
+            "value": 0
+          }
+        },
+        "Registrar_ultima_facturacion_exitosa": {
+          "foreach": "@body('Filtrar_matriz2')",
+          "actions": {
+            "Update_a_row": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "44ad6d04-e20b-432d-96ff-8e52adb13fbc"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateOnlyRecord"
+                },
+                "parameters": {
+                  "entityName": "cr07a_salesperformancerecords",
+                  "recordId": "@items('Registrar_ultima_facturacion_exitosa')?['cr07a_salesperformancerecordid']",
+                  "item/cr07a_error_facturacion": "@concat('OK ',outputs('FechaFacturacionBogota'),' | Factura ',coalesce(body('HTTP_3')?['name'],string(outputs('NumeroFactura'))),' | SiigoId ',coalesce(body('HTTP_3')?['id'],''),' | TRM ',string(variables('varTRM')),' | Total ',string(outputs('TotalPago')))",
+                  "item/cr07a_facturado": true,
+                  "item/cr07a_fechaultimafactura": "@formatDateTime(outputs('FechaHoraBogota'),'yyyy-MM-ddTHH:mm:ss')",
+                  "item/cr07a_siigo_invoice_id": "@coalesce(body('HTTP_3')?['id'],body('HTTP_3')?['name'],string(outputs('NumeroFactura')))"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "HTTP_3": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2c5626e1-3fc1-47c0-84fb-a2b4ff81106c"
+          },
+          "type": "Foreach",
+          "operationOptions": "Sequential"
+        },
+        "Agregar_resumen_factura_emitida": {
+          "runAfter": {
+            "Registrar_ultima_facturacion_exitosa": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "4e85c097-0528-46d9-a750-dbaabb90bd2d"
+          },
+          "type": "AppendToArrayVariable",
+          "inputs": {
+            "name": "varFacturasEmitidas",
+            "value": "@concat('Factura ',coalesce(body('HTTP_3')?['name'],string(outputs('NumeroFactura'))),' | Cliente ',outputs('ClienteNITFinal'),' | Fecha ',outputs('FechaFacturacionBogota'),' | Total ',string(outputs('TotalPago')),' | TRM ',string(variables('varTRM')),' | Lineas ',string(length(body('Filtrar_matriz2'))), ' | Centro de costo ',outputs('CentroCostoCodigo'))"
+          }
+        },
+        "Agregar_error_facturacion_siigo": {
+          "runAfter": {
+            "HTTP_3": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b52266b8-cc0a-4811-bec5-991a66db256e"
+          },
+          "type": "AppendToArrayVariable",
+          "inputs": {
+            "name": "varErroresFacturacion",
+            "value": "@concat('ERROR cliente ',outputs('ClienteNITFinal'),' | Fecha ',outputs('FechaFacturacionBogota'),' | Total ',string(outputs('TotalPago')),' | Fallo al crear factura en Siigo. Run ',workflow()?['run']?['name'], ' | Centro de costo ',outputs('CentroCostoCodigo'))"
+          }
+        },
+        "Registrar_error_facturacion": {
+          "foreach": "@body('Filtrar_matriz2')",
+          "actions": {
+            "Update_error_facturacion": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "13ef3b31-117f-4cbe-84f3-70ccc1519d4f"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateOnlyRecord"
+                },
+                "parameters": {
+                  "entityName": "cr07a_salesperformancerecords",
+                  "recordId": "@items('Registrar_error_facturacion')?['cr07a_salesperformancerecordid']",
+                  "item/cr07a_error_facturacion": "@concat('ERROR ',outputs('FechaFacturacionBogota'),' | Cliente ',outputs('ClienteNITFinal'),' | Total ',string(outputs('TotalPago')),' | Fallo al crear factura en Siigo. Run ',workflow()?['run']?['name'])"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Agregar_error_facturacion_siigo": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "fbb0dcb6-6471-494a-b8a3-93aeb1391435"
+          },
+          "type": "Foreach",
+          "operationOptions": "Sequential"
+        },
+        "TotalReteFuente": {
+          "runAfter": {
+            "TotalPago": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "7bea527a-fb4b-4a81-b45e-65bad1f38b4d"
+          },
+          "type": "Compose",
+          "inputs": 0
+        },
+        "TotalReteIca": {
+          "runAfter": {
+            "TotalReteFuente": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "597f956d-9d4c-4992-bedf-82acf68d173b"
+          },
+          "type": "Compose",
+          "inputs": 0
+        },
+        "TotalPagoNeto": {
+          "runAfter": {
+            "TotalReteIca": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "78eae78a-8e6d-4e07-9eba-6a7344cb5db0"
+          },
+          "type": "Compose",
+          "inputs": "@outputs('TotalPago')"
+        },
+        "Set_ReteFuenteCOP": {
+          "runAfter": {
+            "Set_variable_1": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "37bd1f90-12cf-445d-8504-1e9eb742bd05"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "varReteFuenteCOP",
+            "value": 0
+          }
+        },
+        "Set_ReteIcaCOP": {
+          "runAfter": {
+            "Set_ReteFuenteCOP": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "ac57ebc3-0ba8-4fc3-be6f-db3fa44152ee"
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "varReteIcaCOP",
+            "value": 0
+          }
+        },
+        "ClienteEsGranContribuyente": {
+          "runAfter": {
+            "ClienteNITFinal": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "c01c2374-f032-42f5-ad73-498da3e58d44"
+          },
+          "type": "Compose",
+          "inputs": "@equals(coalesce(first(body('Filtrar_matriz_Clientes'))?['cr07a_grancontribuyente'], false), true)"
+        },
+        "CentroCostoSiigo": {
+          "type": "Compose",
+          "inputs": "@int(json('{\"10100\":589,\"10200\":602,\"10300\":611,\"10400\":622,\"10500\":633}')?[string(items('Por_cliente')?['centroCosto'])])",
+          "runAfter": {
+            "NumeroFactura": [
+              "Succeeded"
+            ]
+          }
+        },
+        "CentroCostoCodigo": {
+          "type": "Compose",
+          "inputs": "@concat(substring(string(items('Por_cliente')?['centroCosto']),0,3),'-00')",
+          "runAfter": {
+            "CentroCostoSiigo": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "varReteIcaCOP": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "0708f4c3-d8be-42a3-9063-5d475b3bbe2b"
+      },
+      "type": "Foreach",
+      "operationOptions": "Sequential"
+    },
+    "varTotalCOP": {
+      "runAfter": {
+        "Clientes_unicos": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "b49a239b-99ef-47b7-ae40-dc9f98a3d0e9"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varTotalCOP",
+            "type": "float",
+            "value": 0
+          }
+        ]
+      }
+    },
+    "varLineasFactura": {
+      "runAfter": {
+        "varTotalCOP": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "f0720e5e-126d-4ea4-ad96-edc8a58143c8"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varLineasFactura",
+            "type": "array",
+            "value": []
+          }
+        ]
+      }
+    },
+    "Enumerar_filas_1": {
+      "runAfter": {
+        "varLineasFactura": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "062b2f72-00dd-41a7-b173-322f36ae1874"
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+          "connectionName": "shared_commondataserviceforapps",
+          "operationId": "ListRecords"
+        },
+        "parameters": {
+          "entityName": "cr07a_clientes",
+          "$select": "cr07a_clienteid,cr07a_nit,cr07a_grancontribuyente"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Inicializar_variable": {
+      "runAfter": {
+        "Enumerar_filas_1": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "3ce623c1-4fd3-421e-89a4-bb6aec0c0c58"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "token",
+            "type": "string",
+            "value": "0"
+          }
+        ]
+      }
+    },
+    "HTTP_2": {
+      "runAfter": {
+        "Inicializar_variable": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "a6991829-3ced-4e83-a4b1-a9e04d814791"
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://api.siigo.com/auth",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "SiigoIntegrationClient/1.0"
+        },
+        "body": {
+          "username": "[REDACTED]",
+          "access_key": "[REDACTED]"
+        }
+      },
+      "runtimeConfiguration": {
+        "contentTransfer": {
+          "transferMode": "Chunked"
+        }
+      }
+    },
+    "GETTaxes": {
+      "runAfter": {
+        "HTTP_2": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "57607535-6347-4842-9152-9dc217e8aaaa"
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "https://api.siigo.com/v1/taxes",
+        "headers": {
+          "Authorization": "[REDACTED]",
+          "Partner-Id": "digitalTechFacturacion"
+        }
+      },
+      "runtimeConfiguration": {
+        "contentTransfer": {
+          "transferMode": "Chunked"
+        }
+      }
+    },
+    "Parse_JSON_1": {
+      "runAfter": {
+        "GETTaxes": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "5825be5c-a29c-4bc4-9193-04d64a9d4724"
+      },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('GetTaxes')\n",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "percentage": {
+                "type": "number"
+              },
+              "active": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "percentage",
+              "active"
+            ]
+          }
+        }
+      }
+    },
+    "Filter_array_1": {
+      "runAfter": {
+        "Parse_JSON_1": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "87a00ae5-f157-47d9-b7c0-b11992892ade"
+      },
+      "type": "Query",
+      "inputs": {
+        "from": "@body('Parse_JSON_1')\r\n",
+        "where": "@and(\n  equals(item()?['type'], 'IVA'),\n  equals(item()?['percentage'], 19),\n  equals(item()?['active'], true)\n)\n"
+      }
+    },
+    "Iva19Id": {
+      "runAfter": {
+        "Filter_array_1": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "cc66d1f0-05e9-46bf-98bb-4283144acdd5"
+      },
+      "type": "Compose",
+      "inputs": "@first(body('Filter_array_1'))?['id']\r\n"
+    },
+    "varSubTotalCOP": {
+      "runAfter": {
+        "Iva19Id": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "d1a9b8f3-b222-4950-b0b1-ce00d0a8c5fd"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varSubTotalCOP",
+            "type": "float",
+            "value": 0
+          }
+        ]
+      }
+    },
+    "varIvaCOP": {
+      "runAfter": {
+        "varSubTotalCOP": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "99a013c8-0cfb-47f4-ab86-9bf856fce08f"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varIvaCOP",
+            "type": "float",
+            "value": 0
+          }
+        ]
+      }
+    },
+    "FechaHoraBogota": {
+      "runAfter": {},
+      "metadata": {
+        "operationMetadataId": "66b040fe-ebf9-4880-87d4-bceb0c44dab8"
+      },
+      "type": "Compose",
+      "inputs": "@convertTimeZone(utcNow(),'UTC','SA Pacific Standard Time')"
+    },
+    "FechaFacturacionBogota": {
+      "runAfter": {
+        "FechaHoraBogota": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "496a3fab-a8d2-4c1e-886c-08f53086c3d4"
+      },
+      "type": "Compose",
+      "inputs": "@if(less(int(formatDateTime(outputs('FechaHoraBogota'),'HH')),5),formatDateTime(addDays(outputs('FechaHoraBogota'),-1),'yyyy-MM-dd'),formatDateTime(outputs('FechaHoraBogota'),'yyyy-MM-dd'))"
+    },
+    "DiaFacturacionBogota": {
+      "runAfter": {
+        "FechaFacturacionBogota": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "fe15bd15-d6e9-45f2-b81f-a122e9cc606c"
+      },
+      "type": "Compose",
+      "inputs": "@int(formatDateTime(outputs('FechaFacturacionBogota'),'dd'))"
+    },
+    "varFacturasEmitidas": {
+      "runAfter": {
+        "DiaFacturacionBogota": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "a748a531-a159-4376-b7ab-6874d4b42bb6"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varFacturasEmitidas",
+            "type": "array",
+            "value": []
+          }
+        ]
+      }
+    },
+    "varErroresFacturacion": {
+      "runAfter": {
+        "varFacturasEmitidas": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "71bd5dcb-ad2e-4c37-9946-7e757085137e"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varErroresFacturacion",
+            "type": "array",
+            "value": []
+          }
+        ]
+      }
+    },
+    "Set_varTRM": {
+      "runAfter": {
+        "Analizar_JSON": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "2c925b29-5977-4934-a0f0-c983566cb22f"
+      },
+      "type": "SetVariable",
+      "inputs": {
+        "name": "varTRM",
+        "value": "@float(first(body('Analizar_JSON'))?['valor'])"
+      }
+    },
+    "Hay_resultado_para_notificar": {
+      "actions": {
+        "Enviar_resumen_facturacion": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "581af41e-7f5f-4fd5-a378-f86ced23da39"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2"
+            },
+            "parameters": {
+              "emailMessage/To": "sruiz@digitaltechcolombia.com;adaza@digitaltechcolombia.com",
+              "emailMessage/Subject": "@concat('Facturaci\u00f3n autom\u00e1tica Siigo ',outputs('FechaFacturacionBogota'),' - ',if(or(greater(length(variables('varErroresFacturacion')),0),not(equals(coalesce(actions('Por_cliente')?['status'],'Skipped'),'Succeeded'))),'CON ERRORES','OK'))",
+              "emailMessage/Body": "@concat('<p>Resumen de facturaci\u00f3n autom\u00e1tica con TRM.</p><ul><li>Fecha de facturaci\u00f3n: ',outputs('FechaFacturacionBogota'),'</li><li>TRM usada: ',string(variables('varTRM')),'</li><li>Estado procesamiento: ',coalesce(actions('Por_cliente')?['status'],'Skipped'),'</li><li>Facturas emitidas: ',string(length(variables('varFacturasEmitidas'))),'</li><li>Errores: ',string(length(variables('varErroresFacturacion'))),'</li></ul><p><strong>Facturas</strong></p><p>',if(equals(length(variables('varFacturasEmitidas')),0),'Sin facturas emitidas.',join(variables('varFacturasEmitidas'),'<br>')),'</p><p><strong>Errores</strong></p><p>',if(equals(length(variables('varErroresFacturacion')),0),'Sin errores reportados.',join(variables('varErroresFacturacion'),'<br>')),'</p><p>Run: ',workflow()?['run']?['name'],'</p>')",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "runAfter": {
+        "Por_cliente": [
+          "Succeeded",
+          "Failed",
+          "TimedOut",
+          "Skipped"
+        ]
+      },
+      "expression": {
+        "or": [
+          {
+            "greater": [
+              "@length(variables('varFacturasEmitidas'))",
+              0
+            ]
+          },
+          {
+            "greater": [
+              "@length(variables('varErroresFacturacion'))",
+              0
+            ]
+          },
+          {
+            "not": {
+              "equals": [
+                "@coalesce(actions('Por_cliente')?['status'],'Skipped')",
+                "Succeeded"
+              ]
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "dc4b1c45-e762-4666-84a8-5c97e4354f54"
+      },
+      "type": "If"
+    },
+    "varReteFuenteCOP": {
+      "runAfter": {
+        "varIvaCOP": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "762c030d-a67f-49c7-8d42-96a3e7af4002"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varReteFuenteCOP",
+            "type": "float",
+            "value": 0
+          }
+        ]
+      }
+    },
+    "varReteIcaCOP": {
+      "runAfter": {
+        "varReteFuenteCOP": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "f918ec8d-26fa-4506-a55e-160280f4d416"
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "varReteIcaCOP",
+            "type": "float",
+            "value": 0
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,94 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{0d4e3fe2-f121-4ae9-9e1b-9098bae532eb}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_priceableitemdescription" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_precioscloudid">
+          <cell name="cr07a_priceableitemdescription" width="300" />
+          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_serviceidentifier" width="150" />
+          <cell name="cr07a_servicename" width="150" />
+          <cell name="cr07a_servicecategory" width="150" />
+          <cell name="cr07a_priceableitemidentifier" width="150" />
+          <cell name="cr07a_priceableitemtype" width="150" />
+          <cell name="cr07a_ishidden" width="150" />
+          <cell name="cr07a_productnumber" width="150" />
+          <cell name="cr07a_materialnumber" width="150" />
+          <cell name="cr07a_servicegroup" width="150" />
+          <cell name="cr07a_chargetype" width="150" />
+          <cell name="cr07a_currencycode" width="150" />
+          <cell name="cr07a_purchaseprice" width="150" />
+          <cell name="cr07a_suggestedretailprice" width="150" />
+          <cell name="cr07a_salesprice" width="150" />
+          <cell name="cr07a_prepaidperiodmonths" width="150" />
+          <cell name="cr07a_commitmentperiodmonths" width="150" />
+          <cell name="cr07a_vendorname" width="150" />
+          <cell name="cr07a_marketplaceadditiondate" width="150" />
+          <cell name="cr07a_pricingrulename" width="150" />
+          <cell name="cr07a_pricingruletype" width="150" />
+          <cell name="cr07a_pricingrulemodel" width="150" />
+          <cell name="cr07a_pricingrulepriority" width="150" />
+          <cell name="cr07a_pricingrulegrossmargin" width="150" />
+          <cell name="cr07a_pricingrulemarkup" width="150" />
+          <cell name="cr07a_pricingrulesrpdiscount" width="150" />
+          <cell name="cr07a_actionby" width="150" />
+          <cell name="cr07a_actiontype" width="150" />
+          <cell name="cr07a_actiontimestamp" width="150" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_precioscloud">
+          <attribute name="cr07a_precioscloudid" />
+          <attribute name="cr07a_priceableitemdescription" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_priceableitemdescription" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_serviceidentifier" />
+          <attribute name="cr07a_servicename" />
+          <attribute name="cr07a_servicecategory" />
+          <attribute name="cr07a_priceableitemidentifier" />
+          <attribute name="cr07a_priceableitemtype" />
+          <attribute name="cr07a_ishidden" />
+          <attribute name="cr07a_productnumber" />
+          <attribute name="cr07a_materialnumber" />
+          <attribute name="cr07a_servicegroup" />
+          <attribute name="cr07a_chargetype" />
+          <attribute name="cr07a_currencycode" />
+          <attribute name="cr07a_purchaseprice" />
+          <attribute name="cr07a_suggestedretailprice" />
+          <attribute name="cr07a_salesprice" />
+          <attribute name="cr07a_prepaidperiodmonths" />
+          <attribute name="cr07a_commitmentperiodmonths" />
+          <attribute name="cr07a_vendorname" />
+          <attribute name="cr07a_marketplaceadditiondate" />
+          <attribute name="cr07a_pricingrulename" />
+          <attribute name="cr07a_pricingruletype" />
+          <attribute name="cr07a_pricingrulemodel" />
+          <attribute name="cr07a_pricingrulepriority" />
+          <attribute name="cr07a_pricingrulegrossmargin" />
+          <attribute name="cr07a_pricingrulemarkup" />
+          <attribute name="cr07a_pricingrulesrpdiscount" />
+          <attribute name="cr07a_actionby" />
+          <attribute name="cr07a_actiontype" />
+          <attribute name="cr07a_actiontimestamp" />
+          <attribute name="cr07a_centrocosto" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Precios Cloud activo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

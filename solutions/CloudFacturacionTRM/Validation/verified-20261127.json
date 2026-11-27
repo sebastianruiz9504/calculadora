@@ -1,0 +1,35 @@
+{
+  "products": 979,
+  "centers": {
+    "101-00": 979,
+    "102-00": 0,
+    "103-00": 0,
+    "104-00": 0,
+    "105-00": 0
+  },
+  "forms": 1,
+  "views": 2,
+  "flow_state": "Started",
+  "document_id": 7481,
+  "automatic_billing_rows": 263,
+  "billing_rows_without_product": 0,
+  "field": "cr07a_centrocosto",
+  "example_label": "101-00 - Ventas",
+  "native_tests": [
+    {
+      "case": "all-sales-centers",
+      "status": "Succeeded",
+      "passed": true,
+      "run": "08584058158579776305140223052CU15"
+    },
+    {
+      "case": "invalid",
+      "status": "Failed",
+      "passed": true,
+      "run": "08584058158162634426325087512CU27"
+    }
+  ],
+  "ui_verified_in_power_apps": true,
+  "production_invoices_created_by_validation": 0,
+  "date": "2026-11-27"
+}
