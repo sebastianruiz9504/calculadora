@@ -724,6 +724,9 @@ public sealed partial class DataverseService
             [CalculatorLineSuggestedPriceField] = line.SuggestedRetailPrice,
             [CalculatorLineAcceleratorField] = line.Acelerador,
             [CalculatorLineHasVatField] = line.HasVat,
+            // One optional snapshot in the existing line record; no extra reads/writes.
+            ["cr07a_linesjson"] = line.Upgrade is null ? null
+                : JsonSerializer.Serialize(new CalculatorLineMetadata { Upgrade = line.Upgrade }, JsonOptions),
             [$"{CalculatorParentLookupNavigation}@odata.bind"] = $"/{_scenariosTableSetName}({possibilityRecordId})"
         };
         if (isCreate)
@@ -922,9 +925,23 @@ public sealed partial class DataverseService
             Quantity = CalculatorReadInt(item, CalculatorLineQuantityField),
             SuggestedRetailPrice = CalculatorReadDecimal(item, CalculatorLineSuggestedPriceField),
             Acelerador = CalculatorReadDecimal(item, CalculatorLineAcceleratorField),
-            HasVat = CalculatorReadBool(item, CalculatorLineHasVatField)
+            HasVat = CalculatorReadBool(item, CalculatorLineHasVatField),
+            Upgrade = ReadCalculatorLineUpgrade(item)
         }
     };
+
+    private sealed class CalculatorLineMetadata
+    {
+        public ProductUpgrade? Upgrade { get; set; }
+    }
+
+    private static ProductUpgrade? ReadCalculatorLineUpgrade(JsonElement item)
+    {
+        var json = CalculatorReadString(item, "cr07a_linesjson");
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        // Fail visibly on corrupt metadata instead of silently treating an upgrade as full price.
+        return JsonSerializer.Deserialize<CalculatorLineMetadata>(json, JsonOptions)?.Upgrade;
+    }
 
     private static void NormalizeCalculatorPossibilityRequest(ScenarioSaveRequest request)
     {
@@ -974,6 +991,7 @@ public sealed partial class DataverseService
                 throw new InvalidOperationException($"La duración de la línea {index + 1} debe estar entre 1 y 1.200 meses.");
             if (line.Quantity is < 1 or > 1_000_000)
                 throw new InvalidOperationException($"La cantidad de la línea {index + 1} debe estar entre 1 y 1.000.000.");
+            UpgradePricing.Validate(line.ProductId, line.ProductDescription, line.CostUnit, line.Upgrade);
             ValidateCalculatorDecimal(line.CostUnit, 4, $"costo de la línea {index + 1}", minimum: 0m);
             ValidateCalculatorDecimal(line.MarginPercent, 6, $"margen de la línea {index + 1}", minimum: -100m);
             ValidateCalculatorDecimal(line.SuggestedRetailPrice, 4, $"precio sugerido de la línea {index + 1}", minimum: 0m);
@@ -1033,7 +1051,7 @@ public sealed partial class DataverseService
         CalculatorLineOrderField, CalculatorLineBusinessTypeField, CalculatorLineProductIdField,
         CalculatorLineDescriptionField, CalculatorLineCostUnitField, CalculatorLineMarginField,
         CalculatorLineContractMonthsField, CalculatorLineQuantityField, CalculatorLineSuggestedPriceField,
-        CalculatorLineAcceleratorField, CalculatorLineHasVatField, "versionnumber"
+        CalculatorLineAcceleratorField, CalculatorLineHasVatField, "cr07a_linesjson", "versionnumber"
     });
 
     private async Task SendCalculatorJsonAsync(

@@ -23,6 +23,7 @@ public static class ScenarioInputHasher
             ContractMonths = line.ContractMonths,
             Quantity = line.Quantity,
             SuggestedRetailPrice = line.SuggestedRetailPrice,
+            Upgrade = line.Upgrade,
             Acelerador = line.Acelerador,
             HasVat = line.HasVat
         }));
@@ -89,6 +90,17 @@ public static class ScenarioInputHasher
                 .Append(Format(line.SuggestedRetailPrice)).Append('|')
                 .Append(Format(line.Acelerador)).Append('|')
                 .Append(line.HasVat ? '1' : '0');
+            // Preserve the hashes of existing full-price scenarios.
+            if (line.Upgrade is { } upgrade)
+            {
+                builder.Append("|upgrade|").Append(upgrade.TargetProductId.Trim()).Append('|')
+                    .Append(Format(upgrade.TargetCostUnit)).Append('|')
+                    .Append(Format(upgrade.TargetSuggestedRetailPrice)).Append('|')
+                    .Append(upgrade.BaseProductId.Trim()).Append('|')
+                    .Append(NormalizeText(upgrade.BaseProductDescription)).Append('|')
+                    .Append(Format(upgrade.BaseCostUnit)).Append('|')
+                    .Append(Format(upgrade.BaseSuggestedRetailPrice));
+            }
         }
     }
 

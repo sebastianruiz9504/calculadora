@@ -14,6 +14,8 @@ public sealed class ScenarioLineInput
     public int ContractMonths { get; set; } = 12;
     public int Quantity { get; set; } = 1;
     public decimal SuggestedRetailPrice { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ProductUpgrade? Upgrade { get; set; }
     public decimal Acelerador { get; set; }
     public bool HasVat { get; set; }
 }

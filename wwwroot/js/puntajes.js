@@ -180,7 +180,7 @@
             return line;
         }
 
-        line.costUnit = roundMoney(Math.max(toNumber(line.costUnit, 0), 0));
+        line.costUnit = line.upgrade ? toNumber(line.costUnit, 0) : roundMoney(Math.max(toNumber(line.costUnit, 0), 0));
         line.marginPercent = roundMoney(toNumber(line.marginPercent, 0));
         line.contractMonths = normalizePositiveInteger(line.contractMonths, 12);
         line.quantity = normalizePositiveInteger(line.quantity, 1);
@@ -1016,6 +1016,7 @@
                         <tr>
                             <td>
                                 <div class="scores-product-table__name">${escapeHtml(line.productName || "Producto sin nombre")}</div>
+                                ${line.upgrade ? `<div class="small text-primary">Upgrade desde ${escapeHtml(line.upgrade.baseProductDescription)}</div>` : ""}
                                 <div class="scores-product-table__id">${escapeHtml(line.productId || line.lineId || "")}</div>
                             </td>
                             <td class="text-end">${formatNumber(line.quantity)}</td>
@@ -1679,6 +1680,7 @@
             lineOptionValue: Number(line.lineOptionValue || 645250004),
             hasVat: line.hasVatOptionValue > 0 ? Number(line.hasVatOptionValue) === 1 : Boolean(line.hasVat),
             hasVatOptionValue: line.hasVatOptionValue > 0 ? Number(line.hasVatOptionValue) : (Boolean(line.hasVat) ? 1 : 0),
+            upgrade: line.upgrade || null,
             costUnit: line.costUnit,
             marginPercent: line.marginPercent,
             contractMonths: line.contractMonths,
@@ -1815,12 +1817,13 @@
             <tr data-line-index="${index}">
                 <td>
                     <div class="scores-verify-product">
-                        <input type="text" class="form-control form-control-sm verify-product-input" value="${escapeHtml(line.productName)}" placeholder="Buscar producto..." autocomplete="off" />
+                        ${line.upgrade ? `<div class="small text-primary mb-1">Upgrade desde ${escapeHtml(line.upgrade.baseProductDescription)}</div>` : ""}
+                        <input type="text" class="form-control form-control-sm verify-product-input" value="${escapeHtml(line.productName)}" ${line.upgrade ? "readonly" : ""} placeholder="Buscar producto..." autocomplete="off" />
                         <div class="scores-verify-product__search"></div>
                         <div class="scores-verify-product__meta">Tipo: ${escapeHtml(line.lineType || "Otro")} | IVA: ${line.hasVat ? "Si" : "No"} | Lookup: ${escapeHtml(line.productId || "pendiente")} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}${lockCost ? " | Costo fijo por ModernWork" : ""}${lockMonths ? " | Duracion fija 12 meses" : ""}</div>
                     </div>
                 </td>
-                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-cost-input" value="${line.costUnit}" ${lockCost ? "disabled" : ""} /></td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-cost-input" value="${line.costUnit}" ${lockCost || line.upgrade ? "disabled" : ""} /></td>
                 <td><input type="number" step="0.01" class="form-control form-control-sm text-end verify-margin-input" value="${line.marginPercent}" /></td>
                 <td><input type="number" step="1" min="1" class="form-control form-control-sm text-end verify-months-input" value="${line.contractMonths}" ${lockMonths ? "disabled" : ""} /></td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-sale-input" value="${line.saleUnit}" /></td>
@@ -2007,6 +2010,7 @@
             };
 
             productInput?.addEventListener("input", () => {
+                if (line.upgrade) return;
                 line.productName = productInput.value;
                 line.productId = "";
                 markDraftDirty();
@@ -2126,6 +2130,7 @@
                 lineOptionValue: Number(line.lineOptionValue || 645250004),
                 hasVat: Boolean(line.hasVat),
                 hasVatOptionValue: Number(line.hasVatOptionValue || 0),
+                upgrade: line.upgrade || null,
                 costUnit: Number(line.costUnit || 0),
                 marginPercent: Number(line.marginPercent || 0),
                 contractMonths: Number(line.contractMonths || 0),

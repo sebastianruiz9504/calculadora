@@ -14,6 +14,8 @@ public sealed class QuoteLineInput
     public int Quantity { get; set; } = 1;             // Cantidad
 
     public decimal SuggestedRetailPrice { get; set; }  // cr07a_suggestedretailprice (visible)
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ProductUpgrade? Upgrade { get; set; }
     public decimal Acelerador { get; set; }            // cr07a_acelerador (oculto)
     public bool HasVat { get; set; }
 }

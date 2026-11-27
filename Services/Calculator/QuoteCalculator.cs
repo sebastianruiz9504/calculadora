@@ -23,6 +23,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
 
         foreach (var line in input.Lines)
         {
+            UpgradePricing.Validate(line.ProductId, line.ProductDescription, line.CostUnit, line.Upgrade);
             var saleUnit = CalculateSaleUnit(line.CostUnit, line.MarginPercent);
             var acceleratorFactor = NormalizeAccelerator(line.Acelerador);
             var monthly = saleUnit * line.Quantity;

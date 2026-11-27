@@ -475,7 +475,9 @@ public sealed class CalculatorController : Controller
         if (!string.IsNullOrWhiteSpace(licenseValidation))
             return BadRequest(licenseValidation);
 
-        var result = _calculator.Calculate(input);
+        QuoteScenarioResult result;
+        try { result = _calculator.Calculate(input); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
 
         return Json(new
         {
@@ -648,6 +650,7 @@ public sealed class CalculatorController : Controller
                         ContractMonths = line.ContractMonths,
                         Quantity = line.Quantity,
                         SuggestedRetailPrice = line.SuggestedRetailPrice,
+                        Upgrade = line.Upgrade,
                         Acelerador = line.Acelerador,
                         HasVat = line.HasVat
                     }).ToList(),
@@ -1713,6 +1716,7 @@ public sealed class CalculatorController : Controller
                 ContractMonths = line.ContractMonths,
                 Quantity = line.Quantity,
                 SuggestedRetailPrice = line.SuggestedRetailPrice,
+                Upgrade = line.Upgrade,
                 Acelerador = line.Acelerador,
                 HasVat = line.HasVat
             });
@@ -1899,7 +1903,7 @@ public sealed class CalculatorController : Controller
             var computed = ComputeLine(line);
 
             sheet.Cell(row, 1).Value = line.BusinessType.ToString();
-            sheet.Cell(row, 2).Value = line.ProductDescription;
+            sheet.Cell(row, 2).Value = UpgradePricing.Describe(line.ProductDescription, line.Upgrade);
             sheet.Cell(row, 3).Value = Round2(line.MarginPercent);
             sheet.Cell(row, 4).Value = line.ContractMonths;
             sheet.Cell(row, idxSaleUnit).Value = computed.SaleUnit;
@@ -2071,11 +2075,12 @@ public sealed class CalculatorController : Controller
             ProductoNombre = item.ProductoNombre?.Trim() ?? "",
             Cantidad = Round2(item.Cantidad),
             Number = Round2(item.Number),
-            CostoUnd = Round2(item.CostoUnd),
+            CostoUnd = item.Upgrade is null ? Round2(item.CostoUnd) : item.CostoUnd,
             VentaUnd = Round2(item.VentaUnd),
             MargenPorcentaje = Round2(item.MargenPorcentaje),
             DuracionMeses = item.DuracionMeses,
             SuggestedRetailPrice = Round2(item.SuggestedRetailPrice),
+            Upgrade = item.Upgrade,
             Acelerador = Round2(item.Acelerador),
             VentaMensual = Round2(item.VentaMensual),
             VentaTotal = Round2(item.VentaTotal),
@@ -2177,6 +2182,8 @@ public sealed class CalculatorController : Controller
                 lineId = item.LineId,
                 productoId = item.ProductoId,
                 productoNombre = item.ProductoNombre,
+                esUpgrade = item.Upgrade is not null,
+                upgrade = item.Upgrade,
                 // The Power Automate trigger schema expects integers for these fields.
                 cantidad = RoundWholeNumber(item.Cantidad),
                 number = RoundWholeNumber(item.Number),
@@ -2211,9 +2218,16 @@ public sealed class CalculatorController : Controller
         IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
         string dealTypeLabel)
     {
+        var hasUpgrades = lineItems.Any(line => line.Upgrade is not null);
         var description = BuildProvisioningDescriptionText(
             BuildProvisioningDescriptionHeader(cliente, aprovisionamiento, scenario, resultado, dealTypeLabel),
-            BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 160, includeCommercialFields: true, includeTechnicalFields: true));
+            hasUpgrades
+                ? SerializeDetailedProvisioningLines(lineItems)
+                : BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 160, includeCommercialFields: true, includeTechnicalFields: true));
+        // Puntajes already reads JSON or Markdown. Keep the exact upgrade
+        // snapshot here; notifications continue using their human-readable tables.
+        if (hasUpgrades && description.Length > ProvisioningLongDescriptionMaxLength)
+            throw new InvalidOperationException("El detalle de los upgrades supera el tamaño permitido. Divide el escenario antes de enviarlo.");
         return TruncateTextForDescription(description, ProvisioningLongDescriptionMaxLength);
     }
 
@@ -2421,7 +2435,7 @@ public sealed class CalculatorController : Controller
                 builder.Append(" | ");
                 builder.Append(FormatMarkdownCell(item.Tipo));
                 builder.Append(" | ");
-                builder.Append(FormatMarkdownCell(item.ProductoNombre, maxProductNameLength));
+                builder.Append(FormatMarkdownCell(UpgradePricing.Describe(item.ProductoNombre, item.Upgrade), maxProductNameLength));
                 builder.Append(" | ");
                 builder.Append(FormatQuantityForNotification(item.Cantidad));
                 builder.Append(" | ");
@@ -2462,7 +2476,7 @@ public sealed class CalculatorController : Controller
             builder.Append(" | ");
             builder.Append(FormatMarkdownCell(item.Tipo));
             builder.Append(" | ");
-            builder.Append(FormatMarkdownCell(item.ProductoNombre, maxProductNameLength));
+            builder.Append(FormatMarkdownCell(UpgradePricing.Describe(item.ProductoNombre, item.Upgrade), maxProductNameLength));
             builder.Append(" | ");
             builder.Append(FormatQuantityForNotification(item.Cantidad));
             builder.Append(" | ");
@@ -2499,7 +2513,7 @@ public sealed class CalculatorController : Controller
             builder.Append("<tr>");
             AppendHtmlCell(builder, (index + 1).ToString(CultureInfo.InvariantCulture), alignRight: true);
             AppendHtmlCell(builder, item.Tipo);
-            AppendHtmlCell(builder, item.ProductoNombre);
+            AppendHtmlCell(builder, UpgradePricing.Describe(item.ProductoNombre, item.Upgrade));
             AppendHtmlCell(builder, FormatQuantityForNotification(item.Cantidad), alignRight: true);
             AppendHtmlCell(builder, FormatMoneyForNotification(item.VentaUnd), alignRight: true);
             AppendHtmlCell(builder, item.DuracionMeses.ToString(CultureInfo.InvariantCulture), alignRight: true);
@@ -2558,6 +2572,8 @@ public sealed class CalculatorController : Controller
             lineId = item.LineId,
             productoId = item.ProductoId,
             productoNombre = item.ProductoNombre,
+            esUpgrade = item.Upgrade is not null,
+            upgrade = item.Upgrade,
             cantidad = item.Cantidad,
             number = item.Number,
             costoUnd = item.CostoUnd,
@@ -2765,6 +2781,8 @@ public sealed class CalculatorController : Controller
         {
             var line = lines[index];
             var productDescription = line.ProductDescription?.Trim() ?? "";
+            try { UpgradePricing.Validate(line.ProductId, productDescription, line.CostUnit, line.Upgrade); }
+            catch (InvalidOperationException ex) { return ex.Message; }
             if (string.IsNullOrWhiteSpace(productDescription))
                 return $"La linea {index + 1} no tiene producto.";
 
@@ -2781,6 +2799,8 @@ public sealed class CalculatorController : Controller
         {
             var line = lines[index];
             var productName = line.ProductoNombre?.Trim() ?? "";
+            try { UpgradePricing.Validate(line.ProductoId, productName, line.CostoUnd, line.Upgrade); }
+            catch (InvalidOperationException ex) { return ex.Message; }
             if (string.IsNullOrWhiteSpace(productName))
                 return $"La linea {index + 1} no tiene producto.";
 
@@ -2808,6 +2828,7 @@ public sealed class CalculatorController : Controller
 
     private static ExportLine ComputeLine(QuoteLineInput line)
     {
+        UpgradePricing.Validate(line.ProductId, line.ProductDescription, line.CostUnit, line.Upgrade);
         var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
         var monthly = Round2(saleUnit * line.Quantity);
         var total = Round2(monthly * line.ContractMonths);
@@ -2817,6 +2838,7 @@ public sealed class CalculatorController : Controller
 
     private static CalculatorProposalLineViewModel BuildProposalLine(ScenarioLineInput line)
     {
+        UpgradePricing.Validate(line.ProductId, line.ProductDescription, line.CostUnit, line.Upgrade);
         var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
         var monthly = Round2(saleUnit * line.Quantity);
         var contract = Round2(monthly * line.ContractMonths);
@@ -2826,7 +2848,7 @@ public sealed class CalculatorController : Controller
         return new CalculatorProposalLineViewModel
         {
             Front = GetProposalFront(line.BusinessType),
-            Description = line.ProductDescription?.Trim() ?? "",
+            Description = UpgradePricing.Describe(line.ProductDescription, line.Upgrade),
             Quantity = line.Quantity,
             ContractMonths = line.ContractMonths,
             UnitSale = saleUnit,
@@ -2880,6 +2902,7 @@ public sealed class CalculatorController : Controller
         public decimal MargenPorcentaje { get; set; }
         public int DuracionMeses { get; set; }
         public decimal SuggestedRetailPrice { get; set; }
+        public ProductUpgrade? Upgrade { get; set; }
         public decimal Acelerador { get; set; }
         public decimal VentaMensual { get; set; }
         public decimal VentaTotal { get; set; }

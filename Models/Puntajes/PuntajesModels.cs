@@ -1,3 +1,4 @@
+using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models;
 
 namespace CotizadorInterno.Web.Models.Puntajes;
@@ -209,6 +210,8 @@ public sealed class ScoreProductLineDto
     public decimal MarginPercent { get; set; }
     public int ContractMonths { get; set; }
     public decimal SuggestedRetailPrice { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ProductUpgrade? Upgrade { get; set; }
     public decimal Acelerador { get; set; }
     public decimal MonthlyUnitValue { get; set; }
     public decimal MonthlyValue { get; set; }
@@ -252,6 +255,8 @@ public sealed class ScoreVerificationLineInput
     public int ContractMonths { get; set; } = 12;
     public int Quantity { get; set; } = 1;
     public decimal SuggestedRetailPrice { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ProductUpgrade? Upgrade { get; set; }
     public decimal Acelerador { get; set; }
     public decimal SaleUnit { get; set; }
     public decimal MonthlyValue { get; set; }

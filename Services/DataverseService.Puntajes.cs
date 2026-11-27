@@ -1,3 +1,4 @@
+using CotizadorInterno.Web.Services.Calculator;
 using System.Globalization;
 using System.IO;
 using System.Net.Http.Json;
@@ -1279,7 +1280,7 @@ public sealed partial class DataverseService
             ReadString(item, _scoresLegacyDescriptionField));
         var parsedDescription = ParseScoreDescription(rawDescription);
         var rawAdditional = ReadString(item, _scoresAdditionalField);
-        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(rawAdditional) ?? new ScoreAdditionalDataSnapshot();
+        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(ScoreSnapshotStorage.Expand(rawAdditional)) ?? new ScoreAdditionalDataSnapshot();
         additional.Version = ResolveScoreAdditionalSnapshotVersion(rawAdditional, additional.Version);
         NormalizeAdditionalSnapshot(additional);
 
@@ -1728,6 +1729,7 @@ public sealed partial class DataverseService
                 && line.HasVat == submittedLine.HasVat
                 && line.ContractMonths == submittedLine.ContractMonths
                 && line.Quantity == submittedLine.Quantity
+                && Equals(line.Upgrade, submittedLine.Upgrade)
                 && ScoreDecimalEquals(line.CostUnit, submittedLine.CostUnit)
                 && ScoreDecimalEquals(line.MarginPercent, submittedLine.MarginPercent)
                 && ScoreDecimalEquals(line.SuggestedRetailPrice, submittedLine.SuggestedRetailPrice)
@@ -1800,6 +1802,7 @@ public sealed partial class DataverseService
                     ContractMonths = line.ContractMonths,
                     Quantity = line.Quantity,
                     SuggestedRetailPrice = line.SuggestedRetailPrice,
+                    Upgrade = line.Upgrade,
                     Acelerador = line.Acelerador,
                     SaleUnit = line.MonthlyUnitValue,
                     MonthlyValue = line.MonthlyValue,
@@ -2042,6 +2045,7 @@ public sealed partial class DataverseService
                 ContractMonths = line.ContractMonths,
                 Quantity = line.Quantity,
                 SuggestedRetailPrice = line.SuggestedRetailPrice,
+                Upgrade = line.Upgrade,
                 Acelerador = line.Acelerador,
                 HasVat = line.HasVat
             }).ToList()
@@ -2114,7 +2118,8 @@ public sealed partial class DataverseService
 
     private static ScoreVerificationLineInput NormalizeVerificationLine(ScoreVerificationLineInput line, int index)
     {
-        var costUnit = RoundCurrency(Math.Max(line.CostUnit, 0m));
+        UpgradePricing.Validate(line.ProductId, line.ProductName, line.CostUnit, line.Upgrade);
+        var costUnit = line.Upgrade is null ? RoundCurrency(Math.Max(line.CostUnit, 0m)) : line.CostUnit;
         var marginPercent = RoundCurrency(line.MarginPercent);
         var productName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim();
         var contractMonths = NormalizeContractMonths(line.ContractMonths, productName);
@@ -2141,6 +2146,7 @@ public sealed partial class DataverseService
             ContractMonths = contractMonths,
             Quantity = quantity,
             SuggestedRetailPrice = RoundCurrency(line.SuggestedRetailPrice),
+            Upgrade = line.Upgrade,
             Acelerador = RoundCurrency(line.Acelerador),
             SaleUnit = saleUnit,
             MonthlyValue = monthlyValue,
@@ -2342,6 +2348,7 @@ public sealed partial class DataverseService
                 productName = line.ProductName?.Trim() ?? "",
                 quantity = line.Quantity,
                 costUnit = line.CostUnit,
+                upgrade = line.Upgrade,
                 marginPercent = line.MarginPercent,
                 contractMonths = line.ContractMonths,
                 lineType = line.LineType?.Trim() ?? "",
@@ -2602,6 +2609,11 @@ public sealed partial class DataverseService
         var json = JsonSerializer.Serialize(additional);
         if (json.Length <= maxLength)
             return json;
+
+        // Upgrade provenance and the other lines in the same sale must not be
+        // truncated by the legacy compacting fallback. No extra record/query.
+        if (additional.Lines.Any(line => line.Upgrade is not null))
+            return ScoreSnapshotStorage.Pack(json, additional.Version);
 
         var compact = CloneAdditionalForStorage(additional);
         compact.LastResult = null;
@@ -3686,6 +3698,7 @@ public sealed partial class DataverseService
                     ContractMonths = line.ContractMonths,
                     Quantity = line.Quantity,
                     SuggestedRetailPrice = line.SuggestedRetailPrice,
+                    Upgrade = line.Upgrade,
                     Acelerador = line.Acelerador,
                     SaleUnit = line.SaleUnit,
                     MonthlyValue = line.MonthlyValue,
@@ -4049,7 +4062,7 @@ public sealed partial class DataverseService
     private static ScoreProductLineDto ToScoreProductLine(RawScoreProductLine rawLine, int index)
     {
         var quantity = Math.Max(rawLine.Quantity, 0);
-        var costUnit = RoundCurrency(rawLine.CostUnit ?? 0m);
+        var costUnit = rawLine.Upgrade is null ? RoundCurrency(rawLine.CostUnit ?? 0m) : rawLine.CostUnit ?? 0m;
         var marginPercent = RoundCurrency(rawLine.MarginPercent ?? 0m);
         var contractMonths = rawLine.ContractMonths.HasValue && rawLine.ContractMonths.Value > 0 ? rawLine.ContractMonths.Value : 12;
         var unitMonthlyValueRaw = rawLine.SaleUnit
@@ -4074,6 +4087,7 @@ public sealed partial class DataverseService
             MarginPercent = marginPercent,
             ContractMonths = contractMonths,
             SuggestedRetailPrice = RoundCurrency(rawLine.SuggestedRetailPrice ?? 0m),
+            Upgrade = rawLine.Upgrade,
             Acelerador = RoundCurrency(rawLine.Acelerador ?? 0m),
             MonthlyUnitValue = RoundCurrency(unitMonthlyValueRaw),
             MonthlyValue = RoundCurrency(monthlyValueRaw),
@@ -4285,6 +4299,7 @@ public sealed partial class DataverseService
             MarginPercent = normalized.MarginPercent,
             ContractMonths = normalized.ContractMonths,
             SuggestedRetailPrice = normalized.SuggestedRetailPrice,
+            Upgrade = normalized.Upgrade,
             Acelerador = normalized.Acelerador,
             MonthlyUnitValue = normalized.SaleUnit,
             MonthlyValue = normalized.MonthlyValue,
@@ -4295,7 +4310,7 @@ public sealed partial class DataverseService
 
     private static ScoreVerificationLineInput NormalizeVerificationLineStatic(ScoreVerificationLineInput line, int index)
     {
-        var costUnit = RoundCurrency(Math.Max(line.CostUnit, 0m));
+        var costUnit = line.Upgrade is null ? RoundCurrency(Math.Max(line.CostUnit, 0m)) : line.CostUnit;
         var marginPercent = RoundCurrency(line.MarginPercent);
         var productName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim();
         var contractMonths = NormalizeContractMonths(line.ContractMonths, productName);
@@ -4322,6 +4337,7 @@ public sealed partial class DataverseService
             ContractMonths = contractMonths,
             Quantity = quantity,
             SuggestedRetailPrice = RoundCurrency(line.SuggestedRetailPrice),
+            Upgrade = line.Upgrade,
             Acelerador = RoundCurrency(line.Acelerador),
             SaleUnit = saleUnit,
             MonthlyValue = monthlyValue,
@@ -4929,6 +4945,9 @@ public sealed partial class DataverseService
 
         [JsonPropertyName("acelerador")]
         public decimal? Acelerador { get; set; }
+
+        [JsonPropertyName("upgrade")]
+        public ProductUpgrade? Upgrade { get; set; }
 
         [JsonPropertyName("ventaMensual")]
         public decimal? MonthlyValue { get; set; }

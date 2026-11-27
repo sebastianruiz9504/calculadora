@@ -1,3 +1,4 @@
+using CotizadorInterno.Web.Models.Calculator;
 namespace CotizadorInterno.Web.Models;
 
 public sealed class ProvisioningRequestInput
@@ -67,6 +68,8 @@ public sealed class ProvisioningLineItem
     public decimal MargenPorcentaje { get; set; }
     public int DuracionMeses { get; set; }
     public decimal SuggestedRetailPrice { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ProductUpgrade? Upgrade { get; set; }
     public decimal Acelerador { get; set; }
     public decimal VentaMensual { get; set; }
     public decimal VentaTotal { get; set; }
