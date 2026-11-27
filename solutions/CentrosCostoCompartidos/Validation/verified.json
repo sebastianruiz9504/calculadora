@@ -119,8 +119,21 @@
     "missing_default_shows_notification": true
   },
   "browser_visual_check": {
-    "completed": false,
-    "reason": "Windows denied browser UI access (GetCursorPos 0x80070005)"
+    "completed": true,
+    "app": "Gerencia",
+    "tables": [
+      "Productos Cloud",
+      "Contratos Boris",
+      "Productos Copiers"
+    ],
+    "one_lookup_per_form": true,
+    "old_columns_visible": false,
+    "all_three_lookup_links_open_same_table": "cr07a_centrodecosto",
+    "catalog_rows_visible": 5,
+    "business_records_edited": false,
+    "checked_at_utc": "2026-11-27T18:27:37.153875+00:00",
+    "forms_inspected_for_legacy_fields": 9,
+    "views_inspected_for_legacy_fields": 21
   },
   "app_validation": {
     "published": true,
