@@ -36,6 +36,7 @@ Para no perder líneas ni metadatos, los snapshots de Puntajes con upgrades que
 superan 4.000 caracteres se conservan íntegros como gzip/base64 dentro del mismo
 campo, con marcador `Encoding: gzip-base64-v1` y su `Version` original. La lectura
 expande ese formato antes de deserializar. Los registros existentes no cambian.
+La lectura de comisiones de Nómina utiliza la misma expansión del snapshot.
 Si incluso la representación comprimida excede la capacidad existente, la
 operación devuelve un error explícito en lugar de eliminar información.
 

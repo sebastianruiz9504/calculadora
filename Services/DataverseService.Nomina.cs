@@ -551,7 +551,7 @@ public sealed partial class DataverseService
     private decimal ResolveNominaCommissionValue(JsonElement item)
     {
         var rawAdditional = ReadString(item, _scoresAdditionalField);
-        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(rawAdditional) ?? new ScoreAdditionalDataSnapshot();
+        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(ScoreSnapshotStorage.Expand(rawAdditional)) ?? new ScoreAdditionalDataSnapshot();
         NormalizeAdditionalSnapshot(additional);
 
         var rawDescription = FirstNonEmpty(

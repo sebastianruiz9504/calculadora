@@ -216,4 +216,16 @@ public sealed class CalculatorUpgradeTests
         Assert.Equal(1, DataverseService.ResolveScoreAdditionalSnapshotVersion(packed, restored.RootElement.GetProperty("Version").GetInt32()));
         Assert.Equal("{\"Version\":0}", ScoreSnapshotStorage.Expand("{\"Version\":0}"));
     }
+
+    [Fact]
+    public void PayrollCanReadCommissionFallbackFromPackedUpgradeSnapshot()
+    {
+        var packed = ScoreSnapshotStorage.Pack(JsonSerializer.Serialize(new { Version = 1, LastResult = new { Commission = 205560m } }), 1);
+        using var row = JsonDocument.Parse(JsonSerializer.Serialize(new { additional = packed }));
+        var service = (DataverseService)RuntimeHelpers.GetUninitializedObject(typeof(DataverseService));
+        foreach (var field in new[] { ("_scoresAdditionalField", "additional"), ("_scoresCommissionField", "commission"), ("_scoresDescriptionField", "description"), ("_scoresLegacyDescriptionField", "legacy") })
+            typeof(DataverseService).GetField(field.Item1, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(service, field.Item2);
+        var read = typeof(DataverseService).GetMethod("ResolveNominaCommissionValue", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        Assert.Equal(205560m, read.Invoke(service, [row.RootElement]));
+    }
 }
