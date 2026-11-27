@@ -128,6 +128,11 @@ builder.Services.AddScoped<IAzureOpenAIDashboardAgentService, AzureOpenAIDashboa
 builder.Services.AddScoped<IMesaAyudaWorkspaceService, MesaAyudaWorkspaceService>();
 builder.Services.AddScoped<IMesaAyudaAiService, OpenAiResponsesMesaAyudaService>();
 builder.Services.AddScoped<IReportesEmailSender, ReportesEmailSender>();
+builder.Services.Configure<CotizadorInterno.Web.Models.Dashboard.CollectionOptions>(builder.Configuration.GetSection("Collections"));
+builder.Services.AddScoped<IPortfolioCollectionsRepository>(s => (IPortfolioCollectionsRepository)s.GetRequiredService<IDataverseService>());
+builder.Services.AddScoped<PortfolioCollectionsService>();
+if (builder.Configuration.GetValue("Migration:BackgroundWorkersEnabled", true))
+    builder.Services.AddHostedService<PortfolioCollectionsWorker>();
 builder.Services.AddScoped<IReconciliationReportSender, ReconciliationReportSender>();
 builder.Services.AddScoped<ITaxesReteFuenteReportService, TaxesReteFuenteReportService>();
 builder.Services.AddScoped<IFinancialReconciliationService, FinancialReconciliationService>();

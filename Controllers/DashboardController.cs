@@ -2488,7 +2488,7 @@ public sealed class DashboardController : Controller
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
     }
 
-    private static byte[] BuildAccountStatementPdf(AccountStatementDto statement)
+    internal static byte[] BuildAccountStatementPdf(AccountStatementDto statement)
     {
         const double pageWidth = 841.89;
         const double pageHeight = 595.28;

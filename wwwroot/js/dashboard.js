@@ -12813,9 +12813,17 @@
     }
 
     function renderPortfolioTable() {
-        renderPortfolioGrid("overdue");
-        renderPortfolioGrid("invoices");
+        window.PortfolioCollections?.load();
     }
+
+    document.addEventListener("portfolio:loaded", event => {
+        if (state.activeTab === "portfolio" && state.portfolioSubtab === "detail") {
+            updateHeroForPortfolio(event.detail);
+            portfolioAsOfLabel && (portfolioAsOfLabel.textContent = event.detail?.asOfDateLabel || "Sin corte");
+            portfolioFocusLabel && (portfolioFocusLabel.textContent = event.detail?.focusLabel || "Facturas vencidas sin pago");
+            renderPortfolioKpis(event.detail);
+        }
+    });
 
     function updateHeroForBilling(dashboard) {
         compareLabel && (compareLabel.textContent = dashboard?.compareLabel || "Mismo periodo del ano anterior");
@@ -13243,6 +13251,11 @@
             return;
         }
 
+        if (state.portfolioSubtab === "detail") {
+            window.PortfolioCollections?.load(Boolean(options.refresh));
+            return;
+        }
+        if (state.portfolioSubtab === "statement") { syncAccountStatementPdfButton(); return; }
         if (options.refresh || !state.portfolioDashboard) {
             loadPortfolio();
             return;
@@ -14009,6 +14022,8 @@
     }
 
     async function loadPortfolio() {
+        if (state.portfolioSubtab === "detail") { window.PortfolioCollections?.load(true); return; }
+        if (state.portfolioSubtab === "statement") { syncAccountStatementPdfButton(); return; }
         if (state.portfolioLoading) {
             return;
         }
@@ -15302,14 +15317,6 @@
 
         assignUtilityRow(button);
     });
-    portfolioClientSearch?.addEventListener("input", () => {
-        state.portfolioSearchTerm = portfolioClientSearch.value || "";
-        renderPortfolioTable();
-    });
-    portfolioInvoicesSearch?.addEventListener("input", () => {
-        state.portfolioInvoicesSearchTerm = portfolioInvoicesSearch.value || "";
-        renderPortfolioTable();
-    });
     accountStatementClientSearch?.addEventListener("input", () => {
         if (accountStatementClientIdInput) {
             accountStatementClientIdInput.value = "";
@@ -15354,7 +15361,7 @@
     accountStatementPdfButton?.addEventListener("click", () => {
         downloadAccountStatementPdf().catch(() => {});
     });
-    portfolioOverdueClearFiltersButton?.addEventListener("click", () => resetPortfolioGrid("overdue"));
+
     portfolioInvoicesClearFiltersButton?.addEventListener("click", () => resetPortfolioGrid("invoices"));
     document.addEventListener("click", event => {
         const columnButton = event.target.closest("[data-portfolio-column]");

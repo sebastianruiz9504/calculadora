@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/portfolio-collections.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/month-close.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/hardware.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
@@ -1986,65 +1987,7 @@
 
         <div class="dashboard-subpanel" data-portfolio-subpanel="detail" hidden>
             <section class="dashboard-grid">
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Pendientes</div>
-                        <h2 class="dashboard-panel__title">Facturas vencidas sin pago</h2>
-                    </div>
-                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
-                        <label class="dashboard-search" for="portfolioClientSearch">
-                            <span class="dashboard-search__label">Cliente</span>
-                            <input type="search"
-                                   id="portfolioClientSearch"
-                                   class="form-control dashboard-search__input"
-                                   placeholder="Buscar cliente..." />
-                        </label>
-                        <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="portfolioOverdueClearFiltersBtn">Limpiar filtros</button>
-                    </div>
-                </div>
-                <div class="dashboard-table-meta">
-                    <span id="portfolioResultsCount">Mostrando 0 registros</span>
-                </div>
-                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
-                    <table class="table dashboard-table dashboard-excel-table" id="portfolioOverdueTable">
-                        <thead>
-                            <tr id="portfolioOverdueHead"></tr>
-                        </thead>
-                        <tbody id="portfolioUnpaidBody"></tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Facturacion</div>
-                        <h2 class="dashboard-panel__title">Todas las facturas</h2>
-                    </div>
-                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
-                        <label class="dashboard-search" for="portfolioInvoicesSearch">
-                            <span class="dashboard-search__label">Buscar</span>
-                            <input type="search"
-                                   id="portfolioInvoicesSearch"
-                                   class="form-control dashboard-search__input"
-                                   placeholder="Factura, cliente, NIT..." />
-                        </label>
-                        <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="portfolioInvoicesClearFiltersBtn">Limpiar filtros</button>
-                    </div>
-                </div>
-                <div class="dashboard-table-meta">
-                    <span id="portfolioInvoicesResultsCount">Mostrando 0 registros</span>
-                </div>
-                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
-                    <table class="table dashboard-table dashboard-excel-table dashboard-portfolio-invoices-table" id="portfolioInvoicesTable">
-                        <thead>
-                            <tr id="portfolioInvoicesHead"></tr>
-                        </thead>
-                        <tbody id="portfolioInvoicesBody"></tbody>
-                    </table>
-                </div>
-            </article>
+            <partial name="_PortfolioCollections" />
             </section>
         </div>
 
@@ -3041,6 +2984,7 @@
     <script src="~/js/dashboard-licenciamiento-detail.js" asp-append-version="true"></script>
     <script src="~/js/copiers-mto-v2-calendar.js" asp-append-version="true"></script>
     <script src="~/js/copiers-preventive-dashboard.js" asp-append-version="true"></script>
+    <script src="~/js/portfolio-collections.js" asp-append-version="true"></script>
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
     <script src="~/js/month-close.js" asp-append-version="true"></script>
     <script src="~/js/hardware.js" asp-append-version="true"></script>

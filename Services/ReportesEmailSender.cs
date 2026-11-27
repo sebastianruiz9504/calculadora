@@ -12,6 +12,8 @@ namespace CotizadorInterno.Web.Services;
 
 public sealed class ReportesEmailMessage
 {
+    // Internal callers may choose an operational mailbox; never bound from HTTP input.
+    public string SenderMailbox { get; set; } = "";
     public IReadOnlyList<string> To { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> Cc { get; set; } = Array.Empty<string>();
     public string Subject { get; set; } = "";
@@ -66,7 +68,7 @@ public sealed class ReportesEmailSender : IReportesEmailSender
         CancellationToken ct = default)
     {
         ValidateMessage(message);
-        if (_reportesOptions.Email.UseSignedInUserSender && user.Identity?.IsAuthenticated == true)
+        if (string.IsNullOrWhiteSpace(message.SenderMailbox) && _reportesOptions.Email.UseSignedInUserSender && user.Identity?.IsAuthenticated == true)
             return await SendWithDelegatedGraphAsync(message, user, ct);
 
         return await SendWithAppGraphAsync(message, ct);
@@ -107,7 +109,7 @@ public sealed class ReportesEmailSender : IReportesEmailSender
         ReportesEmailMessage message,
         CancellationToken ct)
     {
-        var sender = FirstNonEmpty(_reportesOptions.Email.SenderUserPrincipalName, _configuration["FinancialReconciliation:SenderUserPrincipalName"]);
+        var sender = FirstNonEmpty(message.SenderMailbox, _reportesOptions.Email.SenderUserPrincipalName, _configuration["FinancialReconciliation:SenderUserPrincipalName"]);
         if (string.IsNullOrWhiteSpace(sender))
             throw new InvalidOperationException("Configura Reportes:Email:SenderUserPrincipalName para enviar el correo por Microsoft Graph.");
 

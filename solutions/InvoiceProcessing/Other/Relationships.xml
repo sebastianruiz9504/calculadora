@@ -1,6 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <EntityRelationships xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <EntityRelationship Name="lk_cr07a_carteragestion_createdby" />
+  <EntityRelationship Name="lk_cr07a_carteragestion_modifiedby" />
   <EntityRelationship Name="lk_cr07a_cierremensual_createdby" />
   <EntityRelationship Name="lk_cr07a_cierremensual_modifiedby" />
+  <EntityRelationship Name="organization_cr07a_carteragestion" />
   <EntityRelationship Name="organization_cr07a_cierremensual" />
 </EntityRelationships>

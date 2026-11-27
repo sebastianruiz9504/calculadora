@@ -1,0 +1,41 @@
+<article class="dashboard-panel dashboard-panel--full collection-workspace" id="collectionWorkspace" data-base-url="@Url.Content("~/PortfolioCollections")">
+    @Html.AntiForgeryToken()
+    <div class="dashboard-panel__header dashboard-panel__header--wrap">
+        <div><div class="dashboard-panel__kicker">Gestión de cartera</div><h2 class="dashboard-panel__title">Facturas vencidas sin pago</h2><p class="collection-muted">Desde la factura 7504 · Abre una factura para consultar y registrar su gestión.</p></div>
+        <div class="collection-filters">
+            <label for="portfolioClientSearch">Buscar<input type="search" id="portfolioClientSearch" class="form-control" placeholder="Cliente, factura o NIT…" maxlength="200" /></label>
+            <label for="collectionSort">Ordenar<select id="collectionSort" class="form-select"><option value="oldest">Mayor mora</option><option value="newest">Mora reciente</option><option value="client">Cliente</option><option value="amount">Mayor saldo</option></select></label>
+            <button type="button" class="btn btn-outline-secondary" id="portfolioOverdueClearFiltersBtn">Limpiar</button>
+        </div>
+    </div>
+    <div id="collectionStatus" role="status" aria-live="polite"></div>
+    <div class="collection-pagination"><span id="portfolioResultsCount">Cargando facturas…</span><span id="collectionUpdated" class="collection-muted"></span></div>
+    <div class="dashboard-table-wrap collection-table-wrap" tabindex="0" aria-label="Facturas vencidas">
+        <table class="table dashboard-table collection-table" id="portfolioOverdueTable">
+            <colgroup><col class="collection-col-invoice"/><col/><col class="collection-col-type"/><col class="collection-col-type"/><col class="collection-col-date"/><col class="collection-col-days"/><col class="collection-col-amount"/></colgroup>
+            <thead><tr><th>Factura</th><th>Cliente</th><th>Vertical</th><th>Contrato</th><th>Vencimiento</th><th class="text-center">Días en mora</th><th class="text-end">Saldo pendiente</th></tr></thead>
+            <tbody id="portfolioUnpaidBody"><tr><td colspan="7">Cargando…</td></tr></tbody>
+        </table>
+    </div>
+    <nav class="collection-pagination" aria-label="Paginación de facturas"><label>Filas por página <select id="collectionPageSize" class="form-select"><option>25</option><option selected>50</option><option>100</option></select></label><div><button type="button" id="collectionPrevious" class="btn btn-outline-secondary">Anterior</button><span id="collectionPageLabel">Página 1</span><button type="button" id="collectionNext" class="btn btn-outline-secondary">Siguiente</button></div></nav>
+</article>
+<dialog id="collectionDialog" class="collection-dialog" aria-labelledby="collectionTitle">
+    <header class="collection-dialog-header"><div><span class="collection-muted">Gestión y trazabilidad</span><h2 id="collectionTitle">Factura</h2><p id="collectionClient"></p></div><button type="button" id="collectionClose" class="btn btn-outline-secondary" aria-label="Cerrar gestión">Cerrar</button></header>
+    <div id="collectionDialogStatus" role="status" aria-live="polite"></div>
+    <div class="collection-dialog-grid" id="collectionDialogContent" hidden>
+        <section class="collection-conversation" aria-label="Historial de gestión"><h3>Historial de la factura</h3><button type="button" id="collectionOlder" class="btn btn-sm btn-outline-secondary" hidden>Ver anteriores</button><div id="collectionHistory" class="collection-history" role="log" aria-live="polite"></div><form id="collectionNoteForm"><label for="collectionNote">Nueva observación</label><textarea id="collectionNote" class="form-control" rows="3" maxlength="8000" required placeholder="Compromiso de pago, llamada, comprobante…"></textarea><button class="btn btn-primary" id="collectionNoteSave">Guardar observación</button></form></section>
+        <section class="collection-compose" aria-label="Correo de cobranza"><h3>Enviar correo</h3><form id="collectionEmailForm">
+            <label for="collectionTemplate">Plantilla</label><select id="collectionTemplate" class="form-select"><option value="second">Segundo correo</option><option value="warning">Aviso de suspensión</option><option value="suspension">Suspensión</option><option value="first">Primer recordatorio</option></select>
+            <p class="collection-muted">Al cambiar la plantilla se reemplazan el asunto y el mensaje.</p>
+            <label for="collectionRecipients">Destinatarios</label><input id="collectionRecipients" class="form-control" maxlength="3000" placeholder="correo@cliente.com; otro@cliente.com"/><p id="collectionContactSource" class="collection-muted"></p>
+            <label for="collectionAdditional">Destinatarios adicionales</label><input id="collectionAdditional" class="form-control" maxlength="2000" placeholder="Separados por punto y coma"/>
+            <label class="collection-check"><input type="checkbox" id="collectionSaveRecipients"/> Guardar los adicionales en «Correo cobranza» del cliente</label>
+            <button type="button" id="collectionSaveContact" class="btn btn-sm btn-outline-secondary">Guardar adicionales en el cliente</button>
+            <label for="collectionSubject">Asunto</label><input id="collectionSubject" class="form-control" maxlength="250" required/>
+            <label for="collectionMessage">Mensaje</label><textarea id="collectionMessage" class="form-control" rows="8" maxlength="12000" required></textarea>
+            <details open><summary>Estado de cuenta incluido · PDF adjunto</summary><div id="collectionStatement" class="collection-statement"></div></details>
+            <label class="collection-check" id="collectionSuspensionLabel" hidden><input type="checkbox" id="collectionSuspensionConfirm"/> Confirmo que corresponde notificar una suspensión a este cliente.</label>
+            <button class="btn btn-primary" id="collectionSend">Enviar correo y registrar gestión</button>
+        </form></section>
+    </div>
+</dialog>

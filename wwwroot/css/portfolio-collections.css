@@ -1,0 +1,47 @@
+.collection-workspace { --collection-border: #dce5ef; }
+.collection-muted { color: #60718a; font-size: .85rem; margin: .35rem 0; }
+.collection-filters { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.collection-filters label { display: grid; gap: 4px; font-size: .85rem; }
+.collection-filters input { min-width: 280px; }
+.collection-table-wrap { height: min(82vh, 1120px); min-height: 720px; max-height: none !important; overflow: auto; }
+.collection-table { table-layout: fixed; width: 100%; min-width: 900px; }
+.collection-table th { position: sticky; top: 0; z-index: 1; background: #f3f7fc; white-space: normal !important; font-size: .82rem; }
+.collection-table td { padding: 10px 12px; vertical-align: middle; overflow-wrap: anywhere; }
+.collection-table tr[data-invoice] { cursor: pointer; }
+.collection-table tr[data-invoice]:hover { background: #f0f7ff; }
+.collection-col-invoice { width: 140px; }.collection-col-type { width: 110px; }.collection-col-date { width: 115px; }.collection-col-days { width: 94px; }.collection-col-amount { width: 155px; }
+#portfolioOverdueTable th,#portfolioOverdueTable td { width:auto; min-width:0; }
+#portfolioOverdueTable col:nth-child(2) { width:auto; }
+#portfolioOverdueTable thead th:nth-child(2),#portfolioOverdueTable tbody td:nth-child(2) { width:auto; max-width:none; white-space:normal; }
+#portfolioOverdueTable th:nth-child(6),#portfolioOverdueTable td:nth-child(6) { width:94px; max-width:94px; }
+#portfolioOverdueTable tbody td { padding:8px 12px; line-height:1.3; font-size:.9rem; }
+.collection-table .collection-invoice { border: 0; padding: 0; background: transparent; color: #1758a5; font-weight: 650; text-align: left; }
+.collection-days { display: inline-block; background: #fff0f3; color: #be234a; border-radius: 30px; padding: 4px 9px; white-space: nowrap; font-size: .85rem; }
+.collection-pagination { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 13px 0; flex-wrap: wrap; font-size: .9rem; }
+.collection-pagination label,.collection-pagination>div { display: flex; align-items: center; gap: 14px; }.collection-pagination select { width: 85px; }
+.collection-dialog { width: min(1420px,96vw); max-width: 96vw; height: min(940px,94vh); max-height: 94vh; padding: 24px; border: 1px solid #dce5ef; border-radius: 20px; color: #203047; background: #fff; box-shadow: 0 30px 100px #12284366; }
+.collection-dialog::backdrop { background: #11233a99; backdrop-filter: blur(3px); }
+.collection-dialog-header { display:flex; align-items:start; justify-content:space-between; gap:20px; border-bottom:1px solid #dce5ef; padding-bottom:12px; }.collection-dialog-header h2 { font-size:1.5rem; margin:4px 0; }
+.collection-dialog-header { position:sticky; top:-24px; background:#fff; z-index:3; margin:-24px -24px 0; padding:20px 24px 12px; }
+.collection-dialog-grid { display: grid; grid-template-columns: minmax(300px,.9fr) minmax(400px,1.1fr); gap: 26px; padding-top: 18px; }.collection-dialog-grid[hidden] { display:none; }
+.collection-dialog h3 { font-size:1.05rem; margin:0 0 14px; }.collection-history { height: min(49vh,480px); min-height:250px; overflow:auto; display:flex; flex-direction:column; gap:12px; padding:8px; background:#f4f7fb; border-radius:12px; }
+.collection-event { border:1px solid #e0e8f2; border-radius:13px; padding:12px; background:white; margin-right:18px; }.collection-event--note { margin-left:18px; margin-right:0; background:#edf6ff; }.collection-event p { margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:.9rem; }.collection-event small { color:#60718a; display:block; margin-top:4px; }
+.collection-compose form,.collection-conversation form { display:grid; gap:8px; }.collection-conversation form { margin-top:16px; }.collection-dialog label { font-size:.88rem; font-weight:600; }.collection-check { display:flex; align-items:start; gap:8px; margin:8px 0; }.collection-check[hidden] { display:none; }.collection-check input { margin-top:4px; }
+.collection-statement { overflow:auto; font-size:.76rem; padding:12px 0; }.collection-statement h2 { font-size:1rem; }.collection-statement th { background:#f0f5fa; }.collection-statement table { min-width:620px; }.collection-statement td,.collection-statement th { border-color:#dce5ef; }.collection-compose details { margin:10px 0; }
+#collectionDialogStatus:not(:empty),#collectionStatus:not(:empty) { background:#edf4fc; border-radius:8px; padding:10px 14px; margin:10px 0; } .collection-error { color:#9f1239; }
+[data-theme="dark"] .collection-dialog,body.dark-mode .collection-dialog { background:#142135;color:#e6edf7; }
+[data-theme="dark"] .collection-history,body.dark-mode .collection-history { background:#0e192a; }
+[data-theme="dark"] .collection-event,body.dark-mode .collection-event { background:#1d3049;border-color:#35475e; }
+[data-theme="dark"] .collection-muted,body.dark-mode .collection-muted { color:#b4c2d7; }
+[data-theme="dark"] .collection-table th,body.dark-mode .collection-table th { background:#1d3049;color:#e6edf7; }
+@media(max-width:800px) { .collection-dialog { padding:16px; }.collection-dialog-grid { grid-template-columns:1fr; }.collection-history { height:320px; }.collection-table-wrap { min-height:480px;height:72vh; }.collection-filters input { min-width:210px; }.collection-pagination>div { gap:8px; }.collection-statement { max-width:calc(96vw - 40px); } }
+[data-bs-theme="dark"] .collection-dialog { background:#142135;color:#e6edf7; }
+[data-bs-theme="dark"] .collection-dialog-header { background:#142135; }
+[data-bs-theme="dark"] .collection-history { background:#0e192a; }
+[data-bs-theme="dark"] .collection-event { background:#1d3049;border-color:#35475e; }
+[data-bs-theme="dark"] .collection-muted,[data-bs-theme="dark"] .collection-event small { color:#b4c2d7; }
+[data-bs-theme="dark"] .collection-table th,[data-bs-theme="dark"] .collection-statement th { background:#1d3049;color:#e6edf7; }
+[data-bs-theme="dark"] .collection-table tr[data-invoice]:hover { background:#1d3049; }
+[data-bs-theme="dark"] #collectionDialogStatus:not(:empty),[data-bs-theme="dark"] #collectionStatus:not(:empty) { background:#1d3049; }
+[data-bs-theme="dark"] .collection-error { color:#fda4af; }
+@media(max-width:800px) { .collection-dialog-header { top:-16px; margin:-16px -16px 0; padding:16px; } }

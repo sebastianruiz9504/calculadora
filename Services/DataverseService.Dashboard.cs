@@ -112,49 +112,21 @@ public sealed partial class DataverseService
 
     private async Task<PortfolioDashboardDto> GetPortfolioDashboardCoreAsync(bool includeDetails, CancellationToken ct)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var today = GetBogotaToday();
-        var metadata = await ResolveRhEntityMetadataAsync(
-            _dashboardBillingTableLogicalName,
-            _dashboardBillingTableSetName,
-            _dashboardBillingIdField,
-            _dashboardBillingPrimaryNameField,
-            httpContext.User,
-            ct);
-
-        var portfolioCandidates = await GetBillingRecordsAsync(
-            metadata,
-            new DateOnly(2000, 1, 1),
-            new DateOnly(2101, 1, 1),
-            _dashboardBillingEmissionDateField,
-            _dashboardBillingEmissionDateFieldKind,
-            httpContext.User,
-            ct);
-        var unpaidInvoices = portfolioCandidates
-            .Where(static record => record.IsPortfolioPending)
-            .ToList();
-
-        var overdueInvoices = unpaidInvoices
-            .Where(record => record.IsOverdue(today))
-            .ToList();
-
+        var snapshot = await GetCollectionSnapshotAsync(ct: ct);
+        var pending = snapshot.Rows;
+        var overdue = pending.Where(r => r.IsOverdue).ToArray();
         return new PortfolioDashboardDto
         {
-            AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
-            FocusLabel = "Cartera total y vencida",
-            HasData = unpaidInvoices.Count > 0,
-            RecordsCount = overdueInvoices.Count,
-            EmptyStateTitle = "No encontramos facturas pendientes de pago.",
-            EmptyStateMessage = "Cuando existan facturas sin pago o vencidas las veras aqui.",
-            Kpis = BuildPortfolioKpis(unpaidInvoices, overdueInvoices),
-            OverdueInvoices = includeDetails
-                ? BuildUnpaidInvoices(overdueInvoices, today)
-                : Array.Empty<BillingUnpaidInvoiceDto>(),
-            Invoices = includeDetails
-                ? BuildBillingInvoiceRows(portfolioCandidates, today)
-                : Array.Empty<BillingInvoiceRowDto>()
+            AsOfDateLabel = GetBogotaToday().ToString("dd MMM yyyy", DashboardCulture),
+            FocusLabel = "Cartera total y vencida", HasData = pending.Count > 0, RecordsCount = overdue.Length,
+            EmptyStateTitle = "No hay facturas pendientes desde la 7504.",
+            EmptyStateMessage = "No hay facturas pendientes de pago en el rango visible.",
+            Kpis = new[] {
+                BuildPortfolioKpi("cloud-portfolio", "Cartera Cloud", "Facturas desde la 7504 sin pago.", pending.Where(r => r.VerticalOptionValue == DashboardVerticalCloudOption).Sum(r => r.NetTotalInvoice), overdue.Where(r => r.VerticalOptionValue == DashboardVerticalCloudOption).Sum(r => r.NetTotalInvoice)),
+                BuildPortfolioKpi("copiers-portfolio", "Cartera Copiers", "Facturas desde la 7504 sin pago.", pending.Where(r => r.VerticalOptionValue == DashboardVerticalCopiersOption).Sum(r => r.NetTotalInvoice), overdue.Where(r => r.VerticalOptionValue == DashboardVerticalCopiersOption).Sum(r => r.NetTotalInvoice))
+            },
+            Invoices = includeDetails ? pending : Array.Empty<BillingInvoiceRowDto>(),
+            OverdueInvoices = includeDetails ? overdue.Select(r => new BillingUnpaidInvoiceDto { InvoiceNumber = r.InvoiceNumber, ClientName = r.ClientName, VerticalLabel = r.VerticalLabel, ContractTypeLabel = r.ContractTypeLabel, DueDateDisplay = r.DueDateDisplay, AgeDays = r.AgeDays, TotalInvoice = r.NetTotalInvoice }).ToArray() : Array.Empty<BillingUnpaidInvoiceDto>()
         };
     }
 
