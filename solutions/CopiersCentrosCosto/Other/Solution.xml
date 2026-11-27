@@ -1,0 +1,202 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml version="9.2.26112.144" SolutionPackageVersion="9.2" languagecode="3082" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26112.144" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26112.00144">
+  <SolutionManifest>
+    <UniqueName>CopiersCentrosCosto</UniqueName>
+    <LocalizedNames>
+      <LocalizedName description="Copiers - Centros de costo" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions />
+    <Version>1.0.0.0</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>Cr44b61</UniqueName>
+      <LocalizedNames>
+        <LocalizedName description="CDS Default Publisher" languagecode="3082" />
+      </LocalizedNames>
+      <Descriptions />
+      <EMailAddress xsi:nil="true"></EMailAddress>
+      <SupportingWebsiteUrl xsi:nil="true"></SupportingWebsiteUrl>
+      <CustomizationPrefix>cr07a</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>64525</CustomizationOptionValuePrefix>
+      <Addresses>
+        <Address>
+          <AddressNumber>1</AddressNumber>
+          <AddressTypeCode xsi:nil="true"></AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode xsi:nil="true"></ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+        <Address>
+          <AddressNumber>2</AddressNumber>
+          <AddressTypeCode xsi:nil="true"></AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode xsi:nil="true"></ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+      </Addresses>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="1" schemaName="cr07a_productoscopiers" behavior="1" />
+    </RootComponents>
+    <MissingDependencies>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_productoscopiers" displayName="Productos COPIERS" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_productoscopiers" displayName="Productos COPIERS" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="10" schemaName="cr07a_productoscopiers_Cliente_cr07a_cliente" displayName="cr07a_productoscopiers_Cliente_cr07a_cliente" parentSchemaName="cr07a_cliente" parentDisplayName="Cliente" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_acuantosdias" displayName="A cuantos días" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_acuantosdias" displayName="A cuantos días" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cantidad" displayName="Cantidad" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cantidad" displayName="Cantidad" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_cliente" displayName="Cliente" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_descripcion" displayName="Descripción" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_descripcion" displayName="Descripción" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_diadefacturacion" displayName="Día de facturación" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_diadefacturacion" displayName="Día de facturación" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_nuevacolumna" displayName="Nueva columna" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS inactivo" displayName="Productos COPIERS inactivo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{f3c15425-04a3-4988-964a-38b8eb890476}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_nuevacolumna" displayName="Nueva columna" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_producto" displayName="Producto" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_producto" displayName="Producto" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_productoscopiersid" displayName="Productos COPIERS" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_productoscopiersid" displayName="Productos COPIERS" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS inactivo" displayName="Productos COPIERS inactivo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{f3c15425-04a3-4988-964a-38b8eb890476}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_totalconiva" displayName="Total con IVA" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_totalconiva" displayName="Total con IVA" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_valorunidadantesdeiva" displayName="Valor Unidad antes de IVA" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_valorunidadantesdeiva" displayName="Valor Unidad antes de IVA" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_valorunidadconiva" displayName="Valor Unidad con IVA" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_valorunidadconiva" displayName="Valor Unidad con IVA" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="createdon" displayName="Fecha de creación" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS inactivo" displayName="Productos COPIERS inactivo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{f3c15425-04a3-4988-964a-38b8eb890476}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="ownerid" displayName="Propietario" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS inactivo" displayName="Productos COPIERS inactivo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{f3c15425-04a3-4988-964a-38b8eb890476}" />
+      </MissingDependency>
+    </MissingDependencies>
+  </SolutionManifest>
+</ImportExportXml>

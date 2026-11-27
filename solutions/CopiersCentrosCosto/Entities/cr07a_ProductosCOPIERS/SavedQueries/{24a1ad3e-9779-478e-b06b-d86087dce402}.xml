@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{24a1ad3e-9779-478e-b06b-d86087dce402}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_nuevacolumna" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_productoscopiersid">
+          <cell name="cr07a_cantidad" width="80" />
+          <cell name="cr07a_cliente" width="200" />
+          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_producto" width="197" />
+          <cell name="cr07a_descripcion" width="150" />
+          <cell name="cr07a_valorunidadantesdeiva" width="150" />
+          <cell name="cr07a_valorunidadconiva" width="166" />
+          <cell name="cr07a_totalconiva" width="119" />
+          <cell name="cr07a_diadefacturacion" width="150" />
+          <cell name="cr07a_acuantosdias" width="150" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_productoscopiers">
+          <attribute name="cr07a_productoscopiersid" />
+          <attribute name="createdon" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_cantidad" />
+          <attribute name="cr07a_producto" />
+          <attribute name="cr07a_descripcion" />
+          <attribute name="cr07a_valorunidadantesdeiva" />
+          <attribute name="cr07a_diadefacturacion" />
+          <attribute name="cr07a_acuantosdias" />
+          <attribute name="cr07a_cliente" />
+          <attribute name="cr07a_valorunidadconiva" />
+          <attribute name="cr07a_totalconiva" />
+          <order attribute="cr07a_diadefacturacion" descending="false" />
+          <attribute name="cr07a_centrocosto" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Productos COPIERS activo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

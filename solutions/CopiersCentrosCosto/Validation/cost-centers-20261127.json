@@ -1,0 +1,34 @@
+{
+  "table": "cr07a_productoscopiers",
+  "field": "cr07a_centrocosto",
+  "products": 42,
+  "centers": {
+    "101-00 - Ventas": 0,
+    "102-00 - Ventas": 42,
+    "103-00 - Ventas": 0,
+    "104-00 - Ventas": 0,
+    "105-00 - Ventas": 0
+  },
+  "forms": 1,
+  "views": 2,
+  "default": 10200,
+  "existing_product_fields_unchanged": true,
+  "automation_changes": false,
+  "verified_utc": "2026-11-27T16:00:01.678240+00:00",
+  "ui": {
+    "application": "Gerencia",
+    "navigation": "Productos COPIERS",
+    "view": "Productos COPIERS activo",
+    "column_after": "Cliente",
+    "column_visible": true,
+    "form_editable": true,
+    "options": [
+      "101-00 - Ventas",
+      "102-00 - Ventas",
+      "103-00 - Ventas",
+      "104-00 - Ventas",
+      "105-00 - Ventas"
+    ],
+    "selected": "102-00 - Ventas"
+  }
+}
