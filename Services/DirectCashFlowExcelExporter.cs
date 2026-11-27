@@ -24,7 +24,8 @@ public static class DirectCashFlowExcelExporter
             var pending=report.Months.Sum(x=>x.UnclassifiedCount);
             var suggested=report.Months.Sum(x=>x.SuggestedCount);
             var bankStatus=report.BankChecks.Count==0?"":report.BankChecks.All(x=>x.Matches)?" · Extractos cuadrados (ver Control bancario)":" · Revisar Control bancario";
-            var statusText=$"{report.Year} · {suggested} registros sugeridos · {pending} sin concepto{bankStatus}";
+            var years=report.Year==report.EndYear?$"{report.Year}":$"{report.Year}–{report.EndYear}";
+            var statusText=$"{years} · {suggested} registros sugeridos · {pending} sin concepto{bankStatus}";
             var statusRow=sourceRows.GetValueOrDefault(4);
             if(statusRow!=null)
             {
@@ -34,13 +35,25 @@ public static class DirectCashFlowExcelExporter
             foreach(var pair in sourceRows.Where(x=>x.Key<=90))
             {
                 var rowNumber=pair.Key;var row=pair.Value;
-                var style=(string?)row.Elements(S+"c").FirstOrDefault(c=>((string?)c.Attribute("r"))==$"C{rowNumber}")?.Attribute("s")??"3";
+                if(reportRows.TryGetValue(rowNumber,out var labelRow))
+                {
+                    var a=row.Elements(S+"c").FirstOrDefault(c=>(string?)c.Attribute("r")==$"A{rowNumber}");
+                    var labelAtA=string.IsNullOrEmpty(labelRow.Code)&&a?.HasElements==true;
+                    var labelCell=labelAtA?a:row.Elements(S+"c").FirstOrDefault(c=>(string?)c.Attribute("r")==$"B{rowNumber}");
+                    if(labelCell!=null)SetText(labelCell,labelRow.Label);
+                    if(labelAtA)
+                        foreach(var blank in row.Elements(S+"c").Where(c=>(string?)c.Attribute("r")==$"B{rowNumber}"))SetText(blank,"");
+                    if(rowNumber is 88 or 90)labelCell?.SetAttributeValue("s","20");
+                }
+                else if(rowNumber>7)
+                    foreach(var labelCell in row.Elements(S+"c").Where(c=>ColumnNumber((string)c.Attribute("r")!)<3))SetText(labelCell,"");
+                var style=rowNumber is 88 or 90?"21":rowNumber is 85 or 86?"68":(string?)row.Elements(S+"c").FirstOrDefault(c=>((string?)c.Attribute("r"))==$"C{rowNumber}")?.Attribute("s")??"3";
                 row.Elements(S+"c").Where(c=>ColumnNumber((string)c.Attribute("r")!)>=3).Remove();
                 for(var i=0;i<report.Months.Count;i++)
                 {
                     var col=ColumnName(i+3);var cell=new XElement(S+"c",new XAttribute("r",$"{col}{rowNumber}"),new XAttribute("s",style));
-                    if(rowNumber==6)SetText(cell,report.Months[i].Label);
-                    else if(rowNumber==5) {if(i==0)SetText(cell,$"Año {report.Year}");}
+                    if(rowNumber==6)SetText(cell,report.Year==report.EndYear?report.Months[i].Label:$"{report.Months[i].Label} {report.Months[i].Year}");
+                    else if(rowNumber==5) {if(i==0)SetText(cell,report.Year==report.EndYear?$"Año {report.Year}":$"Años {years}");}
                     else if(reportRows.TryGetValue(rowNumber,out var reportRow))
                     {
                         string? formula=null;
@@ -51,8 +64,9 @@ public static class DirectCashFlowExcelExporter
                         else if(rowNumber==68)formula=$"IF(COUNT({col}9,{col}22)=0,\"\",SUM({col}9)-SUM({col}22))";
                         else if(rowNumber==81)formula=$"IF(COUNT({col}70,{col}74)=0,\"\",SUM({col}70)-SUM({col}74))";
                         else if(rowNumber==83)formula=$"IF(AND(ISNUMBER({col}7),COUNT({col}68,{col}81)>0),SUM({col}7,{col}68,{col}81),\"\")";
-                        else if(rowNumber==90)formula=$"IF(COUNT({col}83,{col}85:{col}88)=5,{col}83-SUM({col}85:{col}88),\"\")";
-                        else if(rowNumber==7&&i>0&&report.Months[i].OpeningSource=="Cierre del mes anterior")formula=$"IF(ISNUMBER({ColumnName(i+2)}83),{ColumnName(i+2)}83,\"\")";
+                        else if(rowNumber==88&&report.Months[i].InternalTransferNet==0)formula=$"IF(ISNUMBER({col}83),{col}83+SUM({col}85)-SUM({col}86),\"\")";
+                        else if(rowNumber==90&&report.Months[i].ClosingSource!="Confirmado")formula=$"IF(ISNUMBER({col}88),{col}88,\"\")";
+                        else if(rowNumber==7&&i>0&&report.Months[i].OpeningSource=="Cierre del mes anterior")formula=$"IF(ISNUMBER({ColumnName(i+2)}90),{ColumnName(i+2)}90,\"\")";
                         var value=reportRow.Values[i];
                         if(formula!=null)cell.Add(new XElement(S+"f",formula));
                         if(value.HasValue)cell.Add(new XElement(S+"v",value.Value.ToString(CultureInfo.InvariantCulture)));
@@ -162,7 +176,12 @@ public static class DirectCashFlowExcelExporter
         types.Root!.Add(new XElement(contentTypes+"Override",new XAttribute("PartName","/"+path),new XAttribute("ContentType","application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")));
         Write(zip,"[Content_Types].xml",types);
     }
-    private static void SetText(XElement cell,string text){cell.SetAttributeValue("t","inlineStr");cell.Add(new XElement(S+"is",new XElement(S+"t",text)));}
+    private static void SetText(XElement cell,string text)
+    {
+        cell.RemoveNodes();
+        if(text.Length==0){cell.Attribute("t")?.Remove();return;}
+        cell.SetAttributeValue("t","inlineStr");cell.Add(new XElement(S+"is",new XElement(S+"t",text)));
+    }
     private static void Write(ZipArchive zip,string path,XDocument document){zip.GetEntry(path)?.Delete();using var s=zip.CreateEntry(path,CompressionLevel.Optimal).Open();document.Save(s);}
     private static int ColumnNumber(string address){var n=0;foreach(var c in address.TakeWhile(char.IsLetter))n=n*26+c-'A'+1;return n;}
     private static string ColumnName(int n){var s="";while(n>0){n--;s=(char)('A'+n%26)+s;n/=26;}return s;}

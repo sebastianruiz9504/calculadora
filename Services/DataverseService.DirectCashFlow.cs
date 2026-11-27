@@ -72,17 +72,37 @@ public sealed partial class DataverseService
     public async Task<DirectCashFlowData> GetDirectCashFlowDataAsync(int year,int first,int last,CancellationToken ct=default)
     {
         DirectCashFlowReportBuilder.ValidatePeriod(year,first,last);
-        var key=$"direct-cash:{_dataverseBaseUrl}:{year}:{first}:{last}:{Interlocked.Read(ref DirectCashFlowRevision)}";
+        return await ReadDirectCashFlowDataAsync(new DateOnly(year,first,1),new DateOnly(year,last,1),ct);
+    }
+    public async Task<DirectCashFlowData> GetDirectCashFlowHistoryAsync(int? throughYear=null,int? throughMonth=null,CancellationToken ct=default)
+    {
+        var now=TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow,MonthlyFinancialReconciliationHostedService.ResolveTimeZone("America/Bogota"));
+        var year=throughYear??now.Year;var month=throughMonth??now.Month;
+        DirectCashFlowReportBuilder.ValidatePeriod(year,month,month);
+        var end=new DateOnly(year,month,1);
+        var key=$"direct-cash-start:{_dataverseBaseUrl}:{Interlocked.Read(ref DirectCashFlowRevision)}";
+        if(!_memoryCache.TryGetValue<DateOnly>(key,out var start))
+        {
+            var filter=Uri.EscapeDataString("statecode eq 0 and (cr07a_inicial ne null or cr07a_cierreconsolidado ne null or cr07a_extractos ne null)");
+            var records=await GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectBalanceSet}?$select=cr07a_periodo&$filter={filter}&$orderby=cr07a_periodo asc&$top=1",ct);
+            start=records.Count>0 && DateOnly.TryParseExact(ReadString(records[0],"cr07a_periodo")+"-01","yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var recordedStart)?recordedStart:end;
+            _memoryCache.Set(key,start,TimeSpan.FromSeconds(20));
+        }
+        return await ReadDirectCashFlowDataAsync(start>end?end:start,end,ct);
+    }
+    private async Task<DirectCashFlowData> ReadDirectCashFlowDataAsync(DateOnly start,DateOnly last,CancellationToken ct)
+    {
+        var key=$"direct-cash:{_dataverseBaseUrl}:{start:yyyy-MM}:{last:yyyy-MM}:{Interlocked.Read(ref DirectCashFlowRevision)}";
         if(_memoryCache.TryGetValue<DirectCashFlowData>(key,out var cached)&&cached!=null)return cached;
         await DirectCashFlowReadGate.WaitAsync(ct);
         try
         {
             if(_memoryCache.TryGetValue<DirectCashFlowData>(key,out cached)&&cached!=null)return cached;
-            var start=new DateOnly(year,first,1);var end=new DateOnly(year,last,1).AddMonths(1);
+            var end=last.AddMonths(1);
             var sourceTask=GetConciliacionCashFlowRowsAsync(start,end,ct);
-            var periodFilter=Uri.EscapeDataString($"cr07a_periodo ge '{year:D4}-{first:D2}' and cr07a_periodo le '{year:D4}-{last:D2}'");
-            var balancesTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectBalanceSet}?$select=cr07a_periodo,cr07a_inicial,cr07a_cloud,cr07a_copiers,cr07a_bolsillos,cr07a_fidurenta,cr07a_extractos&$filter={periodFilter}",ct);
-            var openingFilter=Uri.EscapeDataString($"cr07a_periodokey ge '{year:D4}-{first:D2}' and cr07a_periodokey le '{year:D4}-{last:D2}'");
+            var periodFilter=Uri.EscapeDataString($"statecode eq 0 and cr07a_periodo ge '{start:yyyy-MM}' and cr07a_periodo le '{last:yyyy-MM}'");
+            var balancesTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{DirectBalanceSet}?$select=cr07a_periodo,cr07a_inicial,cr07a_cierreconsolidado,cr07a_cloud,cr07a_copiers,cr07a_bolsillos,cr07a_fidurenta,cr07a_extractos&$filter={periodFilter}",ct);
+            var openingFilter=Uri.EscapeDataString($"cr07a_periodokey ge '{start:yyyy-MM}' and cr07a_periodokey le '{last:yyyy-MM}'");
             var openingsTask=GetDataverseAppEntitiesAsync($"/api/data/v9.2/{ConciliacionBankCloseSetName}?$select=cr07a_periodokey,cr07a_origenflujo,cr07a_saldoinicial&$filter={openingFilter}",ct);
             await Task.WhenAll(sourceTask,balancesTask,openingsTask);
             var movements=sourceTask.Result.Select(ToDirectMovement).ToArray();
@@ -91,12 +111,12 @@ public sealed partial class DataverseService
             var balances=balancesTask.Result.Select(x=>
             {
                 var period=ReadString(x,"cr07a_periodo");
-                return new DirectCashFlowBalances {Year=year,Month=int.Parse(period[5..],CultureInfo.InvariantCulture),Opening=ReadDecimal(x,"cr07a_inicial"),Cloud=ReadDecimal(x,"cr07a_cloud"),Copiers=ReadDecimal(x,"cr07a_copiers"),Pockets=ReadDecimal(x,"cr07a_bolsillos"),Fiduciary=ReadDecimal(x,"cr07a_fidurenta"),Version=ReadString(x,"@odata.etag")};
+                return new DirectCashFlowBalances {Year=int.Parse(period[..4],CultureInfo.InvariantCulture),Month=int.Parse(period[5..],CultureInfo.InvariantCulture),Opening=ReadDecimal(x,"cr07a_inicial"),Closing=ReadDecimal(x,"cr07a_cierreconsolidado"),Cloud=ReadDecimal(x,"cr07a_cloud"),Copiers=ReadDecimal(x,"cr07a_copiers"),Pockets=ReadDecimal(x,"cr07a_bolsillos"),Fiduciary=ReadDecimal(x,"cr07a_fidurenta"),Version=ReadString(x,"@odata.etag")};
             }).ToArray();
             var openings=openingsTask.Result.GroupBy(x=>ReadString(x,"cr07a_periodokey")).Where(g=>g.Count()==2 && g.Select(x=>ReadString(x,"cr07a_origenflujo")).Distinct().Count()==2)
-                .ToDictionary(g=>int.Parse(g.Key[5..],CultureInfo.InvariantCulture),g=>g.Sum(x=>ReadDecimal(x,"cr07a_saldoinicial")??0));
+                .ToDictionary(g=>g.Key,g=>g.Sum(x=>ReadDecimal(x,"cr07a_saldoinicial")??0));
             var statements=balancesTask.Result.SelectMany(x=>string.IsNullOrWhiteSpace(ReadString(x,"cr07a_extractos"))?Array.Empty<DirectCashFlowStatement>():JsonSerializer.Deserialize<DirectCashFlowStatement[]>(ReadString(x,"cr07a_extractos"),new JsonSerializerOptions(JsonSerializerDefaults.Web))??[]).ToArray();
-            var result=new DirectCashFlowData {Movements=movements,Balances=balances,BankOpenings=openings,Statements=statements};
+            var result=new DirectCashFlowData {HistoryStart=start,HistoryEnd=last,Movements=movements,Balances=balances,BankOpenings=openings,Statements=statements};
             _memoryCache.Set(key,result,TimeSpan.FromSeconds(20));return result;
         }
         finally{DirectCashFlowReadGate.Release();}
@@ -184,13 +204,13 @@ public sealed partial class DataverseService
     public async Task SaveDirectCashFlowBalancesAsync(DirectCashFlowBalances request,CancellationToken ct=default)
     {
         DirectCashFlowReportBuilder.ValidatePeriod(request.Year,request.Month,request.Month);
-        if(new[]{request.Opening,request.Cloud,request.Copiers,request.Pockets,request.Fiduciary}.Any(x=>x.HasValue&&(Math.Abs(x.Value)>100_000_000_000m||decimal.Round(x.Value,2)!=x.Value)))throw new InvalidOperationException("Revisa los saldos: máximo dos decimales y 100.000 millones.");
+        if(new[]{request.Opening,request.Closing}.Any(x=>x.HasValue&&(Math.Abs(x.Value)>100_000_000_000m||decimal.Round(x.Value,2)!=x.Value)))throw new InvalidOperationException("Revisa los saldos: máximo dos decimales y 100.000 millones.");
         var period=$"{request.Year:D4}-{request.Month:D2}";
         var id=new Guid(SHA256.HashData(Encoding.UTF8.GetBytes("direct-cash-balance:"+period)).AsSpan(0,16));
         await DirectWriteAsync(DirectBalanceSet,id,new Dictionary<string,object?>
         {
             ["cr07a_name"]=period,["cr07a_periodo"]=period,["cr07a_inicial"]=request.Opening,
-            ["cr07a_cloud"]=request.Cloud,["cr07a_copiers"]=request.Copiers,["cr07a_bolsillos"]=request.Pockets,["cr07a_fidurenta"]=request.Fiduciary
+            ["cr07a_cierreconsolidado"]=request.Closing
         },request.Version,ct);
         Interlocked.Increment(ref DirectCashFlowRevision);
     }

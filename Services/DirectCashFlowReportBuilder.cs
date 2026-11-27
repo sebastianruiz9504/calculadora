@@ -14,11 +14,11 @@ public static class DirectCashFlowReportBuilder
     };
     private static readonly Dictionary<int,(string Code,string Label,string Kind)> Headings = new()
     {
-        [7]=("","SALDO INICIAL BANCOS","balance"),[9]=("","INGRESOS","section"),[10]=("1","SERVICIOS","subtotal"),[16]=("2","OTROS","subtotal"),
+        [7]=("","SALDO INICIAL CONSOLIDADO","balance"),[9]=("","INGRESOS","section"),[10]=("1","SERVICIOS","subtotal"),[16]=("2","OTROS","subtotal"),
         [22]=("","EGRESOS","section"),[23]=("","NÓMINA Y SOCIOS","group"),[24]=("5","PAGO DE SOCIOS","subtotal"),[29]=("6","NÓMINA Y SEGURIDAD SOCIAL","subtotal"),[34]=("7","OTROS GASTOS DE PERSONAL","subtotal"),
         [38]=("","PAGOS PROVEEDORES Y OTROS","group"),[39]=("8","PROVEEDORES","subtotal"),[48]=("9","GASTOS DE VIAJE Y ANTICIPO A TRABAJADORES","subtotal"),[53]=("12","GASTOS DE ARRENDAMIENTO","subtotal"),[56]=("13","SEGUROS","subtotal"),[58]=("14","SERVICIOS PÚBLICOS","subtotal"),[63]=("15","IMPUESTOS","subtotal"),
-        [68]=("","FLUJO OPERACIONAL","section"),[70]=("20","TOTAL INGRESOS FINANCIACIÓN","subtotal"),[74]=("21","TOTAL EGRESOS FINANCIACIÓN","subtotal"),[81]=("","NETO DE FINANCIACIÓN","section"),[83]=("","TOTAL FLUJO CAJA","total"),
-        [85]=("","SALDO CUENTA CLOUD","input"),[86]=("","SALDO CUENTA COPIERS","input"),[87]=("","SALDO BOLSILLOS","input"),[88]=("","SALDO FIDURENTA","input"),[90]=("","CHECK","check")
+        [68]=("","FLUJO OPERACIONAL","section"),[70]=("20","TOTAL INGRESOS FINANCIACIÓN","subtotal"),[74]=("21","TOTAL EGRESOS FINANCIACIÓN","subtotal"),[81]=("","NETO DE FINANCIACIÓN","section"),[83]=("","SALDO SEGÚN CONCEPTOS","total"),
+        [85]=("","INGRESOS SIN CLASIFICAR","pending"),[86]=("","EGRESOS SIN CLASIFICAR","pending"),[88]=("","SALDO FINAL CALCULADO","total"),[90]=("","SALDO FINAL CONSOLIDADO","input")
     };
 
     public static void ValidatePeriod(int year,int first,int last)
@@ -29,19 +29,32 @@ public static class DirectCashFlowReportBuilder
     public static DirectCashFlowReport Build(int year,int first,int last,DirectCashFlowData data)
     {
         ValidatePeriod(year,first,last);
+        return Build(new DateOnly(year,first,1),new DateOnly(year,last,1),data);
+    }
+    public static DirectCashFlowReport BuildHistory(DirectCashFlowData data)
+    {
+        if(data.HistoryStart is not { } start || data.HistoryEnd is not { } end || end<start)
+            throw new InvalidOperationException("No hay un período histórico válido para exportar.");
+        return Build(start,end,data);
+    }
+    private static DirectCashFlowReport Build(DateOnly start,DateOnly end,DirectCashFlowData data)
+    {
         var months=new List<DirectCashFlowMonth>();
         var cells=new List<Dictionary<int,decimal?>>();
         decimal? previousClosing=null;
-        for(var month=first;month<=last;month++)
+        var calculationStart=data.HistoryStart is { } historyStart && historyStart<start?historyStart:start;
+        for(var period=calculationStart;period<=end;period=period.AddMonths(1))
         {
-            var prefix=$"{year:D4}-{month:D2}";
+            var year=period.Year;var month=period.Month;
+            var prefix=period.ToString("yyyy-MM",CultureInfo.InvariantCulture);
             var all=data.Movements.Where(x=>x.Date.StartsWith(prefix,StringComparison.Ordinal)).ToArray();
             var rows=all.Where(x=>!x.IsInternalTransfer).ToArray();
             var balances=data.Balances.FirstOrDefault(x=>x.Year==year&&x.Month==month) ?? new DirectCashFlowBalances{Year=year,Month=month};
-            var hasActivity=all.Length>0 || balances.Opening.HasValue;
             var opening=balances.Opening ?? previousClosing;
             var openingSource=balances.Opening.HasValue?"Ingresado":previousClosing.HasValue?"Cierre del mes anterior":"Pendiente";
-            if(!opening.HasValue && data.BankOpenings.TryGetValue(month,out var bankOpening)) {opening=bankOpening;openingSource="Saldos de conciliación";}
+            if(!opening.HasValue && data.BankOpenings.TryGetValue(prefix,out var bankOpening)) {opening=bankOpening;openingSource="Saldos de conciliación";}
+            var confirmedClosing=balances.Closing ?? (balances.Cloud+balances.Copiers+balances.Pockets+balances.Fiduciary);
+            var hasActivity=all.Length>0 || opening.HasValue || confirmedClosing.HasValue;
             var values=new Dictionary<int,decimal?>();
             foreach(var c in DirectCashFlowCatalog.Concepts)
                 values[c.Row]=hasActivity?rows.Where(x=>x.ConceptKey==c.Key).Sum(x=>x.Amount):null;
@@ -50,20 +63,22 @@ public static class DirectCashFlowReportBuilder
             values[68]=values[9]-values[22];
             values[81]=values[70]-values[74];
             values[83]=opening+values[68]+values[81];
-            values[85]=balances.Cloud;values[86]=balances.Copiers;values[87]=balances.Pockets;values[88]=balances.Fiduciary;
-            values[90]=values[83]-balances.Cloud-balances.Copiers-balances.Pockets-balances.Fiduciary;
             var unknown=rows.Where(x=>DirectCashFlowCatalog.Find(x.ConceptKey) is null).ToArray();
             var transferNet=all.Where(x=>x.IsInternalTransfer).Sum(x=>x.Entry-x.Exit);
-            var complete=unknown.Length==0 && transferNet==0;
-            previousClosing=complete?values[83]:null;
+            values[85]=hasActivity?unknown.Sum(x=>x.Entry):null;
+            values[86]=hasActivity?unknown.Sum(x=>x.Exit):null;
+            values[88]=transferNet==0?values[83]+values[85]-values[86]:null;
+            values[90]=confirmedClosing??values[88];
+            previousClosing=values[90];
+            if(period<start)continue;
             months.Add(new DirectCashFlowMonth
             {
-                Month=month,Label=new DateTime(year,month,1).ToString("MMMM",CultureInfo.GetCultureInfo("es-CO")),
+                Year=year,Month=month,Label=new DateTime(year,month,1).ToString("MMMM",CultureInfo.GetCultureInfo("es-CO")),
                 Entries=rows.Sum(x=>x.Entry),Exits=rows.Sum(x=>x.Exit),
                 UnclassifiedCount=unknown.Length,UnclassifiedEntries=unknown.Sum(x=>x.Entry),UnclassifiedExits=unknown.Sum(x=>x.Exit),
                 SuggestedCount=rows.Count(x=>x.Status=="Sugerido"),ConfirmedCount=rows.Count(x=>x.Status=="Confirmado"),ManualCount=rows.Count(x=>x.IsManual),
                 InternalTransferCount=all.Length-rows.Length,InternalTransferNet=transferNet,
-                OpeningBalance=opening,ClosingBalance=values[83],BankDifference=values[90],OpeningSource=openingSource,HasActivity=hasActivity,Balances=balances
+                OpeningBalance=opening,ClosingBalance=values[90],CalculatedClosingBalance=values[88],ClosingSource=confirmedClosing.HasValue?"Confirmado":values[88].HasValue?"Calculado":"Pendiente",OpeningSource=openingSource,HasActivity=hasActivity,Balances=balances
             });
             cells.Add(values);
         }
@@ -74,9 +89,9 @@ public static class DirectCashFlowReportBuilder
             if(c!=null) reportRows.Add(new(r,c.Code,c.Label,"detail",c.Key,cells.Select(v=>v.GetValueOrDefault(r)).ToArray()));
             else if(Headings.TryGetValue(r,out var h)) reportRows.Add(new(r,h.Code,h.Label,h.Kind,null,cells.Select(v=>v.GetValueOrDefault(r)).ToArray()));
         }
-        var checks=data.Statements.Where(s=>string.CompareOrdinal(s.Period,$"{year:D4}-{first:D2}")>=0 && string.CompareOrdinal(s.Period,$"{year:D4}-{last:D2}")<=0)
+        var checks=data.Statements.Where(s=>string.CompareOrdinal(s.Period,$"{start:yyyy-MM}")>=0 && string.CompareOrdinal(s.Period,$"{end:yyyy-MM}")<=0)
             .Select(s=>CheckStatement(s,data.Movements)).OrderBy(x=>x.Period).ThenBy(x=>x.Bank).ToArray();
-        return new(){Year=year,StartMonth=first,EndMonth=last,Months=months,Rows=reportRows,CapturedAt=data.CapturedAt,BankChecks=checks};
+        return new(){Year=start.Year,EndYear=end.Year,StartMonth=start.Month,EndMonth=end.Month,Months=months,Rows=reportRows,CapturedAt=data.CapturedAt,BankChecks=checks};
     }
     public static DirectCashFlowBankCheck CheckStatement(DirectCashFlowStatement statement,IReadOnlyList<DirectCashFlowMovement> movements)
     {

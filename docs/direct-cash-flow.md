@@ -7,8 +7,8 @@ Implementado sobre `origin/production` (`89d2ce6`) el 17 de noviembre de 2026.
 - Abrir **Conciliación → Flujo de caja directo**. Conserva la navegación lateral del módulo y abre el mes seleccionado; los filtros permiten ampliar el período.
 - En Conciliación 2, la última columna **Flujo de caja** muestra únicamente el número y concepto. Hacer clic permite asignarlo o editarlo; al guardar se actualiza la celda sin recargar el tablero. También se puede abrir un movimiento desde una celda del reporte. El catálogo filtra ingresos y salidas, con validación adicional en el servidor.
 - **Registro manual** permite incorporar movimientos bancarios faltantes, identificados en morado y con estado **Solo banco**. Se pueden editar o anular, conservando el registro. No generan comprobantes ni llamadas a Siigo.
-- Completar el saldo inicial consolidado y los cuatro saldos de cierre seleccionando sus celdas. Cero es un valor válido; vacío significa pendiente. CHECK compara el cierre calculado con Cloud + Copiers + Bolsillos + Fidurenta únicamente cuando todos están informados.
-- Descargar Excel conserva el formato, orden, códigos, estilos y hojas ocultas del archivo entregado. Las columnas corresponden al período seleccionado. Los datos pendientes no se inventan.
+- Completar únicamente los saldos consolidados de apertura y cierre seleccionando sus celdas. Cero es un valor válido. Una apertura vacía toma el cierre anterior, aunque el mes anterior no esté visible. Un cierre confirmado tiene prioridad sobre el calculado y pasa al siguiente mes. El desglose de cuentas complementarias no se devuelve en la respuesta del reporte ni se muestra en pantalla o Excel.
+- **Descargar histórico** conserva la plantilla y agrega una columna por mes desde el primer saldo registrado hasta el mes actual en Colombia. Es independiente del filtro de pantalla y continúa entre años; los encabezados incluyen el año cuando corresponde.
 - **Control de extractos** separa el cotejo bancario de la clasificación contable. Comprueba cada registro, ingresos, egresos y saldo de cierre, incluso si aún no tiene concepto. La descarga agrega la hoja **Control bancario**, con saldos, fórmulas y diferencias por cuenta.
 - Los registros provenientes de extractos se distinguen en morado, con etiqueta **Extracto**, referencia de página/fila y sin envío a Siigo. Se puede editar su concepto; sus importes originales se conservan para comprobar los saldos. El detalle ofrece el filtro **Extracto** y páginas de 50 movimientos.
 
@@ -25,11 +25,12 @@ Ambas cuentas cuadran, sin registros faltantes, adicionales, modificados ni dife
 ## Cálculo y plantilla
 
 - 52 conceptos de detalle. El código impreso 903 aparece dos veces en el modelo: claves estables `903:51` (viáticos) y `903:52` (representación).
-- El flujo usa el importe efectivamente registrado en banco, incluyendo registros manuales. Los movimientos sin concepto aparecen en los indicadores bancarios y en pendientes, pero no se distribuyen en filas del reporte.
+- El flujo usa el importe efectivamente registrado en banco, incluyendo registros manuales. Los movimientos sin concepto aparecen en dos filas separadas de ingresos y egresos sin clasificar y participan en el saldo final calculado. No se asigna un concepto automáticamente.
 - Las sugerencias sí suman; la pantalla y la descarga indican que requieren revisión.
 - Los traslados explícitos se excluyen del consolidado. Para registros omitidos con descripción CONCILIO, se reconoce una contrapartida única del mismo mes, igual importe, sentido opuesto, otra cuenta y diferencia máxima de cuatro días. Los registros manuales no se infieren como contrapartidas. Los traslados sin contrapartida generan advertencia.
 - Para filas procedentes de los extractos se reconoce el par único del mismo día e importe, cuentas distintas y sentidos opuestos, cuando ambas tienen la descripción bancaria `TRANSFERENCIA CTA SUC VIRTUAL`. No se aplica esta inferencia a movimientos manuales ordinarios ni a grupos ambiguos.
-- El cierre anterior se arrastra únicamente dentro del período seleccionado, cuando no quedan conceptos pendientes ni traslados con diferencia. También se pueden usar los saldos iniciales ya registrados para ambas cuentas de conciliación; el saldo consolidado ingresado explícitamente tiene prioridad.
+- El cálculo recorre el histórico desde la primera apertura, aunque solo se muestre un mes. La apertura explícita tiene prioridad sobre el cierre anterior, y después se usan los saldos iniciales de ambas cuentas de conciliación. Los pendientes de concepto no bloquean el arrastre. Un traslado sin contrapartida deja pendiente el cierre calculado; un cierre consolidado confirmado permite continuar.
+- El saldo según conceptos, los ingresos y egresos sin clasificar y el saldo final calculado permiten seguir la aritmética. El saldo final consolidado es el cierre confirmado si existe, o el calculado en caso contrario. La descarga enlaza la apertura de cada mes con ese saldo consolidado anterior, conserva los centavos y presenta el reporte en pesos enteros.
 - Se corrigieron las sumas del modelo que omitían socios, apertura de CDT o contenían totales fijos en diciembre. Las mismas fórmulas se aplican a todos los meses. La hoja visible no conserva importes de ejemplo.
 
 ## Persistencia y rendimiento
@@ -40,11 +41,11 @@ Tablas aditivas de la solución existente `CotizadorInternoCRM`:
 |---|---|
 | `cr07a_clasificacionflujodirecto` | Concepto, origen, fecha, estado de revisión y motivo; GUID del movimiento original |
 | `cr07a_movimientomanualbanco` | Movimientos exclusivamente bancarios; `EstadoSiigo=NoEnviar`; anulación mediante estado inactivo |
-| `cr07a_saldoflujodirecto` | Saldo inicial y cierres por período; `cr07a_extractos` conserva el resumen, hash de los PDF y referencias de cada fila para su cotejo |
+| `cr07a_saldoflujodirecto` | Saldo inicial y cierre consolidado confirmado (`cr07a_cierreconsolidado`) por período; `cr07a_extractos` conserva el resumen, hash de los PDF y referencias de cada fila para su cotejo |
 
 Las escrituras usan ETag y creación condicional. Los reintentos manuales conservan el UUID del cliente y se comprueba duplicidad de fecha, cuenta, importe, descripción y referencia. El servidor valida dirección del concepto, fechas y precisión decimal. Los endpoints requieren acceso al módulo Conciliación y antifalsificación para POST.
 
-La vista del reporte evita construir el tablero completo o consultar Siigo. Las consultas están limitadas al período y usan selección de columnas y paginación Dataverse. El detalle responde en páginas de 50, con máximo de 100 por petición. Se comparte una caché de 20 segundos, invalidada al escribir, con exclusión de lecturas simultáneas repetidas. La pantalla refresca inmediatamente después de guardar y cada 25 segundos mientras está visible y sin formularios abiertos.
+La vista del reporte evita construir el tablero completo o consultar Siigo. El resumen carga desde el primer saldo hasta el último mes solicitado para calcular el arrastre; el detalle sigue consultando solo su mes. Las consultas usan selección de columnas y paginación Dataverse. El detalle responde en páginas de 50, con máximo de 100 por petición. Se comparte una caché de 20 segundos, invalidada al escribir, con exclusión de lecturas simultáneas repetidas. La pantalla refresca inmediatamente después de guardar y cada 25 segundos mientras está visible y sin formularios abiertos.
 
 El control bancario reutiliza la consulta mensual de saldos, sin peticiones por cada fila ni lecturas nuevas de Siigo. La consulta inicial de octubre–diciembre con los extractos tomó aproximadamente 3,2 segundos en la prueba local y la repetida desde caché menos de 1 ms; no es una garantía de latencia de cada cliente.
 

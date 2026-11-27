@@ -76,25 +76,25 @@ public sealed class DirectCashFlowTests
     {
         var manual=Row("2112:79",2);manual.SourceKind="Manual";
         var report=DirectCashFlowReportBuilder.Build(2026,10,10,new(){Movements=[Row("101:11",60,direction:"Entrada"),Row("801:40",15),manual],Balances=[new(){Year=2026,Month=10,Opening=100,Cloud=143,Copiers=0,Pockets=0,Fiduciary=0}]});
-        Assert.Equal(143,Value(report,83));Assert.Equal(0,Value(report,90));Assert.Equal(1,report.Months[0].ManualCount);Assert.Equal(17,report.Months[0].Exits);
+        Assert.Equal(143,Value(report,83));Assert.Equal(143,Value(report,90));Assert.Equal(1,report.Months[0].ManualCount);Assert.Equal(17,report.Months[0].Exits);
     }
     [Fact] public void MissingBalanceIsUnknownAndZeroRemainsAValidBalance()
     {
         var data=new DirectCashFlowData{Movements=[Row("101:11",10,direction:"Entrada")],Balances=[new(){Year=2026,Month=10,Opening=0,Cloud=10,Copiers=0,Pockets=0}]};
-        var report=DirectCashFlowReportBuilder.Build(2026,10,10,data);Assert.Equal(10,Value(report,83));Assert.Null(Value(report,90));
-        data.Balances[0].Fiduciary=0;Assert.Equal(0,Value(DirectCashFlowReportBuilder.Build(2026,10,10,data),90));
+        var report=DirectCashFlowReportBuilder.Build(2026,10,10,data);Assert.Equal(10,Value(report,83));Assert.Equal(10,Value(report,90));Assert.Equal("Calculado",report.Months[0].ClosingSource);
+        data.Balances[0].Closing=0;Assert.Equal(0,Value(DirectCashFlowReportBuilder.Build(2026,10,10,data),90));
     }
     [Fact] public void FutureEmptyMonthsRemainBlank()
     {
         var report=DirectCashFlowReportBuilder.Build(2026,10,12,new(){Movements=[Row("101:11",10,direction:"Entrada")]});
         Assert.Equal(10,Value(report,9));Assert.Null(Value(report,9,2));Assert.Null(Value(report,83));Assert.False(report.Months[2].HasActivity);
     }
-    [Fact] public void CompletePriorClosingRollsForwardButUnknownConceptDoesNot()
+    [Fact] public void PriorClosingRollsForwardIncludingUnknownConcepts()
     {
         var rows=new[]{Row("101:11",20,direction:"Entrada"),Row("801:40",5,11)};
         var balances=new[]{new DirectCashFlowBalances{Year=2026,Month=10,Opening=100}};
         var report=DirectCashFlowReportBuilder.Build(2026,10,11,new(){Movements=rows,Balances=balances});Assert.Equal(120,Value(report,7,1));Assert.Equal(115,Value(report,83,1));
-        rows[0].ConceptKey="";report=DirectCashFlowReportBuilder.Build(2026,10,11,new(){Movements=rows,Balances=balances});Assert.Null(Value(report,7,1));Assert.Equal(20,report.Months[0].UnclassifiedEntries);
+        rows[0].ConceptKey="";report=DirectCashFlowReportBuilder.Build(2026,10,11,new(){Movements=rows,Balances=balances});Assert.Equal(120,Value(report,7,1));Assert.Equal(20,report.Months[0].UnclassifiedEntries);Assert.Equal(115,report.Months[1].ClosingBalance);
     }
     [Fact] public void InternalTransfersDoNotInflateIncomeOrExpensesAndMustBalance()
     {

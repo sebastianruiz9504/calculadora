@@ -12,7 +12,11 @@ namespace CotizadorInterno.Web.Controllers;
 public sealed class DirectCashFlowController(IDataverseService dataverse,ILogger<DirectCashFlowController> logger) : Controller
 {
     [HttpGet] public IActionResult Concepts() => Ok(DirectCashFlowCatalog.Concepts);
-    [HttpGet] public Task<IActionResult> Summary(int year,int first=10,int last=12,CancellationToken ct=default) => Run(async()=>Ok(DirectCashFlowReportBuilder.Build(year,first,last,await dataverse.GetDirectCashFlowDataAsync(year,first,last,ct))));
+    [HttpGet] public Task<IActionResult> Summary(int year,int first=10,int last=12,CancellationToken ct=default) => Run(async()=>
+    {
+        DirectCashFlowReportBuilder.ValidatePeriod(year,first,last);
+        return Ok(DirectCashFlowReportBuilder.Build(year,first,last,await dataverse.GetDirectCashFlowHistoryAsync(year,last,ct)));
+    });
     [HttpGet] public Task<IActionResult> Movements(int year,int month,string? concept=null,string? status=null,string? search=null,int page=1,int pageSize=50,CancellationToken ct=default) => Run(async()=>
     {
         if(page<1||pageSize is < 1 or > 100||search?.Length>100)throw new InvalidOperationException("Filtro o paginación inválidos.");
@@ -30,10 +34,10 @@ public sealed class DirectCashFlowController(IDataverseService dataverse,ILogger
     [HttpPost] public Task<IActionResult> VoidManual([FromBody] DirectCashFlowAssignmentRequest request,CancellationToken ct) => Run(async()=>{await dataverse.VoidDirectCashFlowManualAsync(request,ct);return Ok(new{message="Registro manual anulado."});});
     [HttpPost] public Task<IActionResult> Balances([FromBody] DirectCashFlowBalances request,CancellationToken ct) => Run(async()=>{await dataverse.SaveDirectCashFlowBalancesAsync(request,ct);return Ok(new{message="Saldos guardados."});});
     [HttpPost] public Task<IActionResult> SuggestOctober(CancellationToken ct) => Run(async()=>Ok(new{created=await dataverse.SuggestDirectCashFlowOctoberAsync(ct)}));
-    [HttpGet] public Task<IActionResult> Export(int year,int first=10,int last=12,CancellationToken ct=default) => Run(async()=>
+    [HttpGet] public Task<IActionResult> Export(CancellationToken ct=default) => Run(async()=>
     {
-        var report=DirectCashFlowReportBuilder.Build(year,first,last,await dataverse.GetDirectCashFlowDataAsync(year,first,last,ct));
-        return File(DirectCashFlowExcelExporter.Export(report),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",$"Flujo de caja directo {year}-{first:D2}-{last:D2}.xlsx");
+        var report=DirectCashFlowReportBuilder.BuildHistory(await dataverse.GetDirectCashFlowHistoryAsync(ct:ct));
+        return File(DirectCashFlowExcelExporter.Export(report),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",$"Flujo de caja historico {report.Year}-{report.StartMonth:D2} a {report.EndYear}-{report.EndMonth:D2}.xlsx");
     });
     private async Task<IActionResult> Run(Func<Task<IActionResult>> action)
     {

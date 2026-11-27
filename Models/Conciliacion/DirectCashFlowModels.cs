@@ -1,9 +1,12 @@
+using System.Text.Json.Serialization;
+
 namespace CotizadorInterno.Web.Models.Conciliacion;
 
 public sealed record DirectCashFlowConcept(string Key, string Code, string Label, string Direction, int Row, string Group);
 public sealed record DirectCashFlowReportRow(int Row, string Code, string Label, string Kind, string? ConceptKey, IReadOnlyList<decimal?> Values);
 public sealed class DirectCashFlowMonth
 {
+    public int Year { get; set; }
     public int Month { get; set; }
     public string Label { get; set; } = "";
     public decimal Entries { get; set; }
@@ -18,6 +21,8 @@ public sealed class DirectCashFlowMonth
     public decimal InternalTransferNet { get; set; }
     public decimal? OpeningBalance { get; set; }
     public decimal? ClosingBalance { get; set; }
+    public decimal? CalculatedClosingBalance { get; set; }
+    public string ClosingSource { get; set; } = "";
     public decimal? BankDifference { get; set; }
     public string OpeningSource { get; set; } = "";
     public bool HasActivity { get; set; }
@@ -28,6 +33,7 @@ public sealed class DirectCashFlowReport
     public int Year { get; set; }
     public int StartMonth { get; set; }
     public int EndMonth { get; set; }
+    public int EndYear { get; set; }
     public DateTimeOffset CapturedAt { get; set; } = DateTimeOffset.UtcNow;
     public IReadOnlyList<DirectCashFlowMonth> Months { get; set; } = [];
     public IReadOnlyList<DirectCashFlowReportRow> Rows { get; set; } = [];
@@ -79,18 +85,25 @@ public sealed class DirectCashFlowBalances
     public int Year { get; set; }
     public int Month { get; set; }
     public decimal? Opening { get; set; }
+    public decimal? Closing { get; set; }
+    [JsonIgnore]
     public decimal? Cloud { get; set; }
+    [JsonIgnore]
     public decimal? Copiers { get; set; }
+    [JsonIgnore]
     public decimal? Pockets { get; set; }
+    [JsonIgnore]
     public decimal? Fiduciary { get; set; }
     public string Version { get; set; } = "";
 }
 public sealed class DirectCashFlowData
 {
+    public DateOnly? HistoryStart { get; init; }
+    public DateOnly? HistoryEnd { get; init; }
     public DateTimeOffset CapturedAt { get; init; } = DateTimeOffset.UtcNow;
     public IReadOnlyList<DirectCashFlowMovement> Movements { get; init; } = [];
     public IReadOnlyList<DirectCashFlowBalances> Balances { get; init; } = [];
-    public IReadOnlyDictionary<int, decimal> BankOpenings { get; init; } = new Dictionary<int, decimal>();
+    public IReadOnlyDictionary<string, decimal> BankOpenings { get; init; } = new Dictionary<string, decimal>();
     public IReadOnlyList<DirectCashFlowStatement> Statements { get; init; } = [];
 }
 

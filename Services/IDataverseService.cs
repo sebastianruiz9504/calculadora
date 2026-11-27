@@ -30,6 +30,7 @@ namespace CotizadorInterno.Web.Services;
 public interface IDataverseService
 {
     Task<DirectCashFlowData> GetDirectCashFlowDataAsync(int year, int first, int last, CancellationToken ct = default) => throw new NotImplementedException();
+    Task<DirectCashFlowData> GetDirectCashFlowHistoryAsync(int? throughYear = null, int? throughMonth = null, CancellationToken ct = default) => throw new NotImplementedException();
     Task<DirectCashFlowMovement> GetDirectCashFlowMovementAsync(string sourceKind, string recordId, CancellationToken ct = default) => throw new NotImplementedException();
     Task SaveDirectCashFlowAssignmentAsync(DirectCashFlowAssignmentRequest request, CancellationToken ct = default) => throw new NotImplementedException();
     Task<DirectCashFlowMovement> SaveDirectCashFlowManualAsync(DirectCashFlowManualRequest request, CancellationToken ct = default) => throw new NotImplementedException();
