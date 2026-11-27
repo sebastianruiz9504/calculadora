@@ -1,3 +1,6 @@
+> Sustituido por [Centros de costo compartidos](../shared_cost_centers/README.md).
+> Las escrituras de opciones locales estan deshabilitadas; los campos anteriores son respaldo historico.
+
 # Centro de costo de Contratos Boris
 
 Columna **Centro de costo** (`cr07a_centrocosto`, opcion local) en

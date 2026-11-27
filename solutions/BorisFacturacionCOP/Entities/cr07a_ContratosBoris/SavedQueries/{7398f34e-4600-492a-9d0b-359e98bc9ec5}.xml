@@ -11,7 +11,7 @@
       <grid name="resultset" jump="cr07a_name" select="1" icon="1" preview="1">
         <row name="result" id="cr07a_contratosborisid">
           <cell name="cr07a_name" width="300" />
-          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_centrocostoref" width="200" />
           <cell name="cr07a_cliente" width="100" />
           <cell name="cr07a_costomensual" width="125" />
           <cell name="cr07a_diadefacturacion" width="144" />
@@ -35,7 +35,7 @@
           <order attribute="cr07a_diadefacturacion" descending="false" />
           <attribute name="cr07a_fechaderenovacion" />
           <attribute name="cr07a_facturacionmensual" />
-          <attribute name="cr07a_centrocosto" />
+          <attribute name="cr07a_centrocostoref" />
         </entity>
       </fetch>
     </fetchxml>

@@ -1,0 +1,130 @@
+{
+  "tables": {
+    "cr07a_salesperformancerecord": {
+      "rows": 364,
+      "forms": 1,
+      "views": 2,
+      "values_preserved": true,
+      "centers": {
+        "101-00": 364,
+        "102-00": 0,
+        "103-00": 0,
+        "104-00": 0,
+        "105-00": 0
+      }
+    },
+    "cr07a_contratosboris": {
+      "rows": 8,
+      "forms": 1,
+      "views": 2,
+      "values_preserved": true,
+      "centers": {
+        "101-00": 0,
+        "102-00": 0,
+        "103-00": 8,
+        "104-00": 0,
+        "105-00": 0
+      }
+    },
+    "cr07a_productoscopiers": {
+      "rows": 42,
+      "forms": 1,
+      "views": 2,
+      "values_preserved": true,
+      "centers": {
+        "101-00": 0,
+        "102-00": 42,
+        "103-00": 0,
+        "104-00": 0,
+        "105-00": 0
+      }
+    }
+  },
+  "flows": {
+    "cloud": {
+      "state": "Started",
+      "last_modified": "2026-11-27T17:11:26.8086045Z",
+      "document_id": 7481,
+      "shared_catalog": true
+    },
+    "boris": {
+      "state": "Started",
+      "last_modified": "2026-11-27T17:11:37Z",
+      "document_id": 7481,
+      "shared_catalog": true
+    }
+  },
+  "catalog": {
+    "rows": 5,
+    "codes": [
+      "101-00",
+      "102-00",
+      "103-00",
+      "104-00",
+      "105-00"
+    ]
+  },
+  "boris_billing_controls_unchanged": 4,
+  "native_tests": [
+    {
+      "flow": "cloud",
+      "case": "valid",
+      "passed": true
+    },
+    {
+      "flow": "cloud",
+      "case": "missing",
+      "passed": true
+    },
+    {
+      "flow": "cloud",
+      "case": "inactive",
+      "passed": true
+    },
+    {
+      "flow": "cloud",
+      "case": "invalid-id",
+      "passed": true
+    },
+    {
+      "flow": "boris",
+      "case": "valid",
+      "passed": true
+    },
+    {
+      "flow": "boris",
+      "case": "missing",
+      "passed": true
+    },
+    {
+      "flow": "boris",
+      "case": "inactive",
+      "passed": true
+    },
+    {
+      "flow": "boris",
+      "case": "invalid-id",
+      "passed": true
+    }
+  ],
+  "default_form_script": {
+    "passed": true,
+    "checks": 7,
+    "default_codes": [
+      "101-00",
+      "103-00",
+      "102-00"
+    ],
+    "preserves_existing_and_inflight_selection": true,
+    "missing_default_shows_notification": true
+  },
+  "browser_visual_check": {
+    "completed": false,
+    "reason": "Windows denied browser UI access (GetCursorPos 0x80070005)"
+  },
+  "app_validation": {
+    "published": true,
+    "success": true,
+    "existing_warnings_unchanged": true
+  }
+}

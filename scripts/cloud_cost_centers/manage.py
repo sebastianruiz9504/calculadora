@@ -314,4 +314,7 @@ def export():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('operation',choices=['plan','schema','ui','initialize','retire_catalog_ui','deploy','verify','export'])
-    globals()[parser.parse_args().operation]()
+    operation = parser.parse_args().operation
+    if operation in {'schema','ui','initialize','deploy','retire_catalog_ui'}:
+        raise SystemExit('Superseded by scripts/shared_cost_centers. Legacy choice writes are disabled.')
+    globals()[operation]()

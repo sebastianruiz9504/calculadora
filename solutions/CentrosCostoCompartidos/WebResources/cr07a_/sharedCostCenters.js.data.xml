@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<WebResource xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <WebResourceId>{ead91ae4-84ea-f111-84e9-6045bd3b7fa5}</WebResourceId>
+  <Name>cr07a_/sharedCostCenters.js</Name>
+  <DisplayName>Centros de costo - Valores iniciales</DisplayName>
+  <WebResourceType>3</WebResourceType>
+  <IntroducedVersion>1.0</IntroducedVersion>
+  <IsEnabledForMobileClient>0</IsEnabledForMobileClient>
+  <IsAvailableForMobileOffline>0</IsAvailableForMobileOffline>
+  <IsCustomizable>1</IsCustomizable>
+  <CanBeDeleted>1</CanBeDeleted>
+  <IsHidden>0</IsHidden>
+  <FileName>/WebResources/cr07a_sharedCostCentersjsEAD91AE4-84EA-F111-84E9-6045BD3B7FA5</FileName>
+</WebResource>

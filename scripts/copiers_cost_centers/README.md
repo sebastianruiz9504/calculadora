@@ -1,3 +1,6 @@
+> Sustituido por [Centros de costo compartidos](../shared_cost_centers/README.md).
+> Las escrituras de opciones locales estan deshabilitadas; los campos anteriores son respaldo historico.
+
 # Centro de costo de Productos COPIERS
 
 En Gerencia, **Productos COPIERS** abre la tabla `cr07a_productoscopiers`.

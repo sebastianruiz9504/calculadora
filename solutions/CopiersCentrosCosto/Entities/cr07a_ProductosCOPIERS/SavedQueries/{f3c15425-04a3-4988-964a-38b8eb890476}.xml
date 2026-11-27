@@ -11,7 +11,7 @@
       <grid name="resultset" jump="cr07a_nuevacolumna" select="1" icon="1" preview="1">
         <row name="result" id="cr07a_productoscopiersid">
           <cell name="cr07a_nuevacolumna" width="300" />
-          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_centrocostoref" width="200" />
           <cell name="createdon" width="125" />
         </row>
       </grid>
@@ -27,7 +27,7 @@
           <filter type="and">
             <condition attribute="statecode" operator="eq" value="1" />
           </filter>
-          <attribute name="cr07a_centrocosto" />
+          <attribute name="cr07a_centrocostoref" />
         </entity>
       </fetch>
     </fetchxml>

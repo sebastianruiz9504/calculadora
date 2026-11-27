@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<EntityRelationships xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <EntityRelationship Name="cr07a_centrodecosto_cr07a_contratosboris_cr07a_CentroCostoRef" />
+  <EntityRelationship Name="cr07a_centrodecosto_cr07a_productoscopiers_cr07a_CentroCostoRef" />
+  <EntityRelationship Name="cr07a_centrodecosto_cr07a_salesperformancerecord_cr07a_CentroCostoRef" />
+  <EntityRelationship Name="lk_cr07a_centrodecosto_createdby" />
+  <EntityRelationship Name="lk_cr07a_centrodecosto_modifiedby" />
+  <EntityRelationship Name="organization_cr07a_centrodecosto" />
+</EntityRelationships>

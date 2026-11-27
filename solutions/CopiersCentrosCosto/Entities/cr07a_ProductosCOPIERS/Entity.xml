@@ -20,7 +20,7 @@
           <Type>picklist</Type>
           <Name>cr07a_centrocosto</Name>
           <LogicalName>cr07a_centrocosto</LogicalName>
-          <RequiredLevel>required</RequiredLevel>
+          <RequiredLevel>none</RequiredLevel>
           <DisplayMask>ValidForAdvancedFind|ValidForForm|ValidForGrid</DisplayMask>
           <ImeMode>auto</ImeMode>
           <ValidForUpdateApi>1</ValidForUpdateApi>
@@ -46,7 +46,7 @@
           <IsFilterable>0</IsFilterable>
           <IsRetrievable>0</IsRetrievable>
           <IsLocalizable>0</IsLocalizable>
-          <AppDefaultValue>10200</AppDefaultValue>
+          <AppDefaultValue>-1</AppDefaultValue>
           <optionset Name="cr07a_productoscopiers_cr07a_centrocosto">
             <OptionSetType>picklist</OptionSetType>
             <IntroducedVersion>1.0.0.0</IntroducedVersion>
@@ -86,7 +86,7 @@
             </options>
           </optionset>
           <displaynames>
-            <displayname description="Centro de costo" languagecode="3082" />
+            <displayname description="Centro de costo (anterior)" languagecode="3082" />
           </displaynames>
           <Descriptions>
             <Description description="Centro de costo de Ventas del producto Copiers." languagecode="3082" />

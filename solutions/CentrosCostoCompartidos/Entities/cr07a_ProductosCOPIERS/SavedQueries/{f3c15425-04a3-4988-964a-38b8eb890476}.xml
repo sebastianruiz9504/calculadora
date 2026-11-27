@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>0</isdefault>
+    <savedqueryid>{f3c15425-04a3-4988-964a-38b8eb890476}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_nuevacolumna" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_productoscopiersid">
+          <cell name="cr07a_nuevacolumna" width="300" />
+          <cell name="cr07a_centrocostoref" width="200" />
+          <cell name="createdon" width="125" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_productoscopiers">
+          <attribute name="cr07a_productoscopiersid" />
+          <attribute name="cr07a_nuevacolumna" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_nuevacolumna" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="1" />
+          </filter>
+          <attribute name="cr07a_centrocostoref" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Productos COPIERS inactivo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

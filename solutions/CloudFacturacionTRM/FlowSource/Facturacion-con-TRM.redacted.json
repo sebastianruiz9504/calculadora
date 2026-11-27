@@ -141,7 +141,7 @@
         "parameters": {
           "entityName": "cr07a_salesperformancerecords",
           "$filter": "@{concat('cr07a_billingday eq ',string(outputs('DiaFacturacionBogota')),' and cr07a_facturableautomatico eq true and (cr07a_fechaultimafactura eq null or cr07a_fechaultimafactura lt ',outputs('FechaFacturacionBogota'),'T00:00:00Z)')}",
-          "$expand": "cr07a_Producto($select=cr07a_siigo_code)"
+          "$expand": "cr07a_Producto($select=cr07a_siigo_code),cr07a_CentroCostoRef($select=cr07a_codigo,cr07a_identificadorsiigo,statecode)"
         },
         "authentication": "@parameters('$authentication')"
       }
@@ -160,7 +160,7 @@
         "from": "@outputs('Enumerar_filas')?['body/value']",
         "select": {
           "cliente": "@item()?['_cr07a_clientelookup_value']",
-          "centroCosto": "@int(coalesce(item()?['cr07a_centrocosto'],10100))"
+          "centroCosto": "@item()?['_cr07a_centrocostoref_value']"
         }
       }
     },
@@ -191,7 +191,7 @@
           "type": "Query",
           "inputs": {
             "from": "@outputs('Enumerar_filas')?['body/value']",
-            "where": "@and(equals(item()?['_cr07a_clientelookup_value'],items('Por_cliente')?['cliente']),equals(int(coalesce(item()?['cr07a_centrocosto'],10100)),items('Por_cliente')?['centroCosto']))"
+            "where": "@and(equals(item()?['_cr07a_clientelookup_value'],items('Por_cliente')?['cliente']),equals(item()?['_cr07a_centrocostoref_value'],items('Por_cliente')?['centroCosto']))"
           }
         },
         "Establecer_variable": {
@@ -916,22 +916,22 @@
           "inputs": "@equals(coalesce(first(body('Filtrar_matriz_Clientes'))?['cr07a_grancontribuyente'], false), true)"
         },
         "CentroCostoSiigo": {
-          "type": "Compose",
-          "inputs": "@int(json('{\"10100\":589,\"10200\":602,\"10300\":611,\"10400\":622,\"10500\":633}')?[string(items('Por_cliente')?['centroCosto'])])",
           "runAfter": {
             "NumeroFactura": [
               "Succeeded"
             ]
-          }
+          },
+          "type": "Compose",
+          "inputs": "@int(if(and(equals(first(body('Filtrar_matriz2'))?['cr07a_CentroCostoRef']?['statecode'],0),greater(coalesce(first(body('Filtrar_matriz2'))?['cr07a_CentroCostoRef']?['cr07a_identificadorsiigo'],0),0)),first(body('Filtrar_matriz2'))?['cr07a_CentroCostoRef']?['cr07a_identificadorsiigo'],null))"
         },
         "CentroCostoCodigo": {
-          "type": "Compose",
-          "inputs": "@concat(substring(string(items('Por_cliente')?['centroCosto']),0,3),'-00')",
           "runAfter": {
             "CentroCostoSiigo": [
               "Succeeded"
             ]
-          }
+          },
+          "type": "Compose",
+          "inputs": "@first(body('Filtrar_matriz2'))?['cr07a_CentroCostoRef']?['cr07a_codigo']"
         }
       },
       "runAfter": {

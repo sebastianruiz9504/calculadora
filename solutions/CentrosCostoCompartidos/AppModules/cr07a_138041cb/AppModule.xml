@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<AppModule>
+  <UniqueName>cr07a_138041cb</UniqueName>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <WebResourceId>953b9fac-1e5e-e611-80d6-00155ded156f</WebResourceId>
+  <OptimizedFor></OptimizedFor>
+  <statecode>0</statecode>
+  <statuscode>1</statuscode>
+  <FormFactor>1</FormFactor>
+  <ClientType>4</ClientType>
+  <NavigationType>0</NavigationType>
+  <AppModuleComponents>
+    <AppModuleComponent type="1" schemaName="cr07a_capacitacion" />
+    <AppModuleComponent type="1" schemaName="cr07a_centrodecosto" />
+    <AppModuleComponent type="1" schemaName="cr07a_cliente" />
+    <AppModuleComponent type="1" schemaName="cr07a_contractrecord1" />
+    <AppModuleComponent type="1" schemaName="cr07a_contratosboris" />
+    <AppModuleComponent type="1" schemaName="cr07a_equipo" />
+    <AppModuleComponent type="1" schemaName="cr07a_facturacion" />
+    <AppModuleComponent type="1" schemaName="cr07a_gastodelaempresa" />
+    <AppModuleComponent type="1" schemaName="cr07a_incapacidad" />
+    <AppModuleComponent type="1" schemaName="cr07a_mantenimiento" />
+    <AppModuleComponent type="1" schemaName="cr07a_nomina" />
+    <AppModuleComponent type="1" schemaName="cr07a_productoscopiers" />
+    <AppModuleComponent type="1" schemaName="cr07a_reportescloud" />
+    <AppModuleComponent type="1" schemaName="cr07a_salesperformancerecord" />
+    <AppModuleComponent type="1" schemaName="cr07a_solicitudaprovisionamiento" />
+    <AppModuleComponent type="1" schemaName="cr07a_solicitudcreaciondecliente" />
+    <AppModuleComponent type="1" schemaName="cr07a_solicituddemantenimiento" />
+    <AppModuleComponent type="1" schemaName="cr07a_solicituddevacaciones" />
+    <AppModuleComponent type="1" schemaName="cr07a_tareacopier" />
+    <AppModuleComponent type="1" schemaName="cr07a_tareascloud" />
+    <AppModuleComponent type="1" schemaName="cr07a_ticket" />
+    <AppModuleComponent type="1" schemaName="cr07a_viatico" />
+    <AppModuleComponent type="1" schemaName="systemuser" />
+    <AppModuleComponent type="26" id="{e43ce0dc-fe66-4410-9a91-8650cced330f}" />
+    <AppModuleComponent type="26" id="{9f8e8e5a-dd6e-47cb-bf2a-8c3410f75cab}" />
+    <AppModuleComponent type="60" id="{1be2a485-01e1-4038-95f2-21410c3c815d}" />
+    <AppModuleComponent type="62" schemaName="cr07a_7c0d05b2" />
+  </AppModuleComponents>
+  <AppModuleRoleMaps>
+    <Role id="{627090ff-40a3-4053-8790-584edc5be201}" />
+    <Role id="{119f245c-3cc8-4b62-b31c-d1a046ced15d}" />
+  </AppModuleRoleMaps>
+  <LocalizedNames>
+    <LocalizedName description="Gerencia" languagecode="3082" />
+  </LocalizedNames>
+  <appsettings>
+    <appsetting settingdefinitionid.uniquename="AppChannel">
+      <iscustomizable>1</iscustomizable>
+      <value>1</value>
+    </appsetting>
+  </appsettings>
+</AppModule>

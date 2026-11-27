@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<AppModuleSiteMap xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <SiteMapUniqueName>cr07a_7c0d05b2</SiteMapUniqueName>
+  <EnableCollapsibleGroups>False</EnableCollapsibleGroups>
+  <ShowHome>True</ShowHome>
+  <ShowPinned>True</ShowPinned>
+  <ShowRecents>True</ShowRecents>
+  <SiteMap IntroducedVersion="7.0.0.0">
+    <Area Id="area_54dc83e1" ResourceId="SitemapDesigner.NewTitle" DescriptionResourceId="SitemapDesigner.NewTitle" ShowGroups="true" IntroducedVersion="7.0.0.0">
+      <Titles>
+        <Title LCID="3082" Title="Área 1" />
+      </Titles>
+      <Group Id="group_8ea5e317" ResourceId="SitemapDesigner.NewGroup" DescriptionResourceId="SitemapDesigner.NewGroup" IntroducedVersion="7.0.0.0" IsProfile="false" ToolTipResourseId="SitemapDesigner.Unknown">
+        <Titles>
+          <Title LCID="3082" Title="Grupo 1" />
+        </Titles>
+        <SubArea Id="subarea_64d49c32" VectorIcon="/WebResources/cr07a_customerservicesvgrepocom" Icon="/WebResources/cr07a_customerservicesvgrepocom" Entity="cr07a_cliente" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="subarea_fb353af4" VectorIcon="/WebResources/cr07a_productsvgrepocom" Icon="/WebResources/cr07a_productsvgrepocom" Entity="cr07a_salesperformancerecord" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="subarea_3f3ea293" VectorIcon="/WebResources/cr07a_productsvgrepocom" Icon="/WebResources/cr07a_productsvgrepocom" Entity="cr07a_productoscopiers" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="subarea_b53518e6" VectorIcon="/WebResources/cr07a_moneycashfinancesvgrepocom" Icon="/WebResources/cr07a_moneycashfinancesvgrepocom" Entity="cr07a_facturacion" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="subarea_253d7b39" VectorIcon="/WebResources/cr07a_moneycashbusinesscartfinancesvgrepocom" Icon="/WebResources/cr07a_moneycashbusinesscartfinancesvgrepocom" Entity="cr07a_gastodelaempresa" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="subarea_3d8c3917" VectorIcon="/WebResources/msdyn_/SitemapIcons/SVG/PlannerAppModuleIcon.svg" Icon="/WebResources/msdyn_/SitemapIcons/SVG/PlannerAppModuleIcon.svg" Entity="cr07a_contractrecord1" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="subarea_e049baac" VectorIcon="/WebResources/msdyncrm_/KbMultisession/msdyn_kbsearchcontroltabicon.svg" Icon="/WebResources/msdyncrm_/KbMultisession/msdyn_kbsearchcontroltabicon.svg" Entity="cr07a_contratosboris" Client="All,Outlook,OutlookLaptopClient,OutlookWorkstationClient,Web" AvailableOffline="true" PassParams="false" Sku="All,OnPremise,Live,SPLA" />
+        <SubArea Id="cr07a_shared_cost_centers" Entity="cr07a_centrodecosto" Client="All" AvailableOffline="false">
+          <Titles>
+            <Title LCID="3082" Title="Centros de costo" />
+          </Titles>
+        </SubArea>
+      </Group>
+    </Area>
+  </SiteMap>
+  <LocalizedNames>
+    <LocalizedName description="Gerencia" languagecode="3082" />
+  </LocalizedNames>
+</AppModuleSiteMap>

@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{1be2a485-01e1-4038-95f2-21410c3c815d}</formid>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <FormPresentation>1</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form>
+      <tabs>
+        <tab verticallayout="true" id="{58a9c7b6-723f-4239-817d-00c666447aed}" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="{ac98d868-27f4-4dfc-9a2f-615c781bd251}">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="{32a7d4f8-9329-41a9-8016-c9d04d9671a5}">
+                        <labels>
+                          <label description="Nombre" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_name" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="cr07a_name" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{7b9f46e2-1f98-46b4-ae0b-86852b136c2d}">
+                        <labels>
+                          <label description="Codigo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_codigo" datafieldname="cr07a_codigo" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{215683a7-b0f2-44d1-be88-93c57252eba0}">
+                        <labels>
+                          <label description="ID en Siigo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_identificadorsiigo" datafieldname="cr07a_identificadorsiigo" classid="{C6D124CA-7EDA-4A60-AEA9-7FB8D318B68F}" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Información" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Formulario para esta entidad." languagecode="3082" />
+    </Descriptions>
+  </systemform>
+</forms>

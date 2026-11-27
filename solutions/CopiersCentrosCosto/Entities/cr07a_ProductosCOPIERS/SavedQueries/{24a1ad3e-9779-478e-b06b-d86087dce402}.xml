@@ -12,7 +12,7 @@
         <row name="result" id="cr07a_productoscopiersid">
           <cell name="cr07a_cantidad" width="80" />
           <cell name="cr07a_cliente" width="200" />
-          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_centrocostoref" width="200" />
           <cell name="cr07a_producto" width="197" />
           <cell name="cr07a_descripcion" width="150" />
           <cell name="cr07a_valorunidadantesdeiva" width="150" />
@@ -42,7 +42,7 @@
           <attribute name="cr07a_valorunidadconiva" />
           <attribute name="cr07a_totalconiva" />
           <order attribute="cr07a_diadefacturacion" descending="false" />
-          <attribute name="cr07a_centrocosto" />
+          <attribute name="cr07a_centrocostoref" />
         </entity>
       </fetch>
     </fetchxml>

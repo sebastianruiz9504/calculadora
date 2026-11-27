@@ -2,6 +2,7 @@
 <EntityRelationships xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <EntityRelationship Name="business_unit_cr07a_boriscobro" />
   <EntityRelationship Name="business_unit_cr07a_contratosboris" />
+  <EntityRelationship Name="cr07a_centrodecosto_cr07a_contratosboris_cr07a_CentroCostoRef" />
   <EntityRelationship Name="cr07a_contratosboris_Cliente_cr07a_cliente" />
   <EntityRelationship Name="lk_cr07a_boriscobro_createdby" />
   <EntityRelationship Name="lk_cr07a_boriscobro_modifiedby" />

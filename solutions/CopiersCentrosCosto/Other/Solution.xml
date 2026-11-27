@@ -86,6 +86,10 @@
         <Dependent type="1" schemaName="cr07a_productoscopiers" displayName="Productos COPIERS" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="10" schemaName="cr07a_centrodecosto_cr07a_productoscopiers_cr07a_CentroCostoRef" displayName="cr07a_centrodecosto_cr07a_productoscopiers_cr07a_CentroCostoRef" parentSchemaName="cr07a_centrodecosto" parentDisplayName="Centro de costo" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="10" schemaName="cr07a_productoscopiers_Cliente_cr07a_cliente" displayName="cr07a_productoscopiers_Cliente_cr07a_cliente" parentSchemaName="cr07a_cliente" parentDisplayName="Cliente" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
       </MissingDependency>
@@ -103,6 +107,18 @@
       </MissingDependency>
       <MissingDependency>
         <Required type="2" schemaName="cr07a_cantidad" displayName="Cantidad" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_centrocostoref" displayName="Centro de costo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS activo" displayName="Productos COPIERS activo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{24a1ad3e-9779-478e-b06b-d86087dce402}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_centrocostoref" displayName="Centro de costo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
+        <Dependent type="26" schemaName="Productos COPIERS inactivo" displayName="Productos COPIERS inactivo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{f3c15425-04a3-4988-964a-38b8eb890476}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="2" schemaName="cr07a_centrocostoref" displayName="Centro de costo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
         <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
       </MissingDependency>
       <MissingDependency>
@@ -196,6 +212,10 @@
       <MissingDependency>
         <Required type="2" schemaName="statecode" displayName="Estado" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" solution="Active" />
         <Dependent type="26" schemaName="Productos COPIERS inactivo" displayName="Productos COPIERS inactivo" parentSchemaName="cr07a_productoscopiers" parentDisplayName="Productos COPIERS" id="{f3c15425-04a3-4988-964a-38b8eb890476}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="cr07a_/sharedCostCenters.js" displayName="cr07a_/sharedCostCenters.js" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Productos COPIERS" id="{2f5833b1-61d1-4f81-9230-bf03be6fd15c}" />
       </MissingDependency>
     </MissingDependencies>
   </SolutionManifest>

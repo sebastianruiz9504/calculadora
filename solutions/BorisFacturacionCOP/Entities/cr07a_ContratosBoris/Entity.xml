@@ -20,7 +20,7 @@
           <Type>picklist</Type>
           <Name>cr07a_centrocosto</Name>
           <LogicalName>cr07a_centrocosto</LogicalName>
-          <RequiredLevel>required</RequiredLevel>
+          <RequiredLevel>none</RequiredLevel>
           <DisplayMask>ValidForAdvancedFind|ValidForForm|ValidForGrid</DisplayMask>
           <ImeMode>auto</ImeMode>
           <ValidForUpdateApi>1</ValidForUpdateApi>
@@ -46,7 +46,7 @@
           <IsFilterable>0</IsFilterable>
           <IsRetrievable>0</IsRetrievable>
           <IsLocalizable>0</IsLocalizable>
-          <AppDefaultValue>10300</AppDefaultValue>
+          <AppDefaultValue>-1</AppDefaultValue>
           <optionset Name="cr07a_contratosboris_cr07a_centrocosto">
             <OptionSetType>picklist</OptionSetType>
             <IntroducedVersion>1.0.0.0</IntroducedVersion>
@@ -86,10 +86,48 @@
             </options>
           </optionset>
           <displaynames>
-            <displayname description="Centro de costo" languagecode="3082" />
+            <displayname description="Centro de costo (anterior)" languagecode="3082" />
           </displaynames>
           <Descriptions>
             <Description description="Centro de costo de Ventas en Siigo para la facturacion de este contrato Boris." languagecode="3082" />
+          </Descriptions>
+        </attribute>
+        <attribute PhysicalName="cr07a_CentroCostoRef">
+          <Type>lookup</Type>
+          <Name>cr07a_centrocostoref</Name>
+          <LogicalName>cr07a_centrocostoref</LogicalName>
+          <RequiredLevel>required</RequiredLevel>
+          <DisplayMask>ValidForAdvancedFind|ValidForForm|ValidForGrid</DisplayMask>
+          <ValidForUpdateApi>1</ValidForUpdateApi>
+          <ValidForReadApi>1</ValidForReadApi>
+          <ValidForCreateApi>1</ValidForCreateApi>
+          <IsCustomField>1</IsCustomField>
+          <IsAuditEnabled>0</IsAuditEnabled>
+          <IsSecured>0</IsSecured>
+          <IntroducedVersion>1.0.0.0</IntroducedVersion>
+          <IsCustomizable>1</IsCustomizable>
+          <IsRenameable>1</IsRenameable>
+          <CanModifySearchSettings>1</CanModifySearchSettings>
+          <CanModifyRequirementLevelSettings>1</CanModifyRequirementLevelSettings>
+          <CanModifyAdditionalSettings>1</CanModifyAdditionalSettings>
+          <SourceType>0</SourceType>
+          <IsGlobalFilterEnabled>0</IsGlobalFilterEnabled>
+          <IsSortableEnabled>0</IsSortableEnabled>
+          <CanModifyGlobalFilterSettings>1</CanModifyGlobalFilterSettings>
+          <CanModifyIsSortableSettings>1</CanModifyIsSortableSettings>
+          <IsDataSourceSecret>0</IsDataSourceSecret>
+          <AutoNumberFormat></AutoNumberFormat>
+          <IsSearchable>0</IsSearchable>
+          <IsFilterable>0</IsFilterable>
+          <IsRetrievable>0</IsRetrievable>
+          <IsLocalizable>0</IsLocalizable>
+          <LookupStyle>single</LookupStyle>
+          <LookupTypes />
+          <displaynames>
+            <displayname description="Centro de costo" languagecode="3082" />
+          </displaynames>
+          <Descriptions>
+            <Description description="Centro de costo del catalogo compartido de Siigo." languagecode="3082" />
           </Descriptions>
         </attribute>
         <attribute PhysicalName="cr07a_Cliente">

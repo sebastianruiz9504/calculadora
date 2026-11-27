@@ -230,8 +230,9 @@
             },
             "parameters": {
               "entityName": "cr07a_contratosborises",
-              "$select": "cr07a_contratosborisid,cr07a_name,_cr07a_cliente_value,cr07a_costomensual,cr07a_diadefacturacion,cr07a_facturacionmensual,cr07a_fechaderenovacion,cr07a_siigo_code,cr07a_ultimoperiodofacturado,cr07a_siigo_invoice_id,cr07a_siigo_invoice_name,cr07a_centrocosto",
-              "$filter": "@if(equals(outputs('Configuracion')?['modo'],'Produccion'),'statecode eq 0',if(outputs('Configuracion')?['simularTodos'],'statecode eq 0','statecode eq 0 and cr07a_contratosborisid eq a4b6d116-56d8-f111-84ea-70a8a5a95cf5'))"
+              "$select": "cr07a_contratosborisid,cr07a_name,_cr07a_cliente_value,cr07a_costomensual,cr07a_diadefacturacion,cr07a_facturacionmensual,cr07a_fechaderenovacion,cr07a_siigo_code,cr07a_ultimoperiodofacturado,cr07a_siigo_invoice_id,cr07a_siigo_invoice_name,_cr07a_centrocostoref_value",
+              "$filter": "@if(equals(outputs('Configuracion')?['modo'],'Produccion'),'statecode eq 0',if(outputs('Configuracion')?['simularTodos'],'statecode eq 0','statecode eq 0 and cr07a_contratosborisid eq a4b6d116-56d8-f111-84ea-70a8a5a95cf5'))",
+              "$expand": "cr07a_CentroCostoRef($select=cr07a_codigo,cr07a_identificadorsiigo,statecode)"
             },
             "authentication": "@parameters('$authentication')"
           },
@@ -727,7 +728,7 @@
                                     ]
                                   },
                                   "type": "Compose",
-                                  "inputs": "@int(json('{\"10100\":589,\"10200\":602,\"10300\":611,\"10400\":622,\"10500\":633}')?[string(coalesce(items('Por_contrato')?['cr07a_centrocosto'],10300))])"
+                                  "inputs": "@int(if(and(equals(items('Por_contrato')?['cr07a_CentroCostoRef']?['statecode'],0),greater(coalesce(items('Por_contrato')?['cr07a_CentroCostoRef']?['cr07a_identificadorsiigo'],0),0)),items('Por_contrato')?['cr07a_CentroCostoRef']?['cr07a_identificadorsiigo'],null))"
                                 }
                               },
                               "runAfter": {

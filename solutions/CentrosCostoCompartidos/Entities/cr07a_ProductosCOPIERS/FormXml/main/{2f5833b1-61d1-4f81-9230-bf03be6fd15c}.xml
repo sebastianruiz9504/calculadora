@@ -1,0 +1,190 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{2f5833b1-61d1-4f81-9230-bf03be6fd15c}</formid>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <FormPresentation>1</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="{f41b8fc3-ac69-4684-ba46-80b46d16c9f8}" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="{5454dd95-3648-4e58-bede-d189dd547829}">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="{9732f96f-c4e5-4537-ae5b-962cf080f876}" visible="false">
+                        <labels>
+                          <label description="Nueva columna" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nuevacolumna" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="cr07a_nuevacolumna" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{7f879699-f62e-4711-a9e3-58d7f56fab8d}">
+                        <labels>
+                          <label description="Propietario" languagecode="3082" />
+                        </labels>
+                        <control id="ownerid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="ownerid" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{22d17871-75f9-4542-b8fc-803ab7145d90}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Cliente" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_cliente" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_cliente" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{3EDA24AB-E076-4FD3-B7A9-B661FA17FC8D}" showlabel="true">
+                        <labels>
+                          <label description="Centro de costo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_centrocostoref" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_centrocostoref" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a986000d-7d10-48ef-a7e3-213b2f88a1ba}">
+                        <labels>
+                          <label description="Cantidad" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_cantidad" classid="{c6d124ca-7eda-4a60-aea9-7fb8d318b68f}" datafieldname="cr07a_cantidad" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{d9b763b9-8347-4a15-9dab-d209068091ed}">
+                        <labels>
+                          <label description="Producto" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_producto" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_producto" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{c05cd527-a679-400a-ad81-086cddc73d07}">
+                        <labels>
+                          <label description="Descripción" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_descripcion" classid="{4273edbd-ac1d-40d3-9fb2-095c621b552d}" datafieldname="cr07a_descripcion" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{e2b9fc99-daa3-47b0-8034-0a3c8881b0ec}">
+                        <labels>
+                          <label description="Valor Unidad antes de IVA" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_valorunidadantesdeiva" classid="{c3efe0c3-0ec6-42be-8349-cbd9079dfd8e}" datafieldname="cr07a_valorunidadantesdeiva" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{0e086625-6ab5-42b9-a850-de7f07595eb7}">
+                        <labels>
+                          <label description="Día de facturación" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_diadefacturacion" classid="{c6d124ca-7eda-4a60-aea9-7fb8d318b68f}" datafieldname="cr07a_diadefacturacion" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{2ed384fc-b49e-4865-94a1-26896d722a9b}">
+                        <labels>
+                          <label description="A cuantos días" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_acuantosdias" classid="{c6d124ca-7eda-4a60-aea9-7fb8d318b68f}" datafieldname="cr07a_acuantosdias" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{f8f6ea6d-c162-4e63-9165-d1c992e8e598}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Valor Unidad con IVA" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_valorunidadconiva" classid="{C3EFE0C3-0EC6-42BE-8349-CBD9079DFD8E}" datafieldname="cr07a_valorunidadconiva" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{770c513c-86b7-4fd6-b3ba-0028598c815a}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Total con IVA" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_totalconiva" classid="{C3EFE0C3-0EC6-42BE-8349-CBD9079DFD8E}" datafieldname="cr07a_totalconiva" disabled="false" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="{da3a87ae-efdc-4134-9c75-0a8b9ce40c0b}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{049994d5-e3d4-45fe-920c-c76aeebc5a6b}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{e8f8d386-8a9d-4daa-9a09-b269e4c33391}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{d3004047-b8d9-406a-b83a-57f900d01a61}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="{737819d9-e412-4530-b84c-23e89360417d}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{d171a8ed-cafa-4c7b-bd58-ebd84d97ff50}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{39fcfc65-f9a6-4cde-bfd6-803c2f22a824}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{8428f4a7-564e-4964-9768-8474eba5ba26}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="0" FallbackForm="true">
+        <Everyone />
+      </DisplayConditions>
+      <formLibraries>
+        <Library name="cr07a_/sharedCostCenters.js" libraryUniqueId="{21352a19-b6e3-46d7-8ee0-9eaf9f8cd8b9}" />
+      </formLibraries>
+      <events>
+        <event name="onload" application="false" active="true">
+          <Handlers>
+            <Handler functionName="DigitalTech.SharedCostCenters.onLoad" libraryName="cr07a_/sharedCostCenters.js" handlerUniqueId="{86fb4595-33a5-4602-95f1-0c5758f1800d}" enabled="true" passExecutionContext="true" parameters="" />
+          </Handlers>
+        </event>
+      </events>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Información" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Formulario para esta entidad." languagecode="3082" />
+    </Descriptions>
+  </systemform>
+</forms>

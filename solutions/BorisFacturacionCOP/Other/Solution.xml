@@ -88,8 +88,16 @@
         <Dependent type="29" displayName="BORIS - Facturacion COP mensual y anual" id="{9658d73e-61d8-f111-84ea-70a8a5a95cf5}" />
       </MissingDependency>
       <MissingDependency>
+        <Required type="2" schemaName="cr07a_name" displayName="Nombre" parentSchemaName="cr07a_centrodecosto" parentDisplayName="Centro de costo" solution="Active" />
+        <Dependent type="10" schemaName="cr07a_centrodecosto_cr07a_contratosboris_cr07a_CentroCostoRef" displayName="cr07a_centrodecosto_cr07a_contratosboris_cr07a_CentroCostoRef" parentSchemaName="cr07a_centrodecosto" parentDisplayName="Centro de costo" />
+      </MissingDependency>
+      <MissingDependency>
         <Required type="2" schemaName="cr07a_nombre" displayName="Nombre empresa" parentSchemaName="cr07a_cliente" parentDisplayName="Cliente" solution="Active" />
         <Dependent type="10" schemaName="cr07a_contratosboris_Cliente_cr07a_cliente" displayName="cr07a_contratosboris_Cliente_cr07a_cliente" parentSchemaName="cr07a_cliente" parentDisplayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="cr07a_/sharedCostCenters.js" displayName="cr07a_/sharedCostCenters.js" solution="Active" />
+        <Dependent type="60" displayName="Información" parentDisplayName="Contratos Boris" id="{e2c82d01-d6a8-449c-ac2d-14fecb3d538a}" />
       </MissingDependency>
     </MissingDependencies>
   </SolutionManifest>

@@ -11,7 +11,7 @@
       <grid name="resultset" jump="cr07a_icpname" select="1" icon="1" preview="1">
         <row name="result" id="cr07a_salesperformancerecordid">
           <cell name="cr07a_clientelookup" width="138" />
-          <cell name="cr07a_centrocosto" width="170" />
+          <cell name="cr07a_centrocostoref" width="200" />
           <cell name="cr07a_quantity" width="78" />
           <cell name="cr07a_producto" width="266" />
           <cell name="cr07a_valorventaunidadusd" width="181" />
@@ -47,7 +47,7 @@
           <attribute name="cr07a_sitieneiva" />
           <attribute name="cr07a_valorventaunidadusd" />
           <attribute name="cr07a_fecharenovacion" />
-          <attribute name="cr07a_centrocosto" />
+          <attribute name="cr07a_centrocostoref" />
         </entity>
       </fetch>
     </fetchxml>

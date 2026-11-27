@@ -32,7 +32,7 @@
                         <labels>
                           <label description="Centro de costo" languagecode="3082" />
                         </labels>
-                        <control id="cr07a_centrocosto" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_centrocosto" disabled="false" />
+                        <control id="cr07a_centrocostoref" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_centrocostoref" disabled="false" />
                       </cell>
                     </row>
                     <row>
@@ -135,6 +135,16 @@
       <DisplayConditions Order="0" FallbackForm="true">
         <Everyone />
       </DisplayConditions>
+      <formLibraries>
+        <Library name="cr07a_/sharedCostCenters.js" libraryUniqueId="{f122787f-3b48-4771-868d-477c636f1976}" />
+      </formLibraries>
+      <events>
+        <event name="onload" application="false" active="true">
+          <Handlers>
+            <Handler functionName="DigitalTech.SharedCostCenters.onLoad" libraryName="cr07a_/sharedCostCenters.js" handlerUniqueId="{3239d849-f21f-46db-bb80-11b85236afba}" enabled="true" passExecutionContext="true" parameters="" />
+          </Handlers>
+        </event>
+      </events>
     </form>
     <IsCustomizable>1</IsCustomizable>
     <CanBeDeleted>1</CanBeDeleted>

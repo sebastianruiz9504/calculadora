@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{cdd19af1-acac-4203-9fae-ad7aad92e5b3}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_icpname" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_salesperformancerecordid">
+          <cell name="cr07a_clientelookup" width="138" />
+          <cell name="cr07a_centrocostoref" width="200" />
+          <cell name="cr07a_quantity" width="78" />
+          <cell name="cr07a_producto" width="266" />
+          <cell name="cr07a_valorventaunidadusd" width="181" />
+          <cell name="cr07a_billingday" width="150" />
+          <cell name="cr07a_daysnotguessed" width="150" />
+          <cell name="cr07a_contracttype" width="150" />
+          <cell name="cr07a_productline" width="150" />
+          <cell name="cr07a_facturableautomatico" width="159" />
+          <cell name="cr07a_sitieneiva" width="100" />
+          <cell name="cr07a_fecharenovacion" width="144" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_salesperformancerecord">
+          <attribute name="cr07a_salesperformancerecordid" />
+          <attribute name="createdon" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_quantity" />
+          <attribute name="cr07a_billingday" />
+          <attribute name="cr07a_daysnotguessed" />
+          <attribute name="cr07a_contracttype" />
+          <attribute name="cr07a_productline" />
+          <attribute name="cr07a_clientelookup" />
+          <attribute name="cr07a_producto" />
+          <order attribute="cr07a_billingday" descending="false" />
+          <order attribute="cr07a_clientelookup" descending="false" />
+          <attribute name="cr07a_facturableautomatico" />
+          <attribute name="cr07a_sitieneiva" />
+          <attribute name="cr07a_valorventaunidadusd" />
+          <attribute name="cr07a_fecharenovacion" />
+          <attribute name="cr07a_centrocostoref" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Productos x Cliente - CLOUD" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>
